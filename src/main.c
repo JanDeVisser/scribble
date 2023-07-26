@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <binder.h>
-#include <graph.h>
-#include <parser.h>
-#include <type.h>
+#include "binder.h"
+#include "graph.h"
+#include "parser.h"
+#include "type.h"
 
 int main(int argc, char **argv)
 {

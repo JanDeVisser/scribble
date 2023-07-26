@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <lexer.h>
+#include "lexer.h"
 
 char const *TokenKind_name(TokenKind kind)
 {

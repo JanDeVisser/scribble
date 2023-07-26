@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <binder.h>
-#include <parser.h>
+#include "binder.h"
+#include "parser.h"
 
 #ifndef __GRAPH_H__
 #define __GRAPH_H__

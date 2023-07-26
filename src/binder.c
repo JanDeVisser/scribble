@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <binder.h>
-#include <log.h>
-#include <mem.h>
-#include <type.h>
+#include "binder.h"
+#include "log.h"
+#include "mem.h"
+#include "type.h"
 
 typedef struct node_list {
     BoundNode        *node;
@@ -347,6 +347,17 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
 }
 
+void find_main(BoundNode *program)
+{
+    for (BoundNode *module = program->program.modules; module != NULL; module = module->next) {
+        BoundNode *main = bound_node_find(module, BNT_FUNCTION, sv_from("main"));
+        if (main) {
+            return;
+        }
+    }
+    fatal("Not main function found");
+}
+
 BoundNode *bind(SyntaxNode *program)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
@@ -355,6 +366,9 @@ BoundNode *bind(SyntaxNode *program)
 
     assert(program->type == SNT_PROGRAM);
     bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
+
+    find_main(ret);
+
     int current_unbound = INT32_MAX;
     int iter = 1;
     while (ctx->unbound > 0 && ctx->unbound < current_unbound) {

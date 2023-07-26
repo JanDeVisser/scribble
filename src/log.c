@@ -6,7 +6,7 @@
 
 #include <stdarg.h>
 
-#include <log.h>
+#include "log.h"
 
 void fatal(char const* msg, ...)
 {

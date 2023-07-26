@@ -3,19 +3,19 @@ project(scribble C)
 
 set(CMAKE_C_STANDARD 23)
 
-include_directories(.)
+include_directories(src)
 
 add_executable(
         scribble
-        binder.c
-        error.c
-        graph.c
-        io.c
-        lexer.c
-        log.c
-        main.c
-        mem.c
-        parser.c
-        sv.c
-        type.c
+        src/binder.c
+        src/error.c
+        src/graph.c
+        src/io.c
+        src/lexer.c
+        src/log.c
+        src/main.c
+        src/mem.c
+        src/parser.c
+        src/sv.c
+        src/type.c
 )

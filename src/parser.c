@@ -7,12 +7,12 @@
 #include <dirent.h>
 #include <string.h>
 
-#include <error.h>
-#include <io.h>
-#include <lexer.h>
-#include <log.h>
-#include <mem.h>
-#include <parser.h>
+#include "error.h"
+#include "io.h"
+#include "lexer.h"
+#include "log.h"
+#include "mem.h"
+#include "parser.h"
 
 static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
 static SyntaxNode *parse_expression(Lexer *lexer);

@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <lexer.h>
-#include <sv.h>
+#include "lexer.h"
+#include "sv.h"
 
 #ifndef __PARSER_H__
 #define __PARSER_H__

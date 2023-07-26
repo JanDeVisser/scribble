@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <log.h>
-#include <mem.h>
-#include <sv.h>
-#include <type.h>
+#include "type.h"
+#include "log.h"
+#include "mem.h"
+#include "sv.h"
 
 static size_t type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
 

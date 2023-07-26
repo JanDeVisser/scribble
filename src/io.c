@@ -8,8 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <io.h>
-#include <mem.h>
+#include "io.h"
+#include "mem.h"
 
 ErrorOrChar read_file_by_name(char const *file_name)
 {

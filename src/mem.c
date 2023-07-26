@@ -27,7 +27,7 @@ typedef struct {
 const static size_t ARENA_SZ = 10 * 1024 * 1024;
 
 #define MEM_IMPL
-#include <mem.h>
+#include "mem.h"
 
 void slab_free(Slab *slab)
 {

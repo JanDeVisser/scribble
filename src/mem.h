@@ -6,7 +6,7 @@
 
 #include <stdlib.h>
 
-#include <log.h>
+#include "log.h"
 
 #ifndef __MEM_H__
 #define __MEM_H__

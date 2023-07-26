@@ -6,9 +6,9 @@
 
 #include <stdio.h>
 
-#include <graph.h>
-#include <log.h>
-#include <type.h>
+#include "graph.h"
+#include "log.h"
+#include "type.h"
 
 void graph_syntax_node(size_t parent, char const *prefix, SyntaxNode *node, FILE *f)
 {

@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-#include <log.h>
+#include "log.h"
 
 #ifndef __ERROR_H__
 #define __ERROR_H__

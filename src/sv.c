@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <sv.h>
+#include "sv.h"
 
 StringView sv_from(char const *s)
 {
