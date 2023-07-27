@@ -33,8 +33,9 @@ void graph_syntax_node(size_t parent, char const *prefix, SyntaxNode *node, FILE
     }
     fprintf(f, "    Node_%zu -> Node_%zu;\n", node->index, parent);
     switch (node->type) {
-    case SNT_MODULE: {
-        for (SyntaxNode *stmt = node->module.statements; stmt != NULL; stmt = stmt->next) {
+    case SNT_MODULE:
+    case SNT_BLOCK: {
+        for (SyntaxNode *stmt = node->block.statements; stmt != NULL; stmt = stmt->next) {
             graph_syntax_node(node->index, NULL, stmt, f);
         }
     } break;
@@ -73,6 +74,18 @@ void graph_syntax_node(size_t parent, char const *prefix, SyntaxNode *node, FILE
     case SNT_BINARYEXPRESSION:
         graph_syntax_node(node->index, "lhs", node->binary_expr.lhs, f);
         graph_syntax_node(node->index, "rhs", node->binary_expr.rhs, f);
+        break;
+    case SNT_IF:
+        graph_syntax_node(node->index, "condition", node->if_statement.condition, f);
+        graph_syntax_node(node->index, "if true", node->if_statement.if_true, f);
+        if (node->if_statement.if_false) {
+            graph_syntax_node(node->index, "if false", node->if_statement.if_false, f);
+        }
+        break;
+    case SNT_RETURN:
+        if (node->return_stmt.expression) {
+            graph_syntax_node(node->index, "condition", node->return_stmt.expression, f);
+        }
         break;
     default:
         break;
@@ -114,7 +127,7 @@ void graph_bound_node(size_t parent, char const *prefix, BoundNode *node, FILE *
     fprintf(f, "    Node_%zu -> Node_%zu;\n", node->index, parent);
     switch (node->type) {
     case BNT_MODULE: {
-        for (BoundNode *stmt = node->module.statements; stmt != NULL; stmt = stmt->next) {
+        for (BoundNode *stmt = node->block.statements; stmt != NULL; stmt = stmt->next) {
             graph_bound_node(node->index, NULL, stmt, f);
         }
     } break;
@@ -159,6 +172,10 @@ void graph_bound_node(size_t parent, char const *prefix, BoundNode *node, FILE *
         graph_bound_node(node->index, "lhs", node->binary_expr.lhs, f);
         graph_bound_node(node->index, "rhs", node->binary_expr.rhs, f);
         break;
+    case BNT_IF:
+        graph_bound_node(node->index, "condition", node->if_statement.condition, f);
+        graph_bound_node(node->index, "if true", node->if_statement.if_true, f);
+        graph_bound_node(node->index, "if false", node->if_statement.if_false, f);
     default:
         break;
     }

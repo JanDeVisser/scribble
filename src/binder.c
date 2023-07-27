@@ -87,7 +87,7 @@ BoundNode * bound_node_find(BoundNode *node, BoundNodeType type, StringView name
 {
     switch (node->type) {
     case BNT_MODULE: {
-        for (BoundNode *n = node->module.statements; n; n = n->next) {
+        for (BoundNode *n = node->block.statements; n; n = n->next) {
             if (n->type == type && sv_eq(n->name, name)) {
                 return n;
             }
@@ -134,6 +134,7 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
     assert(type_node->type == SNT_TYPE);
     ExpressionType *type = type_registry_get_type_by_name(type_node->name);
     if (!type) {
+        fprintf(stderr, "Unknown type '" SV_SPEC "'", SV_ARG(type_node->name));
         return false;
     }
     (*typespec).type_id = type->type_id;
@@ -163,7 +164,14 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
             *ptr = '.';
         }
         ret->name = sv_from(mod_name);
-        bind_nodes(ret, stmt->module.statements, &ret->module.statements, mod_ctx);
+        bind_nodes(ret, stmt->block.statements, &ret->block.statements, mod_ctx);
+        return ret;
+    }
+    case SNT_BLOCK: {
+        BoundNode   *ret = bound_node_make(BNT_BLOCK, parent);
+        BindContext *block_ctx = context_make_subcontext(ctx);
+
+        bind_nodes(ret, stmt->block.statements, &ret->block.statements, block_ctx);
         return ret;
     }
     case SNT_FUNCTION: {
@@ -243,6 +251,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     case SNT_VARIABLE: {
         BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
         if (!decl) {
+            fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
             return bound_node_make_unbound(parent, stmt, ctx);
         }
         BoundNode *ret = bound_node_make(BNT_VARIABLE, parent);
@@ -272,6 +281,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         if (var_type.type_id == VOID_ID && expr != NULL) {
             var_type = expr->typespec;
         } else if (var_type.type_id == VOID_ID && expr == NULL) {
+            fprintf(stderr, "Could not infer type of variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
             return bound_node_make_unbound(parent, stmt, ctx);
         }
         ret->typespec = var_type;
@@ -282,16 +292,27 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     case SNT_FUNCTION_CALL: {
         BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
         if (!fnc) {
+            fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
             return bound_node_make_unbound(parent, stmt, ctx);
         }
         BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
         ret->name = stmt->name;
         ret->call.function = fnc;
         ret->typespec = fnc->typespec;
-        int unbound_cnt = ctx->unbound;
         bind_nodes(ret, stmt->call.argument, &ret->call.argument, ctx);
-        if (unbound_cnt < ctx->unbound) {
-            return bound_node_make_unbound(parent, stmt, NULL);
+        return ret;
+    }
+    case SNT_IF: {
+        BoundNode *ret = bound_node_make(BNT_IF, parent);
+        ret->if_statement.condition = bind_node(ret, stmt->if_statement.condition, ctx);
+        ret->if_statement.if_true = bind_node(ret, stmt->if_statement.if_true, ctx);
+        ret->if_statement.if_false = bind_node(ret, stmt->if_statement.if_false, ctx);
+        return ret;
+    }
+    case SNT_RETURN: {
+        BoundNode *ret = bound_node_make(BNT_RETURN, parent);
+        if (stmt->return_stmt.expression) {
+            ret->return_stmt.expression = bind_node(ret, stmt->return_stmt.expression, ctx);
         }
         return ret;
     }
@@ -332,13 +353,24 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
 {
     switch (node->type) {
     case BNT_PROGRAM:
-        rebind_nodes(node->parent, &node->program.modules, ctx);
+        rebind_nodes(node, &node->program.modules, ctx);
         return node;
     case BNT_MODULE:
-        rebind_nodes(node->parent, &node->module.statements, ctx);
+        rebind_nodes(node, &node->block.statements, ctx);
+        return node;
+    case BNT_IF:
+        node->if_statement.condition = rebind_node(node->if_statement.condition, ctx);
+        node->if_statement.if_true = rebind_node(node->if_statement.if_true, ctx);
+        node->if_statement.if_false = rebind_node(node->if_statement.if_false, ctx);
+        return node;
+    case BNT_RETURN:
+        node->return_stmt.expression = rebind_node(node->return_stmt.expression, ctx);
         return node;
     case BNT_FUNCTION:
-        rebind_nodes(node->parent, &node->function.statements, ctx);
+        rebind_nodes(node, &node->function.statements, ctx);
+        return node;
+    case BNT_FUNCTION_CALL:
+        rebind_nodes(node, &node->call.argument, ctx);
         return node;
     case BNT_UNBOUND_NODE:
         return bind_node(node->parent, node->unbound_node, ctx);
@@ -355,7 +387,7 @@ void find_main(BoundNode *program)
             return;
         }
     }
-    fatal("Not main function found");
+    fatal("No main function found");
 }
 
 BoundNode *bind(SyntaxNode *program)
@@ -378,7 +410,7 @@ BoundNode *bind(SyntaxNode *program)
         rebind_node(ret, ctx);
     }
     if (ctx->unbound > 0) {
-        fatal("There are unbound references");
+        fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
     }
     fprintf(stderr, "Iteration %d: All bound\n", iter);
     return ret;

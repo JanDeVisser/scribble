@@ -16,18 +16,21 @@ typedef struct {
 } TypeSpec;
 
 #define BOUNDNODETYPES(S)   \
-    S(BNT_PROGRAM)          \
-    S(BNT_MODULE)           \
-    S(BNT_FUNCTION)         \
-    S(BNT_PARAMETER)        \
     S(BNT_BINARYEXPRESSION) \
-    S(BNT_UNARYEXPRESSION)  \
+    S(BNT_BLOCK)            \
+    S(BNT_FUNCTION)         \
     S(BNT_FUNCTION_CALL)    \
+    S(BNT_IF)               \
+    S(BNT_MODULE)           \
+    S(BNT_NUMBER)           \
+    S(BNT_PARAMETER)        \
+    S(BNT_PROGRAM)          \
+    S(BNT_RETURN)           \
     S(BNT_TYPE)             \
+    S(BNT_UNARYEXPRESSION)  \
     S(BNT_UNBOUND_NODE)     \
     S(BNT_VARIABLE)         \
-    S(BNT_VARIABLE_DECL)    \
-    S(BNT_NUMBER)
+    S(BNT_VARIABLE_DECL)
 
 typedef enum {
 #undef BOUNDNODETYPE_ENUM
@@ -51,7 +54,7 @@ typedef struct bound_node {
         } program;
         struct {
             struct bound_node *statements;
-        } module;
+        } block;
         struct {
             struct bound_node *parameter;
             struct bound_node *statements;
@@ -71,6 +74,14 @@ typedef struct bound_node {
             struct bound_node *function;
             struct bound_node *argument;
         } call;
+        struct {
+            struct bound_node *condition;
+            struct bound_node *if_true;
+            struct bound_node *if_false;
+        } if_statement;
+        struct {
+            struct bound_node *expression;
+        } return_stmt;
         SyntaxNode *unbound_node;
     };
 } BoundNode;

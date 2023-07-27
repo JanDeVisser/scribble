@@ -18,6 +18,7 @@ static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token 
 static SyntaxNode *parse_expression(Lexer *lexer);
 static SyntaxNode *parse_expression_1(Lexer *lexer, SyntaxNode *lhs, int min_precedence);
 static SyntaxNode *parse_primary_expression(Lexer *lexer);
+static SyntaxNode *parse_statement(Lexer *lexer);
 static SyntaxNode *parse_type(Lexer *lexer);
 
 char const *SyntaxNodeType_name(SyntaxNodeType type)
@@ -240,18 +241,94 @@ SyntaxNode *parse_variable_declaration(Lexer *lexer, bool is_const)
     return ret;
 }
 
+SyntaxNode *parse_if(Lexer *lexer)
+{
+    Token token;
+    lexer_lex(lexer);
+    token = lexer_next(lexer);
+    if (!token_matches(token, TK_SYMBOL, '(')) {
+        fatal("Expected '(' after 'if'");
+    }
+    lexer_lex(lexer);
+    SyntaxNode *expr = parse_expression(lexer);
+    if (!expr) {
+        fatal("Expected condition in 'if' statement");
+    }
+    token = lexer_next(lexer);
+    if (!token_matches(token, TK_SYMBOL, ')')) {
+        fatal("Expected ')' after 'if' condition");
+    }
+    lexer_lex(lexer);
+    SyntaxNode *if_true = parse_statement(lexer);
+    SyntaxNode *if_false = NULL;
+    token = lexer_next(lexer);
+    if (token_matches(token, TK_KEYWORD, KW_ELSE)) {
+        lexer_lex(lexer);
+        if_false = parse_statement(lexer);
+    }
+    SyntaxNode *ret = syntax_node_make(SNT_IF, sv_null(), token);
+    ret->if_statement.condition = expr;
+    ret->if_statement.if_true = if_true;
+    ret->if_statement.if_false = if_false;
+    return ret;
+}
+
+SyntaxNode *parse_return(Lexer *lexer)
+{
+    Token token;
+    lexer_lex(lexer);
+    token = lexer_next(lexer);
+    SyntaxNode *expr = parse_expression(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_null(), token);
+    ret->return_stmt.expression = expr;
+    return ret;
+}
+
+SyntaxNode *parse_block(Lexer *lexer)
+{
+    Token token = lexer_lex(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_BLOCK, sv_null(), token);
+    SyntaxNode **dst = &ret->block.statements;
+    while (true) {
+        token = lexer_next(lexer);
+        ret->token = token_merge(ret->token, token);
+        if (token.kind == TK_SYMBOL && token.code == '}') {
+            lexer_lex(lexer);
+            return ret;
+        }
+        if (token.kind == TK_END_OF_FILE) {
+            fatal("Expected '}' to close block");
+        }
+        SyntaxNode *stmt = parse_statement(lexer);
+        if (lexer != NULL) {
+            *dst = stmt;
+            dst = &stmt->next;
+        }
+    }
+}
+
 SyntaxNode *parse_statement(Lexer *lexer)
 {
     Token token = lexer_next(lexer);
+    if (token.kind == TK_SYMBOL && token.code == ';') {
+        lexer_lex(lexer);
+    }
     if (token.kind == TK_KEYWORD) {
         switch (token.code) {
         case KW_VAR:
             return parse_variable_declaration(lexer, false);
         case KW_CONST:
             return parse_variable_declaration(lexer, true);
+        case KW_IF:
+            return parse_if(lexer);
+        case KW_RETURN:
+            return parse_return(lexer);
         default:
             NYI("Keywords");
         }
+    }
+    if (token.kind == TK_SYMBOL && token.code == '{') {
+        return parse_block(lexer);
     }
     return parse_expression(lexer);
 }
@@ -399,7 +476,7 @@ SyntaxNode *parse_module(int dir_fd, char const *file)
         }
         if (statement) {
             if (!last_statement) {
-                module->module.statements = statement;
+                module->block.statements = statement;
             } else {
                 last_statement->next = statement;
             }

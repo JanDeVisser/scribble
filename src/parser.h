@@ -79,17 +79,20 @@ typedef struct operator_mapping {
 } OperatorMapping;
 
 #define SYNTAXNODETYPES(S)  \
-    S(SNT_PROGRAM)          \
-    S(SNT_MODULE)           \
-    S(SNT_FUNCTION)         \
-    S(SNT_PARAMETER)        \
-    S(SNT_TYPE)             \
     S(SNT_BINARYEXPRESSION) \
-    S(SNT_UNARYEXPRESSION)  \
+    S(SNT_BLOCK)            \
+    S(SNT_FUNCTION)         \
     S(SNT_FUNCTION_CALL)    \
+    S(SNT_IF)               \
+    S(SNT_MODULE)           \
+    S(SNT_NUMBER)           \
+    S(SNT_PARAMETER)        \
+    S(SNT_PROGRAM)          \
+    S(SNT_RETURN)           \
+    S(SNT_TYPE)             \
+    S(SNT_UNARYEXPRESSION)  \
     S(SNT_VARIABLE)         \
-    S(SNT_VARIABLE_DECL)    \
-    S(SNT_NUMBER)
+    S(SNT_VARIABLE_DECL)
 
 typedef enum {
 #undef SYNTAXNODETYPE_ENUM
@@ -111,7 +114,7 @@ typedef struct syntax_node {
         } program;
         struct {
             struct syntax_node *statements;
-        } module;
+        } block;
         struct {
             struct syntax_node *return_type;
             struct syntax_node *error_type;
@@ -132,8 +135,16 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *var_type;
             struct syntax_node *init_expr;
-            bool is_const;
+            bool                is_const;
         } variable_decl;
+        struct {
+            struct syntax_node *condition;
+            struct syntax_node *if_true;
+            struct syntax_node *if_false;
+        } if_statement;
+        struct {
+            struct syntax_node *expression;
+        } return_stmt;
     };
 } SyntaxNode;
 
