@@ -94,7 +94,7 @@ typedef struct {
     S(LOGICAL_OR, ||, 26)          \
     S(NOT_EQUALS, !=, 27)          \
     S(RANGE, .., 28)               \
-    S(RETURN_TYPES, ->, 29)        \
+    S(FUNC_BINDING, ->, 29)        \
     S(UNARY_DECREMENT, --, 30)     \
     S(UNARY_INCREMENT, ++, 31)
 
@@ -115,7 +115,7 @@ typedef struct {
     int        code;
 } Token;
 
-#define TOKEN_SPEC "%s %s [%.*s]:%zu"
+#define TOKEN_SPEC "%s %s [%.*s]:%zu: "
 #define TOKEN_ARG(t) TokenKind_name(t.kind), \
                      TokenCode_name(t.code), \
                      (int) t.text.length,    \

@@ -36,7 +36,7 @@ char const *PrimitiveType_name(PrimitiveType type)
     }
 }
 
-void *allocate(size_t size)
+static void *allocate(size_t size)
 {
     static Arena *s_arena = NULL;
     if (!s_arena) {
@@ -169,4 +169,27 @@ void type_registry_init()
     type_registry_add_primitive(sv_from(#name), code);
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
+}
+
+bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
+{
+    ExpressionType *et1 = type_registry_get_type_by_id(ts1.type_id);
+    assert(et1);
+    ExpressionType *et2 = type_registry_get_type_by_id(ts2.type_id);
+    assert(et2);
+    return ts1.type_id == ts2.type_id;
+}
+
+StringView typespec_name(TypeSpec typespec)
+{
+    ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
+    assert(et);
+    return et->name;
+}
+
+void typespec_print(FILE *f, TypeSpec typespec)
+{
+    ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
+    assert(et);
+    fprintf(f, SV_SPEC "%s", SV_ARG(et->name), (typespec.optional) ? "?" : "");
 }

@@ -79,6 +79,7 @@ typedef struct operator_mapping {
 } OperatorMapping;
 
 #define SYNTAXNODETYPES(S)  \
+    S(SNT_ASSIGNMENT)       \
     S(SNT_BINARYEXPRESSION) \
     S(SNT_BLOCK)            \
     S(SNT_FUNCTION)         \
@@ -145,6 +146,10 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *expression;
         } return_stmt;
+        struct {
+            struct syntax_node *expression;
+            Operator operator;
+        } assignment;
     };
 } SyntaxNode;
 

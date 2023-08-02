@@ -10,6 +10,7 @@ add_executable(
         src/binder.c
         src/error.c
         src/graph.c
+        src/intermediate.c
         src/io.c
         src/lexer.c
         src/log.c
@@ -18,4 +19,6 @@ add_executable(
         src/parser.c
         src/sv.c
         src/type.c
-)
+        src/execute.c src/datum.c)
+
+add_subdirectory("rt/arch/arm64")

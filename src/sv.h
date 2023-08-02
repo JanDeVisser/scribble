@@ -26,6 +26,7 @@ extern bool sv_eq_cstr(StringView s1, char const *s2);
 extern bool sv_eq_cstr_n(StringView s1, char const *s2, size_t n);
 extern bool sv_startswith(StringView s1, StringView s2);
 extern bool sv_endswith(StringView s1, StringView s2);
+extern bool sv_tolong(StringView sv, long *result, StringView *tail);
 
 extern StringView sv_chop(StringView sv, size_t num);
 

@@ -19,15 +19,10 @@ typedef struct {
     int current;
 } Arena;
 
-typedef struct {
-    size_t index;
-    size_t ptr;
-} SlabPointer;
-
 const static size_t ARENA_SZ = 10 * 1024 * 1024;
 
 #define MEM_IMPL
-#include "mem.h"
+#include <mem.h>
 
 void slab_free(Slab *slab)
 {
@@ -74,12 +69,33 @@ void *arena_allocate(Arena *arena, size_t size)
     return ret;
 }
 
+void *arena_allocate_array(Arena *arena, size_t size, size_t num)
+{
+    return arena_allocate(arena, size*num);
+}
+
 void arena_reset(Arena *arena)
 {
     for (int ix = 0; ix <= arena->current; ++ix) {
         slab_free(&arena->slabs[ix]);
     }
     memset(arena, 0, sizeof(Arena));
+}
+
+SlabPointer arena_save(Arena *arena)
+{
+    SlabPointer ptr = {0};
+    ptr.index = arena->current;
+    ptr.ptr = arena->slabs[arena->current].ptr;
+    return ptr;
+}
+
+void arena_release(Arena *arena, SlabPointer ptr)
+{
+    while (arena->current > ptr.index) {
+        arena->slabs[arena->current--].ptr = 0;
+    }
+    arena->slabs[arena->current].ptr = ptr.ptr;
 }
 
 static Arena s_arena = {0};
@@ -97,4 +113,14 @@ void* mem_allocate_array(size_t count, size_t element_size)
 void mem_free()
 {
     arena_reset(&s_arena);
+}
+
+SlabPointer mem_save()
+{
+    return arena_save(&s_arena);
+}
+
+void mem_release(SlabPointer ptr)
+{
+    arena_release(&s_arena, ptr);
 }

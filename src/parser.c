@@ -124,6 +124,16 @@ OperatorMapping operator_for_token(Token token)
     return s_operator_mapping[0];
 }
 
+void skip_semicolon(Lexer *lexer, SyntaxNode *stmt)
+{
+    Token token = lexer_next(lexer);
+    if (!token_matches(token, TK_SYMBOL, ';')) {
+        fatal(TOKEN_SPEC "Expected ';' after statement, got " TOKEN_SPEC, TOKEN_ARG(stmt->token), TOKEN_ARG(token));
+    }
+    lexer_lex(lexer);
+}
+
+
 /*
  * Precedence climbing method (https://en.wikipedia.org/wiki/Operator-precedence_parser):
  *
@@ -238,6 +248,7 @@ SyntaxNode *parse_variable_declaration(Lexer *lexer, bool is_const)
     ret->variable_decl.var_type = type;
     ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = is_const;
+    skip_semicolon(lexer, ret);
     return ret;
 }
 
@@ -281,13 +292,14 @@ SyntaxNode *parse_return(Lexer *lexer)
     SyntaxNode *expr = parse_expression(lexer);
     SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_null(), token);
     ret->return_stmt.expression = expr;
+    skip_semicolon(lexer, ret);
     return ret;
 }
 
 SyntaxNode *parse_block(Lexer *lexer)
 {
-    Token token = lexer_lex(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_BLOCK, sv_null(), token);
+    Token        token = lexer_lex(lexer);
+    SyntaxNode  *ret = syntax_node_make(SNT_BLOCK, sv_null(), token);
     SyntaxNode **dst = &ret->block.statements;
     while (true) {
         token = lexer_next(lexer);
@@ -307,30 +319,61 @@ SyntaxNode *parse_block(Lexer *lexer)
     }
 }
 
+SyntaxNode *parse_assignment(Lexer *lexer)
+{
+    Token      token = lexer_lex(lexer);
+    StringView name = token.text;
+    Token      t = lexer_next(lexer);
+    if (t.kind != TK_SYMBOL && t.code != '=') {
+        fatal("Expected '=' after identifier '" SV_SPEC "' in assignment", SV_ARG(name));
+    }
+    lexer_lex(lexer);
+    SyntaxNode *expression = parse_expression(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_ASSIGNMENT, name, token_merge(token, expression->token));
+    ret->assignment.expression = expression;
+    skip_semicolon(lexer, ret);
+    return ret;
+}
+
 SyntaxNode *parse_statement(Lexer *lexer)
 {
     Token token = lexer_next(lexer);
-    if (token.kind == TK_SYMBOL && token.code == ';') {
-        lexer_lex(lexer);
+    SyntaxNode *ret;
+    switch (token.kind) {
+    case TK_SYMBOL: {
+        switch (token.code) {
+        case '{':
+            return parse_block(lexer);
+        default:
+            fatal("Unexpected symbol '" SV_SPEC "'", SV_ARG(token.text));
+        }
     }
-    if (token.kind == TK_KEYWORD) {
+    case TK_KEYWORD: {
         switch (token.code) {
         case KW_VAR:
-            return parse_variable_declaration(lexer, false);
+            ret = parse_variable_declaration(lexer, false);
+            break;
         case KW_CONST:
-            return parse_variable_declaration(lexer, true);
+            ret = parse_variable_declaration(lexer, true);
+            break;
         case KW_IF:
-            return parse_if(lexer);
+            ret = parse_if(lexer);
+            break;
         case KW_RETURN:
-            return parse_return(lexer);
+            ret = parse_return(lexer);
+            break;
         default:
             NYI("Keywords");
         }
+        break;
     }
-    if (token.kind == TK_SYMBOL && token.code == '{') {
-        return parse_block(lexer);
+    case TK_IDENTIFIER:
+        ret = parse_assignment(lexer);
+        break;
+    default:
+        fatal("Unexpected token '" SV_SPEC "'", SV_ARG(token.text));
     }
-    return parse_expression(lexer);
+    return ret;
 }
 
 SyntaxNode *parse_type(Lexer *lexer)
@@ -403,8 +446,8 @@ void parse_return_types(Lexer *lexer, SyntaxNode *func)
         return;
     }
     lexer_lex(lexer);
-    if (!token_matches(token, TK_KEYWORD, KW_RETURN_TYPES)) {
-        fatal("Expect '->' or '{' after parameter list of '" SV_SPEC "'", SV_ARG(func->name));
+    if (!token_matches(token, TK_SYMBOL, ':')) {
+        fatal("Expect ':' or '{' after parameter list of '" SV_SPEC "'", SV_ARG(func->name));
     }
     func->function.return_type = parse_type(lexer);
     token = lexer_next(lexer);

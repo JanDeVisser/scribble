@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "sv.h"
+#include <mem.h>
+#include <sv.h>
+
+void *allocate(size_t size)
+{
+    static Arena *s_arena = NULL;
+    if (!s_arena) {
+        s_arena = arena_new();
+    }
+    return arena_allocate(s_arena, size);
+}
 
 StringView sv_from(char const *s)
 {
@@ -86,5 +96,34 @@ StringView sv_chop(StringView sv, size_t num)
     if (num > sv.length)
         num = sv.length;
     StringView ret = { sv.ptr + num, sv.length - num };
+    return ret;
+}
+
+bool sv_tolong(StringView sv, long *result, StringView *tail)
+{
+    assert(result);
+    if (sv.length == 0) {
+        if (tail) {
+            *tail = sv;
+        }
+        return false;
+    }
+
+    SlabPointer ptr = mem_save();
+    char       *sv_str = mem_allocate(sv.length + 1);
+    char       *tail_str;
+    memcpy(sv_str, sv.ptr, sv.length);
+    sv_str[sv.length] = 0;
+    long res = strtol(sv_str, &tail_str, 10);
+    bool ret = tail_str != sv_str;
+    if (tail) {
+        size_t processed = tail_str - sv_str;
+        tail->ptr = tail->ptr + processed;
+        tail->length = tail->length - processed;
+    }
+    if (ret) {
+        *result = res;
+    }
+    mem_release(ptr);
     return ret;
 }

@@ -4,18 +4,15 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "parser.h"
-#include "sv.h"
+#include <parser.h>
+#include <sv.h>
+#include <type.h>
 
 #ifndef __BINDER_H__
 #define __BINDER_H__
 
-typedef struct {
-    size_t type_id;
-    bool   optional;
-} TypeSpec;
-
 #define BOUNDNODETYPES(S)   \
+    S(BNT_ASSIGNMENT)       \
     S(BNT_BINARYEXPRESSION) \
     S(BNT_BLOCK)            \
     S(BNT_FUNCTION)         \
@@ -82,6 +79,9 @@ typedef struct bound_node {
         struct {
             struct bound_node *expression;
         } return_stmt;
+        struct {
+            struct bound_node *expression;
+        } assignment;
         SyntaxNode *unbound_node;
     };
 } BoundNode;

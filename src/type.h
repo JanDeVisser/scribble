@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "sv.h"
+#include <stdio.h>
+
+#include <sv.h>
 
 #ifndef __TYPE_H__
 #define __TYPE_H__
@@ -57,6 +59,11 @@ typedef struct expression_type {
     };
 } ExpressionType;
 
+typedef struct {
+    size_t type_id;
+    bool   optional;
+} TypeSpec;
+
 extern char const     *PrimitiveType_name(PrimitiveType type);
 extern ExpressionType *type_registry_get_type_by_name(StringView name);
 extern ExpressionType *type_registry_get_type_by_id(size_t id);
@@ -64,5 +71,8 @@ extern size_t          type_registry_id_of_primitive_type(PrimitiveType type);
 extern size_t          type_registry_get_variant(size_t num, size_t *types);
 extern size_t          type_registry_get_variant2(size_t t1, size_t t2);
 extern void            type_registry_init();
+extern bool            typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
+extern StringView      typespec_name(TypeSpec typespec);
+extern void            typespec_print(FILE *f, TypeSpec typespec);
 
 #endif /* __TYPE_H__ */

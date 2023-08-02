@@ -21,6 +21,11 @@ typedef struct bind_context {
 
 static void      *allocate(size_t size);
 static BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent);
+static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindContext *ctx);
+static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name);
+static BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name);
+static bool       resolve_expression_type(Operator, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret);
+static bool       resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec);
 static void       bind_nodes(BoundNode *parent, SyntaxNode *first, BoundNode **first_dst, BindContext *ctx);
 static BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx);
 static BoundNode *rebind_node(BoundNode *node, BindContext *ctx);
@@ -83,7 +88,7 @@ BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindCont
     return unbound;
 }
 
-BoundNode * bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
+BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name)
 {
     switch (node->type) {
     case BNT_MODULE: {
@@ -111,6 +116,15 @@ BoundNode * bound_node_find(BoundNode *node, BoundNodeType type, StringView name
     }
     default:
         break;
+    }
+    return NULL;
+}
+
+BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
+{
+    BoundNode *ret = bound_node_find_here(node, type, name);
+    if (ret) {
+        return ret;
     }
     if (node->parent) {
         return bound_node_find(node->parent, type, name);
@@ -150,6 +164,25 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         type_registry_id_of_primitive_type(PT_VOID);
     }
     switch (stmt->type) {
+    case SNT_ASSIGNMENT: {
+        BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
+        if (!decl) {
+            fprintf(stderr, "Assignment to undeclared variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+            return bound_node_make_unbound(parent, stmt, ctx);
+        }
+        BoundNode *ret = bound_node_make(BNT_ASSIGNMENT, parent);
+        ret->name = stmt->name;
+        ret->typespec = decl->typespec;
+        ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);
+        if (ret->assignment.expression->type == BNT_UNBOUND_NODE) {
+            return ret;
+        }
+        if (!typespec_assignment_compatible(ret->typespec, ret->assignment.expression->typespec)) {
+            fatal("Cannot assign value of expression of type '" SV_SPEC "' to variable of type '" SV_SPEC "'",
+                SV_ARG(typespec_name(ret->assignment.expression->typespec)), SV_ARG(typespec_name(ret->typespec)));
+        }
+        return ret;
+    }
     case SNT_MODULE: {
         BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
         char        *mod_name = (char *) allocate(sv_length(stmt->name) + 1);
@@ -352,30 +385,42 @@ void rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx)
 BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
 {
     switch (node->type) {
-    case BNT_PROGRAM:
-        rebind_nodes(node, &node->program.modules, ctx);
+    case BNT_ASSIGNMENT: {
+        node->assignment.expression = rebind_node(node->assignment.expression, ctx);
         return node;
-    case BNT_MODULE:
-        rebind_nodes(node, &node->block.statements, ctx);
+    }
+    case BNT_FUNCTION: {
+        rebind_nodes(node, &node->function.statements, ctx);
         return node;
-    case BNT_IF:
+    }
+    case BNT_FUNCTION_CALL: {
+        rebind_nodes(node, &node->call.argument, ctx);
+        return node;
+    }
+    case BNT_IF: {
         node->if_statement.condition = rebind_node(node->if_statement.condition, ctx);
         node->if_statement.if_true = rebind_node(node->if_statement.if_true, ctx);
         node->if_statement.if_false = rebind_node(node->if_statement.if_false, ctx);
         return node;
-    case BNT_RETURN:
+    }
+    case BNT_MODULE: {
+        rebind_nodes(node, &node->block.statements, ctx);
+        return node;
+    }
+    case BNT_PROGRAM: {
+        rebind_nodes(node, &node->program.modules, ctx);
+        return node;
+    }
+    case BNT_RETURN: {
         node->return_stmt.expression = rebind_node(node->return_stmt.expression, ctx);
         return node;
-    case BNT_FUNCTION:
-        rebind_nodes(node, &node->function.statements, ctx);
-        return node;
-    case BNT_FUNCTION_CALL:
-        rebind_nodes(node, &node->call.argument, ctx);
-        return node;
-    case BNT_UNBOUND_NODE:
+    }
+    case BNT_UNBOUND_NODE: {
         return bind_node(node->parent, node->unbound_node, ctx);
-    default:
+    }
+    default: {
         return node;
+    }
     }
 }
 
