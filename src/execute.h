@@ -38,6 +38,17 @@ typedef struct datum_stack {
     DatumStackEntry *top;
 } DatumStack;
 
+typedef struct call_stack_entry {
+    IRFunction              *function;
+    size_t                   index;
+    struct call_stack_entry *down;
+} CallStackEntry;
+
+typedef struct call_stack {
+    CallStackEntry *bottom;
+    CallStackEntry *top;
+} CallStack;
+
 typedef enum execution_mode {
     EM_RUN,
     EM_SINGLE_STEP,
@@ -57,6 +68,9 @@ typedef struct execution_context {
     Scope        *root_scope;
     Scope        *scope;
     DatumStack    stack;
+    IRFunction   *function;
+    size_t        index;
+    CallStack     call_stack;
     ExecutionMode execution_mode;
     size_t        num_breakpoints;
     Breakpoint    breakpoints[MAX_BREAKPOINTS];

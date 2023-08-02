@@ -39,23 +39,25 @@ typedef struct next_instruction_pointer {
     };
 } NextInstructionPointer;
 
-Datum datum_stack_pop(DatumStack *stack);
-void  datum_stack_push(DatumStack *stack, Datum datum);
-void  datum_stack_dump(DatumStack *stack);
-
-VarList    *scope_variable(Scope *scope, StringView name);
-char const *scope_declare_variable(Scope *scope, StringView name);
-char const *scope_assign_variable(Scope *scope, StringView name, Datum value);
-Datum       scope_variable_value(Scope *scope, StringView name);
-void        scope_dump_call_stack(Scope *scope);
-void        scope_dump_variables(Scope *scope);
-
+static void           *allocate(size_t size);
+Datum                  datum_stack_pop(DatumStack *stack);
+void                   datum_stack_push(DatumStack *stack, Datum datum);
+void                   datum_stack_dump(DatumStack *stack);
+CallStackEntry         call_stack_pop(CallStack *stack);
+void                   call_stack_push(CallStack *stack, IRFunction *function, size_t index);
+void                   call_stack_dump(CallStack *stack);
+VarList               *scope_variable(Scope *scope, StringView name);
+char const            *scope_declare_variable(Scope *scope, StringView name);
+char const            *scope_assign_variable(Scope *scope, StringView name, Datum value);
+Datum                  scope_variable_value(Scope *scope, StringView name);
+void                   scope_dump_call_stack(Scope *scope);
+void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 FunctionReturn         execute_function(ExecutionContext *ctx, IRFunction *function);
 
 static Arena *s_arena = NULL;
 
-static void *allocate(size_t size)
+void *allocate(size_t size)
 {
     if (!s_arena) {
         s_arena = arena_new();
@@ -97,6 +99,38 @@ void datum_stack_dump(DatumStack *stack)
     for (DatumStackEntry *entry = stack->top; entry; entry = entry->prev) {
         datum_print(entry->datum);
         printf("\n");
+    }
+}
+
+CallStackEntry call_stack_pop(CallStack *stack)
+{
+    assert(stack->top);
+    CallStackEntry ret = *stack->top;
+    stack->top = stack->top->down;
+    if (!stack->top) {
+        stack->bottom = NULL;
+    }
+    return ret;
+}
+
+void call_stack_push(CallStack *stack, IRFunction *function, size_t index)
+{
+    CallStackEntry *entry = allocate(sizeof(CallStackEntry));
+    entry->function = function;
+    entry->index = index;
+    entry->down = stack->top;
+    if (!stack->top && !stack->bottom) {
+        stack->top = stack->bottom = entry;
+    } else {
+        assert(stack->top && stack->bottom);
+        stack->top = entry;
+    }
+}
+
+void call_stack_dump(CallStack *stack)
+{
+    for (CallStackEntry *entry = stack->top; entry; entry = entry->down) {
+        printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
     }
 }
 
@@ -158,15 +192,6 @@ Datum scope_variable_value(Scope *scope, StringView name)
     return error;
 }
 
-void scope_dump_call_stack(Scope *scope)
-{
-    for (Scope *s = scope; s->enclosing; s = s->enclosing) {
-        if (s->owner) {
-            printf("%-10.10s" SV_SPEC "\n", "", SV_ARG(s->owner->name));
-        }
-    }
-}
-
 void scope_dump_variables(Scope *scope)
 {
     for (Scope *s = scope; s->enclosing; s = s->enclosing) {
@@ -192,10 +217,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     next.pointer = 1;
     switch (op->operation) {
     case IR_CALL: {
+        call_stack_push(&ctx->call_stack, ctx->function, ctx->index);
         IRFunction *function = NULL;
         function = ir_program_function_by_name(ctx->program, op->sv);
         assert(function);
         FunctionReturn func_ret = execute_function(ctx, function);
+        CallStackEntry entry = call_stack_pop(&ctx->call_stack);
+        ctx->function = entry.function;
+        ctx->index = entry.index;
         switch (func_ret.type) {
         case FRT_EXIT:
         case FRT_EXCEPTION:
@@ -377,8 +406,7 @@ Command get_command()
 bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
 {
     ir_operation_print(function->operations + ix);
-    bool loop = true;
-    while (loop) {
+    while (true) {
         Command command = get_command();
         switch (command.command) {
         case 'B': {
@@ -414,7 +442,6 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             }
         } break;
         case 'C':
-            loop = false;
             ctx->execution_mode = EM_CONTINUE;
             return true;
         case 'L': {
@@ -437,7 +464,7 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             datum_stack_dump(&ctx->stack);
             break;
         case 'T':
-            scope_dump_call_stack(ctx->scope);
+            call_stack_dump(&ctx->call_stack);
             break;
         case 'V':
             scope_dump_variables(ctx->scope);
@@ -460,12 +487,14 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     func_scope.enclosing = ctx->root_scope;
     func_scope.owner = function;
     ctx->scope = &func_scope;
+    ctx->function = function;
 
     if (ctx->execution_mode == EM_SINGLE_STEP) {
         ir_function_print(function);
         printf("\n");
     }
     while (ix < function->num_operations) {
+        ctx->index = function->operations[ix].index;
         if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_CONTINUE) {
             for (size_t bp = 0; bp < ctx->num_breakpoints; ++bp) {
                 if (function == ctx->breakpoints[bp].function && function->operations[ix].index == ctx->breakpoints[bp].index) {
@@ -526,7 +555,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 printf("\nInstruction:\n");
                 ir_operation_print(function->operations + ix);
                 printf("\nCall stack:\n");
-                scope_dump_call_stack(ctx->scope);
+                call_stack_dump(&ctx->call_stack);
                 if (ctx->stack.top) {
                     printf("\nCurrent data stack:\n");
                     printf("-------------------\n");
