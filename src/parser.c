@@ -7,12 +7,14 @@
 #include <dirent.h>
 #include <string.h>
 
-#include "error.h"
-#include "io.h"
-#include "lexer.h"
-#include "log.h"
-#include "mem.h"
-#include "parser.h"
+#include <error.h>
+#include <io.h>
+#include <lexer.h>
+#include <log.h>
+#include <parser.h>
+
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
 static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
 static SyntaxNode *parse_expression(Lexer *lexer);
@@ -43,7 +45,7 @@ size_t next_counter()
 
 SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token)
 {
-    SyntaxNode *node = (SyntaxNode *) mem_allocate(sizeof(SyntaxNode));
+    SyntaxNode *node = (SyntaxNode *) allocate(sizeof(SyntaxNode));
     node->type = type;
     node->name = name;
     node->next = NULL;
@@ -499,7 +501,7 @@ SyntaxNode *parse_function(Lexer *lexer)
 
 SyntaxNode *parse_module(int dir_fd, char const *file)
 {
-    char       *name_owned = (char *) mem_allocate(strlen(file) + 1);
+    char       *name_owned = (char *) allocate(strlen(file) + 1);
     Token       token = { 0, sv_from(name_owned), TK_MODULE, TC_NONE };
     SyntaxNode *module = syntax_node_make(SNT_MODULE, sv_from(name_owned), token);
     Lexer       lexer = { 0 };

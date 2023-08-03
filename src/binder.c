@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "binder.h"
-#include "log.h"
-#include "mem.h"
-#include "type.h"
+#include <binder.h>
+#include <log.h>
+#include <type.h>
+
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
 typedef struct node_list {
     BoundNode        *node;
@@ -19,7 +21,6 @@ typedef struct bind_context {
     int                  unbound;
 } BindContext;
 
-static void      *allocate(size_t size);
 static BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent);
 static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindContext *ctx);
 static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name);
@@ -43,15 +44,6 @@ char const *BoundNodeType_name(BoundNodeType type)
     default:
         UNREACHABLE();
     }
-}
-
-void *allocate(size_t size)
-{
-    static Arena *s_arena = NULL;
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return arena_allocate(s_arena, size);
 }
 
 BindContext *context_make_subcontext(BindContext *ctx)

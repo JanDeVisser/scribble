@@ -4,17 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <mem.h>
 #include <sv.h>
 
-void *allocate(size_t size)
-{
-    static Arena *s_arena = NULL;
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return arena_allocate(s_arena, size);
-}
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
 StringView sv_from(char const *s)
 {
@@ -109,7 +102,7 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
         return false;
     }
 
-    SlabPointer ptr = mem_save();
+    AllocatorState state = mem_save();
     char       *sv_str = mem_allocate(sv.length + 1);
     char       *tail_str;
     memcpy(sv_str, sv.ptr, sv.length);
@@ -124,6 +117,6 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     if (ret) {
         *result = res;
     }
-    mem_release(ptr);
+    mem_release(state);
     return ret;
 }

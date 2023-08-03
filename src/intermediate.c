@@ -5,43 +5,25 @@
  */
 
 #include <intermediate.h>
-#include <mem.h>
 
-static void *allocate(size_t size);
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
-static Arena       *s_arena = NULL;
 static unsigned int s_label = 0;
-
-void *allocate(size_t size)
-{
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return arena_allocate(s_arena, size);
-}
 
 IRVarDecl *allocate_parameters(size_t num)
 {
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return (IRVarDecl *) arena_allocate_array(s_arena, sizeof(IRVarDecl), num);
+    return (IRVarDecl *) array_allocate(sizeof(IRVarDecl), num);
 }
 
 IROperation *allocate_operations(size_t num)
 {
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return (IROperation *) arena_allocate_array(s_arena, sizeof(IROperation), num);
+    return (IROperation *) array_allocate(sizeof(IROperation), num);
 }
 
 IRFunction *allocate_functions(size_t num)
 {
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return (IRFunction *) arena_allocate_array(s_arena, sizeof(IRFunction), num);
+    return (IRFunction *) array_allocate(sizeof(IRFunction), num);
 }
 
 unsigned int next_label()

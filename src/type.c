@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "type.h"
-#include "log.h"
-#include "mem.h"
-#include "sv.h"
+#include <type.h>
+#include <log.h>
+#include <sv.h>
+
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
 static size_t type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
 
@@ -34,15 +36,6 @@ char const *PrimitiveType_name(PrimitiveType type)
     default:
         UNREACHABLE();
     }
-}
-
-static void *allocate(size_t size)
-{
-    static Arena *s_arena = NULL;
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return arena_allocate(s_arena, size);
 }
 
 size_t type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
@@ -158,10 +151,10 @@ size_t type_registry_get_variant2(size_t t1, size_t t2)
 
 void type_registry_init()
 {
-    type_registry.types = allocate(8 * 1024 * sizeof(ExpressionType));
+    type_registry.types = allocate_array(ExpressionType, 8 * 1024);
     type_registry.capacity = 8 * 1024;
     type_registry.size = 0;
-    type_registry.components = allocate(64 * 1024 * sizeof(TypeComponent));
+    type_registry.components = allocate_array(TypeComponent, 64 * 1024);
     type_registry.components_capacity = 64 * 1024;
     type_registry.components_size = 0;
 #undef PRIMITIVETYPE_ENUM

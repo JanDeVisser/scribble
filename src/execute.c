@@ -5,7 +5,9 @@
  */
 
 #include <execute.h>
-#include <mem.h>
+
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 
 typedef enum function_return_type {
     FRT_NORMAL,
@@ -39,7 +41,6 @@ typedef struct next_instruction_pointer {
     };
 } NextInstructionPointer;
 
-static void           *allocate(size_t size);
 Datum                  datum_stack_pop(DatumStack *stack);
 void                   datum_stack_push(DatumStack *stack, Datum datum);
 void                   datum_stack_dump(DatumStack *stack);
@@ -54,16 +55,6 @@ void                   scope_dump_call_stack(Scope *scope);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 FunctionReturn         execute_function(ExecutionContext *ctx, IRFunction *function);
-
-static Arena *s_arena = NULL;
-
-void *allocate(size_t size)
-{
-    if (!s_arena) {
-        s_arena = arena_new();
-    }
-    return arena_allocate(s_arena, size);
-}
 
 Datum datum_stack_pop(DatumStack *stack)
 {
