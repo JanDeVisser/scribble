@@ -37,7 +37,7 @@ char const *SyntaxNodeType_name(SyntaxNodeType type)
     }
 }
 
-size_t next_counter()
+size_t next_index()
 {
     static size_t counter = 0;
     return counter++;
@@ -49,7 +49,7 @@ SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token)
     node->type = type;
     node->name = name;
     node->next = NULL;
-    node->index = next_counter();
+    node->index = next_index();
     node->token = token;
     return node;
 }

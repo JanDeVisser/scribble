@@ -36,14 +36,13 @@ int main(int argc, char **argv)
         }
     }
     type_registry_init();
+
     SyntaxNode *program = parse((program_dir) ? program_dir : ".");
     if (graph) {
         graph_program(program);
+        register_binding_observer(graph_ast);
     }
     BoundNode *ast = bind(program);
-    if (graph) {
-        graph_ast(ast);
-    }
     IRProgram ir = generate(ast);
     return execute(ir, debug);
 }

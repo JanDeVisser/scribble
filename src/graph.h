@@ -11,6 +11,6 @@
 #define __GRAPH_H__
 
 extern void graph_program(SyntaxNode *program);
-extern void graph_ast(BoundNode *program);
+extern void graph_ast(int iteration, BoundNode *program);
 
 #endif /* __GRAPH_H__ */

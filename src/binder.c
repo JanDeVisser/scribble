@@ -66,7 +66,7 @@ BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent)
     node->type = type;
     node->parent = parent;
     node->next = NULL;
-    node->index = next_counter();
+    node->index = next_index();
     return node;
 }
 
@@ -154,6 +154,9 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 
     if (VOID_ID < 0) {
         type_registry_id_of_primitive_type(PT_VOID);
+    }
+    if (!stmt) {
+        return NULL;
     }
     switch (stmt->type) {
     case SNT_ASSIGNMENT: {
@@ -370,12 +373,16 @@ void rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx)
         if (bound_node->type == BNT_UNBOUND_NODE) {
             bound_node = bound_node_make_unbound(parent, bound_node->unbound_node, NULL);
         }
+        bound_node->next = (*stmt)->next;
         *stmt = bound_node;
     }
 }
 
 BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
 {
+    if (!node) {
+        return NULL;
+    }
     switch (node->type) {
     case BNT_ASSIGNMENT: {
         node->assignment.expression = rebind_node(node->assignment.expression, ctx);
@@ -427,6 +434,8 @@ void find_main(BoundNode *program)
     fatal("No main function found");
 }
 
+static BindingObserver s_observer = NULL;
+
 BoundNode *bind(SyntaxNode *program)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
@@ -440,15 +449,28 @@ BoundNode *bind(SyntaxNode *program)
 
     int current_unbound = INT32_MAX;
     int iter = 1;
+    if (s_observer) {
+        s_observer(iter, ret);
+    }
     while (ctx->unbound > 0 && ctx->unbound < current_unbound) {
         fprintf(stderr, "Iteration %d: %d unbound nodes\n", iter++, ctx->unbound);
         current_unbound = ctx->unbound;
         ctx->unbound = 0;
         rebind_node(ret, ctx);
+        if (s_observer) {
+            s_observer(iter, ret);
+        }
     }
     if (ctx->unbound > 0) {
         fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
     }
     fprintf(stderr, "Iteration %d: All bound\n", iter);
+    return ret;
+}
+
+BindingObserver register_binding_observer(BindingObserver observer)
+{
+    BindingObserver ret = s_observer;
+    s_observer = observer;
     return ret;
 }

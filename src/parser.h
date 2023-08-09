@@ -96,6 +96,7 @@ typedef struct operator_mapping {
     S(SNT_VARIABLE_DECL)
 
 typedef enum {
+    SNT_UNKNOWN = 0,
 #undef SYNTAXNODETYPE_ENUM
 #define SYNTAXNODETYPE_ENUM(type) type,
     SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
@@ -153,9 +154,9 @@ typedef struct syntax_node {
     };
 } SyntaxNode;
 
+extern size_t      next_index();
 extern char       *Operator_name(Operator op);
 extern char const *SyntaxNodeType_name(SyntaxNodeType type);
-extern size_t      next_counter();
 extern SyntaxNode *parse(char const *dir_name);
 
 #endif /* __PARSER_H__ */

@@ -30,10 +30,12 @@
     S(BNT_VARIABLE_DECL)
 
 typedef enum {
+    BNT_OFFSET = 1000,
 #undef BOUNDNODETYPE_ENUM
 #define BOUNDNODETYPE_ENUM(type) type,
     BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 #undef BOUNDNODETYPE_ENUM
+        BNT_LAST
 } BoundNodeType;
 
 extern char const *BoundNodeType_name(BoundNodeType type);
@@ -41,10 +43,10 @@ extern char const *BoundNodeType_name(BoundNodeType type);
 typedef struct bound_node {
     BoundNodeType      type;
     StringView         name;
-    struct bound_node *parent;
     struct bound_node *next;
-    TypeSpec           typespec;
     size_t             index;
+    struct bound_node *parent;
+    TypeSpec           typespec;
     union {
         struct {
             struct bound_node *modules;
@@ -86,6 +88,9 @@ typedef struct bound_node {
     };
 } BoundNode;
 
-BoundNode *bind(SyntaxNode *program);
+typedef void (*BindingObserver)(int, BoundNode *);
+
+BoundNode      *bind(SyntaxNode *program);
+BindingObserver register_binding_observer(BindingObserver observer);
 
 #endif /* __BINDER_H__ */
