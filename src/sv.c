@@ -21,6 +21,27 @@ StringView sv_null()
     return ret;
 }
 
+StringView sv_printf(char const* fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    StringView ret = sv_vprintf(fmt, args);
+    va_end(args);
+    return ret;
+}
+
+StringView sv_vprintf(char const* fmt, va_list args)
+{
+    va_list args2;
+    va_copy(args2, args);
+    int len = vsnprintf(NULL, 0, fmt, args);
+    char *str = mem_allocate(len+1);
+    vsnprintf(str, len+1, fmt, args2);
+    va_end(args2);
+    return sv_from(str);
+}
+
 bool sv_empty(StringView sv)
 {
     return sv.length == 0;

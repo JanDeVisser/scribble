@@ -7,6 +7,7 @@
 #ifndef __SV_H__
 #define __SV_H__
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,6 +30,9 @@ extern bool sv_endswith(StringView s1, StringView s2);
 extern bool sv_tolong(StringView sv, long *result, StringView *tail);
 
 extern StringView sv_chop(StringView sv, size_t num);
+
+extern StringView sv_printf(char const* fmt, ...);
+extern StringView sv_vprintf(char const* fmt, va_list args);
 
 #define SV_SPEC "%.*s"
 #define SV_ARG(sv) (int)sv.length, sv.ptr
