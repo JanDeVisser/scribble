@@ -50,10 +50,11 @@ typedef struct call_stack {
 } CallStack;
 
 typedef enum execution_mode {
-    EM_RUN,
-    EM_SINGLE_STEP,
-    EM_RUN_TO_RETURN,
-    EM_CONTINUE,
+    EM_RUN = 0x00,
+    EM_SINGLE_STEP = 0x01,
+    EM_STEP_OVER = 0x02,
+    EM_RUN_TO_RETURN = 0x04,
+    EM_CONTINUE = 0x08,
 } ExecutionMode;
 
 #define MAX_BREAKPOINTS 64

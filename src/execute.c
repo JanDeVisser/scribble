@@ -212,10 +212,17 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         IRFunction *function = NULL;
         function = ir_program_function_by_name(ctx->program, op->sv);
         assert(function);
+        bool step_over = ctx->execution_mode == EM_STEP_OVER;
+        if (step_over) {
+            ctx->execution_mode = EM_CONTINUE;
+        }
         FunctionReturn func_ret = execute_function(ctx, function);
         CallStackEntry entry = call_stack_pop(&ctx->call_stack);
         ctx->function = entry.function;
         ctx->index = entry.index;
+        if (step_over) {
+            ctx->execution_mode = EM_SINGLE_STEP;
+        }
         switch (func_ret.type) {
         case FRT_EXIT:
         case FRT_EXCEPTION:
@@ -338,8 +345,10 @@ Command get_command()
         case '\n':
             if (cmd == 0) {
                 printf("*> ");
-            } else if (strchr("BCLNQSTVX", cmd) == NULL) {
+            } else if (strchr("BCLNOQSTVX", cmd) == NULL) {
                 printf("Unrecognized command '%c'\n", cmd);
+                cmd = 0;
+                printf("*> ");
             } else {
                 ret.command = cmd;
                 ret.command_str = sv_from(arguments);
@@ -449,6 +458,9 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
         } break;
         case 'N':
             return true;
+        case 'O':
+            ctx->execution_mode = EM_STEP_OVER;
+            return true;
         case 'Q':
             return false;
         case 'S':
@@ -486,7 +498,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     }
     while (ix < function->num_operations) {
         ctx->index = function->operations[ix].index;
-        if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_CONTINUE) {
+        if (ctx->execution_mode & (EM_RUN_TO_RETURN | EM_CONTINUE | EM_STEP_OVER)) {
             for (size_t bp = 0; bp < ctx->num_breakpoints; ++bp) {
                 if (function == ctx->breakpoints[bp].function && function->operations[ix].index == ctx->breakpoints[bp].index) {
                     ctx->execution_mode = EM_SINGLE_STEP;
@@ -566,7 +578,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         } break;
         }
     }
-    if (ctx->execution_mode == EM_RUN_TO_RETURN) {
+    if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_STEP_OVER) {
         ctx->execution_mode = EM_SINGLE_STEP;
     }
     FunctionReturn ret = { 0 };
