@@ -135,6 +135,36 @@ void skip_semicolon(Lexer *lexer, SyntaxNode *stmt)
     lexer_lex(lexer);
 }
 
+StringView cleanup_string(StringView str)
+{
+    assert(sv_length(str) >= 2 && str.ptr[0] == '\"' && str.ptr[sv_length(str) - 1] == '\"');
+    int backslashes = 0;
+    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
+        if (str.ptr[ix] == '\\') {
+            ++ix;
+            ++backslashes;
+        }
+    }
+    if (!backslashes) {
+        StringView ret = { str.ptr + 1, str.length - 2 };
+        return ret;
+    }
+    bool prev_backslash = false;
+    size_t len = sv_length(str) - 2 - backslashes;
+    char *buffer = allocate(len);
+    char *ptr = buffer;
+    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
+        if (prev_backslash || str.ptr[ix] != '\\') {
+            *ptr++ = str.ptr[ix];
+            prev_backslash = false;
+        } else if (str.ptr[ix] == '\\') {
+            prev_backslash = true;
+        }
+    }
+    StringView ret = { buffer, len };
+    return ret;
+}
+
 /*
  * Precedence climbing method (https://en.wikipedia.org/wiki/Operator-precedence_parser):
  *
@@ -217,7 +247,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
         switch (token.code) {
         case TC_DOUBLE_QUOTED_STRING:
             lexer_lex(lexer);
-            return syntax_node_make(SNT_STRING, token.view, token);
+            return syntax_node_make(SNT_STRING, cleanup_string(token.text), token);
         default:
             return NULL;
         }
@@ -523,7 +553,7 @@ SyntaxNode *parse_function(Lexer *lexer)
 SyntaxNode *parse_module(int dir_fd, char const *file)
 {
     char       *name_owned = (char *) allocate(strlen(file) + 1);
-    Token       token = { 0, sv_from(name_owned), sv_from(name_owned), TK_MODULE, TC_NONE };
+    Token       token = { 0, sv_from(name_owned), TK_MODULE, TC_NONE };
     SyntaxNode *module = syntax_node_make(SNT_MODULE, sv_from(name_owned), token);
     Lexer       lexer = { 0 };
 
@@ -560,7 +590,7 @@ SyntaxNode *parse(char const *dir_name)
     if (dir == NULL)
         return NULL;
 
-    Token          token = { 0, sv_from(dir_name), sv_from(dir_name), TK_PROGRAM, TC_NONE };
+    Token          token = { 0, sv_from(dir_name), TK_PROGRAM, TC_NONE };
     SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_name), token);
     struct dirent *dp;
     SyntaxNode    *last_module = NULL;

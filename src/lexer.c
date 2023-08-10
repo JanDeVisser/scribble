@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "lexer.h"
+#include <lexer.h>
 
 char const *TokenKind_name(TokenKind kind)
 {
@@ -53,7 +53,7 @@ char const *TokenCode_name(int code)
 Token token_merge(Token t1, Token t2)
 {
     size_t len = (t2.pos + sv_length(t2.text)) - t1.pos;
-    Token  ret = { t1.pos, { t1.text.ptr, len }, { t1.text.ptr, len }, t1.kind, t1.code };
+    Token  ret = { t1.pos, { t1.text.ptr, len }, t1.kind, t1.code };
     return ret;
 }
 
@@ -70,7 +70,7 @@ Token scan_number(char const *buffer, size_t pos)
         char ch = buffer[ix];
         if (!isdigit(ch) && ((ch != '.') || (code == TC_DECIMAL))) {
             // FIXME lex '1..10' as '1', '..', '10'. It will now lex as '1.', '.', '10'
-            Token ret = { pos, { buffer, ix }, { buffer, ix }, TK_NUMBER, code };
+            Token ret = { pos, { buffer, ix }, TK_NUMBER, code };
             return ret;
         }
         if (ch == '.') {
@@ -100,12 +100,12 @@ Token lexer_peek(Lexer *lexer)
     char        first = *buffer;
     switch (first) {
     case '\0': {
-        Token ret = { lexer->ptr, { buffer, 0 }, { buffer, 0 }, TK_END_OF_FILE, TC_NONE };
+        Token ret = { lexer->ptr, { buffer, 0 }, TK_END_OF_FILE, TC_NONE };
         lexer->current = ret;
         return lexer->current;
     }
     case '\n': {
-        Token ret = { lexer->ptr, { buffer, 1 }, { buffer, 1 }, TK_WHITESPACE, TC_NEWLINE };
+        Token ret = { lexer->ptr, { buffer, 1 }, TK_WHITESPACE, TC_NEWLINE };
         lexer->current = ret;
         return lexer->current;
     }
@@ -113,7 +113,7 @@ Token lexer_peek(Lexer *lexer)
     case '"':
     case '`': {
         size_t ix = 1;
-        for (; buffer[ix] && buffer[ix] != first; ++ix)
+        for (; buffer[ix] && (buffer[ix] != first || buffer[ix-1] == '\\') ; ++ix)
             ;
         TokenCode code;
         switch (first) {
@@ -132,7 +132,7 @@ Token lexer_peek(Lexer *lexer)
         if (!buffer[ix]) {
             code += (TC_UNTERMINATED_DOUBLE_QUOTED_STRING - TC_DOUBLE_QUOTED_STRING);
         }
-        Token ret = { lexer->ptr, { buffer, ix+1 }, { buffer + 1, ix - 1}, TK_QUOTED_STRING, code };
+        Token ret = { lexer->ptr, { buffer, ix+1 }, TK_QUOTED_STRING, code };
         lexer->current = ret;
         return lexer->current;
     }
@@ -142,20 +142,20 @@ Token lexer_peek(Lexer *lexer)
             size_t ix = 2;
             for (; buffer[ix] && buffer[ix] != '\n'; ++ix)
                 ;
-            Token ret = { lexer->ptr, { buffer, ix }, { buffer, ix }, TK_COMMENT, TC_END_OF_LINE_COMMENT };
+            Token ret = { lexer->ptr, { buffer, ix }, TK_COMMENT, TC_END_OF_LINE_COMMENT };
             lexer->current = ret;
             return lexer->current;
         }
         case '*': {
             if (!buffer[2]) {
-                Token ret = { lexer->ptr, { buffer, 2 }, { buffer, 2 }, TK_COMMENT, TC_UNTERMINATED_BLOCK_COMMENT };
+                Token ret = { lexer->ptr, { buffer, 2 }, TK_COMMENT, TC_UNTERMINATED_BLOCK_COMMENT };
                 lexer->current = ret;
                 return lexer->current;
             }
             size_t ix = 3;
             for (; buffer[ix] && buffer[ix - 1] != '*' && buffer[ix] != '/'; ++ix)
                 ;
-            Token ret = { lexer->ptr, { buffer, ix }, { buffer, ix }, TK_COMMENT,
+            Token ret = { lexer->ptr, { buffer, ix }, TK_COMMENT,
                 (buffer[ix]) ? TC_UNTERMINATED_BLOCK_COMMENT : TC_BLOCK_COMMENT };
             lexer->current = ret;
             return lexer->current;
@@ -170,7 +170,7 @@ Token lexer_peek(Lexer *lexer)
         size_t ix = 0;
         for (; isspace(buffer[ix]) && buffer[ix] != '\n'; ++ix)
             ;
-        Token ret = { lexer->ptr, { buffer, ix }, { buffer, ix }, TK_WHITESPACE, TC_WHITESPACE };
+        Token ret = { lexer->ptr, { buffer, ix }, TK_WHITESPACE, TC_WHITESPACE };
         lexer->current = ret;
         return lexer->current;
     }
@@ -185,12 +185,12 @@ Token lexer_peek(Lexer *lexer)
             ;
         for (int kw = 0; kw < KW_COUNT; ++kw) {
             if ((sv_length(s_keywords[kw].keyword) == ix) && sv_startswith(lexer->tail, s_keywords[kw].keyword)) {
-                Token ret = { lexer->ptr, { buffer, ix }, { buffer, ix }, TK_KEYWORD, s_keywords[kw].code };
+                Token ret = { lexer->ptr, { buffer, ix }, TK_KEYWORD, s_keywords[kw].code };
                 lexer->current = ret;
                 return lexer->current;
             }
         }
-        Token ret = { lexer->ptr, { buffer, ix }, { buffer, ix }, TK_IDENTIFIER, TC_IDENTIFIER };
+        Token ret = { lexer->ptr, { buffer, ix }, TK_IDENTIFIER, TC_IDENTIFIER };
         lexer->current = ret;
         return lexer->current;
     }
@@ -204,13 +204,12 @@ Token lexer_peek(Lexer *lexer)
             }
         }
         if (matched >= 0) {
-            Token ret = { lexer->ptr, { buffer, sv_length(s_keywords[matched].keyword) },
-                { buffer, sv_length(s_keywords[matched].keyword) }, TK_KEYWORD, TC_COUNT + matched };
+            Token ret = { lexer->ptr, { buffer, sv_length(s_keywords[matched].keyword) }, TK_KEYWORD, TC_COUNT + matched };
             lexer->current = ret;
             return lexer->current;
         }
     }
-    Token ret = { lexer->ptr, { buffer, 1 }, { buffer, 1 },TK_SYMBOL, (int) first };
+    Token ret = { lexer->ptr, { buffer, 1 }, TK_SYMBOL, (int) first };
     lexer->current = ret;
     return lexer->current;
 }
