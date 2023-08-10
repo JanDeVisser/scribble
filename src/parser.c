@@ -135,7 +135,6 @@ void skip_semicolon(Lexer *lexer, SyntaxNode *stmt)
     lexer_lex(lexer);
 }
 
-
 /*
  * Precedence climbing method (https://en.wikipedia.org/wiki/Operator-precedence_parser):
  *
@@ -214,6 +213,14 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
     case TK_NUMBER:
         lexer_lex(lexer);
         return syntax_node_make(SNT_NUMBER, token.text, token);
+    case TK_QUOTED_STRING:
+        switch (token.code) {
+        case TC_DOUBLE_QUOTED_STRING:
+            lexer_lex(lexer);
+            return syntax_node_make(SNT_STRING, token.view, token);
+        default:
+            return NULL;
+        }
     default:
         return NULL;
     }
@@ -321,25 +328,39 @@ SyntaxNode *parse_block(Lexer *lexer)
     }
 }
 
-SyntaxNode *parse_assignment(Lexer *lexer)
+SyntaxNode *parse_assignment_or_call(Lexer *lexer)
 {
-    Token      token = lexer_lex(lexer);
-    StringView name = token.text;
-    Token      t = lexer_next(lexer);
-    if (t.kind != TK_SYMBOL && t.code != '=') {
-        fatal("Expected '=' after identifier '" SV_SPEC "' in assignment", SV_ARG(name));
+    Token       token = lexer_lex(lexer);
+    StringView  name = token.text;
+    Token       t = lexer_next(lexer);
+    SyntaxNode *ret;
+    switch (t.kind) {
+    case TK_SYMBOL:
+        switch (t.code) {
+        case '=': {
+            lexer_lex(lexer);
+            SyntaxNode *expression = parse_expression(lexer);
+            ret = syntax_node_make(SNT_ASSIGNMENT, name, token_merge(token, expression->token));
+            ret->assignment.expression = expression;
+        } break;
+        case '(': {
+            ret = syntax_node_make(SNT_FUNCTION_CALL, name, token_merge(token, t));
+            parse_arguments(lexer, ret);
+        } break;
+        default:
+            fatal("Expected '=' or '(' after identifier '" SV_SPEC "'", SV_ARG(name));
+        }
+        break;
+    default:
+        fatal("Expected '=' or '(' after identifier '" SV_SPEC "'", SV_ARG(name));
     }
-    lexer_lex(lexer);
-    SyntaxNode *expression = parse_expression(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_ASSIGNMENT, name, token_merge(token, expression->token));
-    ret->assignment.expression = expression;
     skip_semicolon(lexer, ret);
     return ret;
 }
 
 SyntaxNode *parse_statement(Lexer *lexer)
 {
-    Token token = lexer_next(lexer);
+    Token       token = lexer_next(lexer);
     SyntaxNode *ret;
     switch (token.kind) {
     case TK_SYMBOL: {
@@ -370,7 +391,7 @@ SyntaxNode *parse_statement(Lexer *lexer)
         break;
     }
     case TK_IDENTIFIER:
-        ret = parse_assignment(lexer);
+        ret = parse_assignment_or_call(lexer);
         break;
     default:
         fatal("Unexpected token '" SV_SPEC "'", SV_ARG(token.text));
@@ -502,7 +523,7 @@ SyntaxNode *parse_function(Lexer *lexer)
 SyntaxNode *parse_module(int dir_fd, char const *file)
 {
     char       *name_owned = (char *) allocate(strlen(file) + 1);
-    Token       token = { 0, sv_from(name_owned), TK_MODULE, TC_NONE };
+    Token       token = { 0, sv_from(name_owned), sv_from(name_owned), TK_MODULE, TC_NONE };
     SyntaxNode *module = syntax_node_make(SNT_MODULE, sv_from(name_owned), token);
     Lexer       lexer = { 0 };
 
@@ -539,7 +560,7 @@ SyntaxNode *parse(char const *dir_name)
     if (dir == NULL)
         return NULL;
 
-    Token          token = { 0, sv_from(dir_name), TK_PROGRAM, TC_NONE };
+    Token          token = { 0, sv_from(dir_name), sv_from(dir_name), TK_PROGRAM, TC_NONE };
     SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_name), token);
     struct dirent *dp;
     SyntaxNode    *last_module = NULL;

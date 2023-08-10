@@ -77,6 +77,23 @@ typedef struct execution_context {
     Breakpoint    breakpoints[MAX_BREAKPOINTS];
 } ExecutionContext;
 
-int execute(IRProgram program, bool debug);
+typedef enum function_return_type {
+    FRT_NORMAL,
+    FRT_EXCEPTION,
+    FRT_EXIT,
+} FunctionReturnType;
+
+typedef struct function_return {
+    FunctionReturnType type;
+    union {
+        Datum return_value;
+        Datum exception;
+        int   exit_code;
+    };
+} FunctionReturn;
+
+int            execute(IRProgram program, bool debug);
+FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function);
+FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *intrinsic);
 
 #endif /* __EXECUTE_H__ */

@@ -23,6 +23,7 @@
     S(OPERATOR)               \
     S(POP_VAR)                \
     S(PUSH_INT_CONSTANT)      \
+    S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \
@@ -54,33 +55,69 @@ typedef struct ir_operation {
     };
 } IROperation;
 
+typedef enum ir_function_kind {
+    FK_SCRIBBLE = 0,
+    FK_NATIVE,
+    FK_INTRINSIC
+} IRFunctionKind;
+
+typedef struct ir_abstract_function {
+    IRFunctionKind kind;
+    StringView     name;
+    size_t         num_parameters;
+    IRVarDecl     *parameters;
+    TypeSpec       type;
+    void          *padding[4];
+} IRAbstractFunction;
+
 typedef struct ir_function {
-    StringView   name;
-    size_t       num_parameters;
-    IRVarDecl   *parameters;
-    TypeSpec     type;
-    size_t       cap_operations;
-    size_t       num_operations;
-    IROperation *operations;
+    IRFunctionKind kind;
+    StringView     name;
+    size_t         num_parameters;
+    IRVarDecl     *parameters;
+    TypeSpec       type;
+    size_t         cap_operations;
+    size_t         num_operations;
+    IROperation   *operations;
 } IRFunction;
 
+typedef void (*VoidFnc)();
+
+typedef struct ir_native_function {
+    IRFunctionKind kind;
+    StringView     name;
+    size_t         num_parameters;
+    IRVarDecl     *parameters;
+    TypeSpec       type;
+    char          *native_name;
+    VoidFnc        native_fnc;
+} IRNativeFunction;
+
+typedef struct ir_intrinsic_function {
+    IRFunctionKind kind;
+    StringView     name;
+    size_t         num_parameters;
+    IRVarDecl     *parameters;
+    TypeSpec       type;
+    Intrinsic      intrinsic;
+} IRIntrinsicFunction;
+
 typedef struct ir_program {
-    StringView  name;
-    int         main;
-    size_t      cap_functions;
-    size_t      num_functions;
-    IRFunction *functions;
+    StringView          name;
+    int                 main;
+    size_t              cap_functions;
+    size_t              num_functions;
+    IRAbstractFunction *functions;
 } IRProgram;
 
-char const *ir_operation_type_name(IROperationType optype);
-void        ir_operation_print_prefix(IROperation *op, char const *prefix);
-void        ir_operation_print(IROperation *op);
-void        ir_function_list(IRFunction *function, size_t mark);
-void        ir_function_print(IRFunction *function);
-size_t      ir_function_resolve_label(IRFunction *function, size_t label);
-
-IRProgram   generate(BoundNode *program);
-void        ir_program_list(IRProgram program);
-IRFunction *ir_program_function_by_name(IRProgram *program, StringView name);
+char const         *ir_operation_type_name(IROperationType optype);
+void                ir_operation_print_prefix(IROperation *op, char const *prefix);
+void                ir_operation_print(IROperation *op);
+void                ir_function_list(IRFunction *function, size_t mark);
+void                ir_function_print(IRFunction *function);
+size_t              ir_function_resolve_label(IRFunction *function, size_t label);
+void                ir_program_list(IRProgram program);
+IRAbstractFunction *ir_program_function_by_name(IRProgram *program, StringView name);
+IRProgram           generate(BoundNode *program);
 
 #endif /* __INTERMEDIATE_H__ */

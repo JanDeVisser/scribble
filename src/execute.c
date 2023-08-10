@@ -8,21 +8,7 @@
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
-
-typedef enum function_return_type {
-    FRT_NORMAL,
-    FRT_EXCEPTION,
-    FRT_EXIT,
-} FunctionReturnType;
-
-typedef struct function_return {
-    FunctionReturnType type;
-    union {
-        Datum return_value;
-        Datum exception;
-        int   exit_code;
-    };
-} FunctionReturn;
+#include <unistd.h>
 
 typedef enum next_instruction_type {
     NIT_LABEL,
@@ -209,20 +195,23 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     switch (op->operation) {
     case IR_CALL: {
         call_stack_push(&ctx->call_stack, ctx->function, ctx->index);
-        IRFunction *function = NULL;
+        IRAbstractFunction *function = NULL;
         function = ir_program_function_by_name(ctx->program, op->sv);
         assert(function);
-        bool step_over = ctx->execution_mode == EM_STEP_OVER;
-        if (step_over) {
-            ctx->execution_mode = EM_CONTINUE;
+        FunctionReturn func_ret;
+        switch (function->kind) {
+        case FK_SCRIBBLE:
+            func_ret = execute_function(ctx, (IRFunction *) function);
+            break;
+        case FK_INTRINSIC:
+            func_ret = execute_intrinsic(ctx, (IRIntrinsicFunction *) function);
+            break;
+        default:
+            UNREACHABLE();
         }
-        FunctionReturn func_ret = execute_function(ctx, function);
         CallStackEntry entry = call_stack_pop(&ctx->call_stack);
         ctx->function = entry.function;
         ctx->index = entry.index;
-        if (step_over) {
-            ctx->execution_mode = EM_SINGLE_STEP;
-        }
         switch (func_ret.type) {
         case FRT_EXIT:
         case FRT_EXCEPTION:
@@ -292,6 +281,12 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         Datum d = { 0 };
         d.type = DT_I32;
         d.i32 = op->int_value;
+        datum_stack_push(&ctx->stack, d);
+    } break;
+    case IR_PUSH_STRING_CONSTANT: {
+        Datum d = { 0 };
+        d.type = DT_STRING;
+        d.string = op->sv;
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_VAR: {
@@ -424,13 +419,18 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             bp->index = ix;
             bp->function = function;
             if (command.num_arguments) {
-                bp->function = ir_program_function_by_name(ctx->program, command.arguments[0]);
+                bp->function = (IRFunction *) ir_program_function_by_name(ctx->program, command.arguments[0]);
                 if (bp->function) {
-                    bp->index = 1;
-                    if (command.num_arguments > 1) {
-                        if (!sv_tolong(command.arguments[1], (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= function->num_operations) {
-                            printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(command.arguments[1]));
-                            bp->function = NULL;
+                    if (bp->function->kind != FK_SCRIBBLE) {
+                        printf("Cannot set breakpoint in function '" SV_SPEC "'\n", SV_ARG(command.arguments[1]));
+                        bp->function = NULL;
+                    } else {
+                        bp->index = 1;
+                        if (command.num_arguments > 1) {
+                            if (!sv_tolong(command.arguments[1], (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= function->num_operations) {
+                                printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(command.arguments[1]));
+                                bp->function = NULL;
+                            }
                         }
                     }
                 } else {
@@ -445,7 +445,7 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             ctx->execution_mode = EM_CONTINUE;
             return true;
         case 'L': {
-            IRFunction *fnc = function;
+            IRAbstractFunction *fnc = (IRAbstractFunction *) function;
             if (command.num_arguments) {
                 fnc = ir_program_function_by_name(ctx->program, command.arguments[0]);
                 if (!fnc) {
@@ -453,7 +453,19 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
                 }
             }
             if (fnc) {
-                ir_function_list(fnc, ix);
+                switch (fnc->kind) {
+                case FK_SCRIBBLE:
+                    ir_function_list((IRFunction *) fnc, ix);
+                    break;
+                case FK_NATIVE: {
+                    IRNativeFunction *native = (IRNativeFunction *) fnc;
+                    printf(SV_SPEC " -> %s\n", SV_ARG(native->name), native->native_name);
+                } break;
+                case FK_INTRINSIC: {
+                    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) intrinsic;
+                    printf(SV_SPEC " -> intrinsic %s\n", SV_ARG(intrinsic->name), Intrinsic_name(intrinsic->intrinsic));
+                } break;
+                }
             }
         } break;
         case 'N':
@@ -492,6 +504,10 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     ctx->scope = &func_scope;
     ctx->function = function;
 
+    bool step_over = ctx->execution_mode == EM_STEP_OVER;
+    if (step_over) {
+        ctx->execution_mode = EM_CONTINUE;
+    }
     if (ctx->execution_mode == EM_SINGLE_STEP) {
         ir_function_print(function);
         printf("\n");
@@ -578,7 +594,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         } break;
         }
     }
-    if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_STEP_OVER) {
+    if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_STEP_OVER || step_over) {
         ctx->execution_mode = EM_SINGLE_STEP;
     }
     FunctionReturn ret = { 0 };
@@ -586,6 +602,32 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     Datum ret_val = { 0 };
     ret.return_value = ret_val;
     ctx->scope = current;
+    return ret;
+}
+
+FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *intrinsic)
+{
+    (void) ctx;
+    FunctionReturn ret = { 0 };
+    ret.type = FRT_NORMAL;
+    Datum ret_val = { 0 };
+    switch (intrinsic->intrinsic) {
+    case INT_FPUTS: {
+        Datum fh = datum_stack_pop(&ctx->stack);
+        Datum s = datum_stack_pop(&ctx->stack);
+        ret_val.type = DT_U32;
+        ret_val.u32 = write((int) datum_signed_integer_value(fh), s.string.ptr, s.string.length);
+    } break;
+    case INT_PUTLN: {
+        Datum s = datum_stack_pop(&ctx->stack);
+        ret_val.type = DT_U32;
+        ret_val.u32 = write(1, s.string.ptr, s.string.length);
+        ret_val.u32 += write(1, "\n", 1);
+    } break;
+    default:
+        NYI("Intrinsic");
+    }
+    ret.return_value = ret_val;
     return ret;
 }
 
@@ -598,7 +640,7 @@ int execute(IRProgram program, bool debug /*, int argc, char **argv*/)
     ctx.program = &program;
     ctx.root_scope = &root_scope;
     ctx.execution_mode = (debug) ? EM_SINGLE_STEP : EM_RUN;
-    execute_function(&ctx, program.functions + program.main);
+    execute_function(&ctx, (IRFunction *) (program.functions + program.main));
     Datum d = datum_stack_pop(&ctx.stack);
     if (DatumType_is_integer(d.type)) {
         return (int) datum_signed_integer_value(d);

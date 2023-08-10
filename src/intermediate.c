@@ -21,9 +21,9 @@ IROperation *allocate_operations(size_t num)
     return (IROperation *) array_allocate(sizeof(IROperation), num);
 }
 
-IRFunction *allocate_functions(size_t num)
+IRAbstractFunction *allocate_functions(size_t num)
 {
-    return (IRFunction *) array_allocate(sizeof(IRFunction), num);
+    return (IRAbstractFunction *) array_allocate(sizeof(IRAbstractFunction), num);
 }
 
 unsigned int next_label()
@@ -71,7 +71,7 @@ void generate_node(BoundNode *node, void *target)
     case BNT_FUNCTION: {
         IRProgram *program = (IRProgram *) target;
         if (program->num_functions == program->cap_functions - 1) {
-            IRFunction *new_functions = allocate_functions(2 * program->cap_functions);
+            IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
             memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
             program->functions = new_functions;
             program->cap_functions *= 2;
@@ -79,11 +79,12 @@ void generate_node(BoundNode *node, void *target)
         if (sv_eq_cstr(node->name, "main")) {
             program->main = (int) program->num_functions;
         }
-        fnc = &program->functions[program->num_functions++];
-        fnc->cap_operations = 256;
-        fnc->operations = allocate_operations(256);
+        fnc = (IRFunction *) &program->functions[program->num_functions++];
+        fnc->kind = FK_SCRIBBLE;
         fnc->type = node->typespec;
         fnc->name = node->name;
+        fnc->cap_operations = 256;
+        fnc->operations = allocate_operations(256);
         for (BoundNode *param = node->function.parameter; param; param = param->next) {
             ++fnc->num_parameters;
         }
@@ -106,6 +107,42 @@ void generate_node(BoundNode *node, void *target)
         }
         for (BoundNode *stmt = node->function.statements; stmt; stmt = stmt->next) {
             generate_node(stmt, fnc);
+        }
+    } break;
+    case BNT_INTRINSIC: {
+        IRProgram *program = (IRProgram *) target;
+        if (program->num_functions == program->cap_functions - 1) {
+            IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
+            memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
+            program->functions = new_functions;
+            program->cap_functions *= 2;
+        }
+        IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) &program->functions[program->num_functions++];
+        intrinsic->kind = FK_INTRINSIC;
+        intrinsic->type = node->typespec;
+        intrinsic->name = node->name;
+        intrinsic->intrinsic = node->intrinsic.intrinsic;
+        for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
+            ++intrinsic->num_parameters;
+        }
+        if (intrinsic->num_parameters) {
+            intrinsic->parameters = allocate_parameters(intrinsic->num_parameters);
+            int ix = 0;
+            for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
+                intrinsic->parameters[ix].name = param->name;
+                intrinsic->parameters[ix].type = param->typespec;
+                ++ix;
+            }
+        }
+    } break;
+    case BNT_PROGRAM: {
+        for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
+            generate_node(intrinsic, target);
+        }
+        for (BoundNode *module = node->program.modules; module; module = module->next) {
+            for (BoundNode *stmt = module->block.statements; stmt; stmt = stmt->next) {
+                generate_node(stmt, target);
+            }
         }
     } break;
     case BNT_VARIABLE_DECL: {
@@ -131,6 +168,12 @@ void generate_node(BoundNode *node, void *target)
         IROperation op;
         op.operation = IR_PUSH_INT_CONSTANT;
         op.int_value = (int) strtol(node->name.ptr, NULL, 10);
+        ir_function_add_operation(fnc, op);
+    } break;
+    case BNT_STRING: {
+        IROperation op;
+        op.operation = IR_PUSH_STRING_CONSTANT;
+        op.sv = node->name;
         ir_function_add_operation(fnc, op);
     } break;
     case BNT_BINARYEXPRESSION: {
@@ -224,12 +267,7 @@ IRProgram generate(BoundNode *program)
     ret.main = -1;
     ret.cap_functions = 256;
     ret.functions = allocate_functions(256);
-
-    for (BoundNode *module = program->program.modules; module; module = module->next) {
-        for (BoundNode *stmt = module->block.statements; stmt; stmt = stmt->next) {
-            generate_node(stmt, &ret);
-        }
-    }
+    generate_node(program, &ret);
     return ret;
 }
 
@@ -246,6 +284,7 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
     case IR_CALL:
     case IR_POP_VAR:
     case IR_PUSH_VAR:
+    case IR_PUSH_STRING_CONSTANT:
         printf(SV_SPEC, SV_ARG(op->sv));
         break;
     case IR_DECL_VAR:
@@ -330,15 +369,17 @@ void ir_program_list(IRProgram program)
     printf("Program " SV_SPEC "\n", SV_ARG(program.name));
     printf("============================================\n\n");
     for (size_t ix = 0; ix < program.num_functions; ++ix) {
-        ir_function_list(program.functions + ix, (size_t) -1);
+        if (program.functions[ix].kind == FK_SCRIBBLE) {
+            ir_function_list((IRFunction *) program.functions + ix, (size_t) -1);
+        }
     }
 }
 
-IRFunction *ir_program_function_by_name(IRProgram *program, StringView name)
+IRAbstractFunction *ir_program_function_by_name(IRProgram *program, StringView name)
 {
     for (size_t ix = 0; ix < program->num_functions; ++ix) {
         if (sv_eq(program->functions[ix].name, name)) {
-            return program->functions + ix;
+            return (IRAbstractFunction *) program->functions + ix;
         }
     }
     return NULL;

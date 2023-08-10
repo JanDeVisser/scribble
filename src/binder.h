@@ -18,18 +18,20 @@
     S(BNT_FUNCTION)         \
     S(BNT_FUNCTION_CALL)    \
     S(BNT_IF)               \
+    S(BNT_INTRINSIC)        \
     S(BNT_MODULE)           \
     S(BNT_NUMBER)           \
     S(BNT_PARAMETER)        \
     S(BNT_PROGRAM)          \
     S(BNT_RETURN)           \
+    S(BNT_STRING)           \
     S(BNT_TYPE)             \
     S(BNT_UNARYEXPRESSION)  \
     S(BNT_UNBOUND_NODE)     \
     S(BNT_VARIABLE)         \
     S(BNT_VARIABLE_DECL)
 
-typedef enum {
+typedef enum bound_node_type {
     BNT_OFFSET = 1000,
 #undef BOUNDNODETYPE_ENUM
 #define BOUNDNODETYPE_ENUM(type) type,
@@ -40,6 +42,17 @@ typedef enum {
 
 extern char const *BoundNodeType_name(BoundNodeType type);
 
+#define INTRINSICS(S) \
+    S(FPUTS)          \
+    S(PUTLN)
+
+typedef enum intrinsic {
+#undef INTRINSIC_ENUM
+#define INTRINSIC_ENUM(i) INT_##i,
+    INTRINSICS(INTRINSIC_ENUM)
+#undef INTRINSIC_ENUM
+} Intrinsic;
+
 typedef struct bound_node {
     BoundNodeType      type;
     StringView         name;
@@ -49,6 +62,7 @@ typedef struct bound_node {
     TypeSpec           typespec;
     union {
         struct {
+            struct bound_node *intrinsics;
             struct bound_node *modules;
         } program;
         struct {
@@ -58,6 +72,10 @@ typedef struct bound_node {
             struct bound_node *parameter;
             struct bound_node *statements;
         } function;
+        struct {
+            struct bound_node *parameter;
+            Intrinsic          intrinsic;
+        } intrinsic;
         struct {
             struct bound_node *lhs;
             struct bound_node *rhs;
@@ -90,7 +108,9 @@ typedef struct bound_node {
 
 typedef void (*BindingObserver)(int, BoundNode *);
 
-BoundNode      *bind(SyntaxNode *program);
-BindingObserver register_binding_observer(BindingObserver observer);
+extern char const     *BoundNodeType_name(BoundNodeType type);
+extern char const     *Intrinsic_name(Intrinsic intrinsic);
+extern BoundNode      *bind(SyntaxNode *program);
+extern BindingObserver register_binding_observer(BindingObserver observer);
 
 #endif /* __BINDER_H__ */

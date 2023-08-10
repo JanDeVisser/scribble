@@ -333,7 +333,7 @@ void graph_ast(int iteration, BoundNode *program)
     fprintf(f, "}\n");
     fclose(f);
     char cmd_line[256];
-    snprintf(cmd_line, 256, "dot -Tsvg -O " SV_SPEC " %s", SV_ARG(program->name), dot_file);
+    snprintf(cmd_line, 256, "dot -Tsvg -O " SV_SPEC " " SV_SPEC, SV_ARG(program->name), SV_ARG(dot_file));
     system(cmd_line);
     mem_release(alloc_state);
 }

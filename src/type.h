@@ -29,6 +29,7 @@ typedef enum {
     S(PT_INT, int)        \
     S(PT_STRING, string)  \
     S(PT_BOOL, bool)      \
+    S(PT_POINTER, void *) \
     S(PT_FLOAT, float)
 
 typedef enum {

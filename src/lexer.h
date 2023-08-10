@@ -111,6 +111,7 @@ typedef enum {
 typedef struct {
     size_t     pos;
     StringView text;
+    StringView view;
     TokenKind  kind;
     int        code;
 } Token;

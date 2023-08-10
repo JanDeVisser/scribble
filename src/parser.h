@@ -90,6 +90,7 @@ typedef struct operator_mapping {
     S(SNT_PARAMETER)        \
     S(SNT_PROGRAM)          \
     S(SNT_RETURN)           \
+    S(SNT_STRING)           \
     S(SNT_TYPE)             \
     S(SNT_UNARYEXPRESSION)  \
     S(SNT_VARIABLE)         \

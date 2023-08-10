@@ -46,6 +46,20 @@ char const *BoundNodeType_name(BoundNodeType type)
     }
 }
 
+char const *Intrinsic_name(Intrinsic intrinsic)
+{
+    switch (intrinsic) {
+#undef INTRINSIC_ENUM
+#define INTRINSIC_ENUM(i) \
+    case INT_##i:         \
+        return #i;        \
+        INTRINSICS(INTRINSIC_ENUM)
+#undef INTRINSIC_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
 BindContext *context_make_subcontext(BindContext *ctx)
 {
     BindContext *ret = allocate(sizeof(BindContext));
@@ -105,6 +119,16 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
             }
         }
         break;
+    }
+    case BNT_PROGRAM: {
+        if (type == BNT_FUNCTION) {
+            for (BoundNode *n = node->program.intrinsics; n; n = n->next) {
+                assert(n->type == BNT_INTRINSIC);
+                if (sv_eq(n->name, name)) {
+                    return n;
+                }
+            }
+        }
     }
     default:
         break;
@@ -276,6 +300,13 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         ret->typespec.optional = false;
         return ret;
     }
+    case SNT_STRING: {
+        BoundNode *ret = bound_node_make(BNT_STRING, parent);
+        ret->name = stmt->name;
+        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+        ret->typespec.optional = false;
+        return ret;
+    }
     case SNT_VARIABLE: {
         BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
         if (!decl) {
@@ -440,6 +471,41 @@ BoundNode *bind(SyntaxNode *program)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
     ret->name = program->name;
+
+    BoundNode **intrinsic = &ret->program.intrinsics;
+
+    *intrinsic = bound_node_make(BNT_INTRINSIC, ret);
+    (*intrinsic)->name = sv_from("fputs");
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*intrinsic)->typespec.optional = false;
+    (*intrinsic)->intrinsic.intrinsic = INT_FPUTS;
+
+    BoundNode **param = &(*intrinsic)->intrinsic.parameter;
+    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
+    (*param)->name = sv_from("fh");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*param)->typespec.optional = false;
+
+    (*param)->next = bound_node_make(BNT_PARAMETER, *intrinsic);
+    param = &(*param)->next;
+    (*param)->name = sv_from("s");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    (*param)->typespec.optional = false;
+
+    (*intrinsic)->next = bound_node_make(BNT_INTRINSIC, ret);
+    intrinsic = &(*intrinsic)->next;
+
+    (*intrinsic)->name = sv_from("putln");
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*intrinsic)->typespec.optional = false;
+    (*intrinsic)->intrinsic.intrinsic = INT_PUTLN;
+
+    param = &(*intrinsic)->intrinsic.parameter;
+    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
+    (*param)->name = sv_from("s");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    (*param)->typespec.optional = false;
+
     BindContext *ctx = allocate(sizeof(BindContext));
 
     assert(program->type == SNT_PROGRAM);
