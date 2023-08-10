@@ -29,7 +29,8 @@
     S(BNT_UNARYEXPRESSION)  \
     S(BNT_UNBOUND_NODE)     \
     S(BNT_VARIABLE)         \
-    S(BNT_VARIABLE_DECL)
+    S(BNT_VARIABLE_DECL)    \
+    S(BNT_WHILE)
 
 typedef enum bound_node_type {
     BNT_OFFSET = 1000,
@@ -102,6 +103,10 @@ typedef struct bound_node {
         struct {
             struct bound_node *expression;
         } assignment;
+        struct {
+            struct bound_node *condition;
+            struct bound_node *statement;
+        } while_statement;
         SyntaxNode *unbound_node;
     };
 } BoundNode;

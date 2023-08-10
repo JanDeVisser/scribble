@@ -375,6 +375,12 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         }
         return ret;
     }
+    case SNT_WHILE: {
+        BoundNode *ret = bound_node_make(BNT_WHILE, parent);
+        ret->while_statement.condition = bind_node(ret, stmt->while_statement.condition, ctx);
+        ret->while_statement.statement = bind_node(ret, stmt->while_statement.statement, ctx);
+        return ret;
+    }
     default:
         fatal("Unexpected statement type '%s' in bind_node", SyntaxNodeType_name(stmt->type));
     }
@@ -447,6 +453,11 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
     case BNT_UNBOUND_NODE: {
         return bind_node(node->parent, node->unbound_node, ctx);
+    }
+    case BNT_WHILE: {
+        node->while_statement.condition = rebind_node(node->while_statement.condition, ctx);
+        node->while_statement.statement = rebind_node(node->while_statement.statement, ctx);
+        return node;
     }
     default: {
         return node;

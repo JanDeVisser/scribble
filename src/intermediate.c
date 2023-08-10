@@ -255,6 +255,25 @@ void generate_node(BoundNode *node, void *target)
         op.operation = IR_SCOPE_END;
         ir_function_add_operation(fnc, op);
     } break;
+    case BNT_WHILE: {
+        IROperation  op;
+        unsigned int loop_label = next_label();
+        unsigned int done_label = next_label();
+        op.operation = IR_LABEL;
+        op.unsigned_value = loop_label;
+        ir_function_add_operation(fnc, op);
+        generate_node(node->while_statement.condition, fnc);
+        op.operation = IR_JUMP_F;
+        op.unsigned_value = done_label;
+        ir_function_add_operation(fnc, op);
+        generate_node(node->while_statement.statement, fnc);
+        op.operation = IR_JUMP;
+        op.unsigned_value = loop_label;
+        ir_function_add_operation(fnc, op);
+        op.operation = IR_LABEL;
+        op.unsigned_value = done_label;
+        ir_function_add_operation(fnc, op);
+    } break;
     default:
         fatal("Unexpected bound node type '%s' generating IR", BoundNodeType_name(node->type));
     }

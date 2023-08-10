@@ -259,8 +259,8 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     case IR_LABEL:
         break;
     case IR_OPERATOR: {
-        Datum d1 = datum_stack_pop(&ctx->stack);
         Datum d2 = datum_stack_pop(&ctx->stack);
+        Datum d1 = datum_stack_pop(&ctx->stack);
         datum_stack_push(&ctx->stack, datum_apply(d1, op->op, d2));
     } break;
     case IR_POP_VAR: {

@@ -94,7 +94,8 @@ typedef struct operator_mapping {
     S(SNT_TYPE)             \
     S(SNT_UNARYEXPRESSION)  \
     S(SNT_VARIABLE)         \
-    S(SNT_VARIABLE_DECL)
+    S(SNT_VARIABLE_DECL)    \
+    S(SNT_WHILE)
 
 typedef enum {
     SNT_UNKNOWN = 0,
@@ -152,6 +153,10 @@ typedef struct syntax_node {
             struct syntax_node *expression;
             Operator operator;
         } assignment;
+        struct {
+            struct syntax_node *condition;
+            struct syntax_node *statement;
+        } while_statement;
     };
 } SyntaxNode;
 

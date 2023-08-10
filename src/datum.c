@@ -190,6 +190,44 @@ Datum datum_equals(Datum d1, Datum d2)
     return ret;
 }
 
+Datum datum_less(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    switch (d1.type) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct)        \
+    case DT_##dt:                     \
+        ret.bool_value = d1.n < d2.n; \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_greater(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    switch (d1.type) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct)        \
+    case DT_##dt:                     \
+        ret.bool_value = d1.n > d2.n; \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
 Datum datum_apply(Datum d1, Operator op, Datum d2)
 {
     switch (op) {
@@ -199,6 +237,10 @@ Datum datum_apply(Datum d1, Operator op, Datum d2)
         return datum_multiply(d1, d2);
     case OP_EQUALS:
         return datum_equals(d1, d2);
+    case OP_LESS:
+        return datum_less(d1, d2);
+    case OP_GREATER:
+        return datum_greater(d1, d2);
     default: {
         fatal("Cannot apply operator '%s' to data of type '%s' yet", Operator_name(op), DatumType_name(d1.type));
     }

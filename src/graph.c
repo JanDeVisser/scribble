@@ -246,6 +246,10 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(sn->return_stmt.expression), "condition", f);
         }
         break;
+    case SNT_WHILE:
+        graph_node_forward(node, abstract(sn->while_statement.condition), "condition", f);
+        graph_node_forward(node, abstract(sn->while_statement.statement), "statement", f);
+        break;
 
     case BNT_BINARYEXPRESSION:
         graph_node_forward(node, abstract(bn->binary_expr.lhs), "lhs", f);
@@ -276,7 +280,9 @@ void graph_node_emit(GraphNode *node, FILE *f)
     case BNT_IF:
         graph_node_forward(node, abstract(bn->if_statement.condition), "condition", f);
         graph_node_forward(node, abstract(bn->if_statement.if_true), "if true", f);
-        graph_node_forward(node, abstract(bn->if_statement.if_false), "if false", f);
+        if (bn->if_statement.if_false) {
+            graph_node_forward(node, abstract(bn->if_statement.if_false), "if false", f);
+        }
         break;
     case BNT_MODULE: {
         for (BoundNode *stmt = bn->block.statements; stmt != NULL; stmt = stmt->next) {
@@ -299,6 +305,11 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(bn->variable_decl.init_expr), "init", f);
         }
     } break;
+    case BNT_WHILE:
+        graph_node_forward(node, abstract(bn->while_statement.condition), "condition", f);
+        graph_node_forward(node, abstract(bn->while_statement.statement), "statement", f);
+        break;
+
     default:
         break;
     }

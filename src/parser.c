@@ -346,6 +346,32 @@ SyntaxNode *parse_return(Lexer *lexer)
     return ret;
 }
 
+SyntaxNode *parse_while(Lexer *lexer)
+{
+    Token token;
+    lexer_lex(lexer);
+    token = lexer_next(lexer);
+    if (!token_matches(token, TK_SYMBOL, '(')) {
+        fatal("Expected '(' after 'while'");
+    }
+    lexer_lex(lexer);
+    SyntaxNode *expr = parse_expression(lexer);
+    if (!expr) {
+        fatal("Expected condition in 'while' statement");
+    }
+    token = lexer_next(lexer);
+    if (!token_matches(token, TK_SYMBOL, ')')) {
+        fatal("Expected ')' after 'while' condition");
+    }
+    lexer_lex(lexer);
+    SyntaxNode *stmt = parse_statement(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_null(), token);
+    ret->while_statement.condition = expr;
+    ret->while_statement.statement = stmt;
+    return ret;
+}
+
+
 SyntaxNode *parse_block(Lexer *lexer)
 {
     Token        token = lexer_lex(lexer);
@@ -425,6 +451,9 @@ SyntaxNode *parse_statement(Lexer *lexer)
             break;
         case KW_RETURN:
             ret = parse_return(lexer);
+            break;
+        case KW_WHILE:
+            ret = parse_while(lexer);
             break;
         default:
             NYI("Keywords");
