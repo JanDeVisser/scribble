@@ -155,7 +155,18 @@ StringView cleanup_string(StringView str)
     char *ptr = buffer;
     for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
         if (prev_backslash || str.ptr[ix] != '\\') {
-            *ptr++ = str.ptr[ix];
+            char ch;
+            switch (str.ptr[ix]) {
+            case 'n':
+                ch = '\n';
+                break;
+            case 't':
+                ch = '\t';
+                break;
+            default:
+                ch = str.ptr[ix];
+            }
+            *ptr++ = ch;
             prev_backslash = false;
         } else if (str.ptr[ix] == '\\') {
             prev_backslash = true;
