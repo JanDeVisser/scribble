@@ -327,7 +327,7 @@ SyntaxNode *parse_if(Lexer *lexer)
         lexer_lex(lexer);
         if_false = parse_statement(lexer);
     }
-    SyntaxNode *ret = syntax_node_make(SNT_IF, sv_null(), token);
+    SyntaxNode *ret = syntax_node_make(SNT_IF, sv_from("if"), token);
     ret->if_statement.condition = expr;
     ret->if_statement.if_true = if_true;
     ret->if_statement.if_false = if_false;
@@ -340,7 +340,7 @@ SyntaxNode *parse_return(Lexer *lexer)
     lexer_lex(lexer);
     token = lexer_next(lexer);
     SyntaxNode *expr = parse_expression(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_null(), token);
+    SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_from("return"), token);
     ret->return_stmt.expression = expr;
     skip_semicolon(lexer, ret);
     return ret;
@@ -365,17 +365,25 @@ SyntaxNode *parse_while(Lexer *lexer)
     }
     lexer_lex(lexer);
     SyntaxNode *stmt = parse_statement(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_null(), token);
+    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_from("while"), token);
     ret->while_statement.condition = expr;
     ret->while_statement.statement = stmt;
     return ret;
 }
 
+SyntaxNode *parse_loop(Lexer *lexer)
+{
+    Token token = lexer_lex(lexer);
+    SyntaxNode *stmt = parse_statement(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_LOOP, sv_from("loop"), token);
+    ret->block.statements = stmt;
+    return ret;
+}
 
 SyntaxNode *parse_block(Lexer *lexer)
 {
     Token        token = lexer_lex(lexer);
-    SyntaxNode  *ret = syntax_node_make(SNT_BLOCK, sv_null(), token);
+    SyntaxNode  *ret = syntax_node_make(SNT_BLOCK, sv_from("block"), token);
     SyntaxNode **dst = &ret->block.statements;
     while (true) {
         token = lexer_next(lexer);
@@ -388,7 +396,7 @@ SyntaxNode *parse_block(Lexer *lexer)
             fatal("Expected '}' to close block");
         }
         SyntaxNode *stmt = parse_statement(lexer);
-        if (lexer != NULL) {
+        if (stmt != NULL) {
             *dst = stmt;
             dst = &stmt->next;
         }
@@ -440,17 +448,30 @@ SyntaxNode *parse_statement(Lexer *lexer)
     }
     case TK_KEYWORD: {
         switch (token.code) {
-        case KW_VAR:
-            ret = parse_variable_declaration(lexer, false);
+        case KW_BREAK:
+            lexer_lex(lexer);
+            ret = syntax_node_make(SNT_BREAK, token.text, token);
+            skip_semicolon(lexer, ret);
             break;
         case KW_CONST:
             ret = parse_variable_declaration(lexer, true);
             break;
+        case KW_CONTINUE:
+            lexer_lex(lexer);
+            ret = syntax_node_make(SNT_CONTINUE, token.text, token);
+            skip_semicolon(lexer, ret);
+            break;
         case KW_IF:
             ret = parse_if(lexer);
             break;
+        case KW_LOOP:
+            ret = parse_loop(lexer);
+            break;
         case KW_RETURN:
             ret = parse_return(lexer);
+            break;
+        case KW_VAR:
+            ret = parse_variable_declaration(lexer, false);
             break;
         case KW_WHILE:
             ret = parse_while(lexer);

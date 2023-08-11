@@ -9,6 +9,15 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
+typedef struct intermediate {
+    union {
+        struct {
+            size_t loop;
+            size_t done;
+        } loop;
+    };
+} Intermediate;
+
 static unsigned int s_label = 0;
 
 IRVarDecl *allocate_parameters(size_t num)
@@ -68,6 +77,22 @@ void generate_node(BoundNode *node, void *target)
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
     } break;
+    case BNT_BREAK: {
+        assert(node->block.statements->intermediate);
+        IROperation op;
+        op.operation = IR_JUMP;
+        op.unsigned_value = node->block.statements->intermediate->loop.done;
+        ir_function_add_operation(fnc, op);
+        break;
+    }
+    case BNT_CONTINUE: {
+        assert(node->block.statements->intermediate);
+        IROperation op;
+        op.operation = IR_JUMP;
+        op.unsigned_value = node->block.statements->intermediate->loop.loop;
+        ir_function_add_operation(fnc, op);
+        break;
+    }
     case BNT_FUNCTION: {
         IRProgram *program = (IRProgram *) target;
         if (program->num_functions == program->cap_functions - 1) {
@@ -245,6 +270,22 @@ void generate_node(BoundNode *node, void *target)
             ir_function_add_operation(fnc, op);
         }
     } break;
+    case BNT_LOOP: {
+        node->intermediate = allocate(sizeof(Intermediate));
+        node->intermediate->loop.loop = next_label();
+        node->intermediate->loop.done = next_label();
+        IROperation  op;
+        op.operation = IR_LABEL;
+        op.unsigned_value = node->intermediate->loop.loop;
+        ir_function_add_operation(fnc, op);
+        generate_node(node->block.statements, fnc);
+        op.operation = IR_JUMP;
+        op.unsigned_value = node->intermediate->loop.loop;
+        ir_function_add_operation(fnc, op);
+        op.operation = IR_LABEL;
+        op.unsigned_value = node->intermediate->loop.done;
+        ir_function_add_operation(fnc, op);
+    } break;
     case BNT_BLOCK: {
         IROperation op;
         op.operation = IR_SCOPE_BEGIN;
@@ -257,21 +298,22 @@ void generate_node(BoundNode *node, void *target)
     } break;
     case BNT_WHILE: {
         IROperation  op;
-        unsigned int loop_label = next_label();
-        unsigned int done_label = next_label();
+        node->intermediate = allocate(sizeof(Intermediate));
+        node->intermediate->loop.loop = next_label();
+        node->intermediate->loop.done = next_label();
         op.operation = IR_LABEL;
-        op.unsigned_value = loop_label;
+        op.unsigned_value = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         generate_node(node->while_statement.condition, fnc);
         op.operation = IR_JUMP_F;
-        op.unsigned_value = done_label;
+        op.unsigned_value = node->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
         generate_node(node->while_statement.statement, fnc);
         op.operation = IR_JUMP;
-        op.unsigned_value = loop_label;
+        op.unsigned_value = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         op.operation = IR_LABEL;
-        op.unsigned_value = done_label;
+        op.unsigned_value = node->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
     } break;
     default:

@@ -226,6 +226,36 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         bind_nodes(ret, stmt->block.statements, &ret->block.statements, block_ctx);
         return ret;
     }
+    case SNT_BREAK: {
+        BoundNode *breakable = parent;
+        while (breakable) {
+            if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
+                break;
+            }
+            breakable = breakable->parent;
+        }
+        if (!breakable) {
+            fatal("'break' must be in a 'while' or 'loop' block");
+        }
+        BoundNode *ret = bound_node_make(BNT_BREAK, parent);
+        ret->block.statements = breakable;
+        return ret;
+    }
+    case SNT_CONTINUE: {
+        BoundNode *breakable = parent;
+        while (breakable) {
+            if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
+                break;
+            }
+            breakable = breakable->parent;
+        }
+        if (!breakable) {
+            fatal("'continue' must be in a 'while' or 'loop' block");
+        }
+        BoundNode *ret = bound_node_make(BNT_CONTINUE, parent);
+        ret->block.statements = breakable;
+        return ret;
+    }
     case SNT_FUNCTION: {
         TypeSpec return_type = { VOID_ID, false };
         TypeSpec error_type = { VOID_ID, false };
@@ -368,6 +398,11 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         ret->if_statement.if_false = bind_node(ret, stmt->if_statement.if_false, ctx);
         return ret;
     }
+    case SNT_LOOP: {
+        BoundNode *ret = bound_node_make(BNT_LOOP, parent);
+        ret->block.statements = bind_node(ret, stmt->block.statements, ctx);
+        return ret;
+    }
     case SNT_RETURN: {
         BoundNode *ret = bound_node_make(BNT_RETURN, parent);
         if (stmt->return_stmt.expression) {
@@ -437,6 +472,10 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
         node->if_statement.condition = rebind_node(node->if_statement.condition, ctx);
         node->if_statement.if_true = rebind_node(node->if_statement.if_true, ctx);
         node->if_statement.if_false = rebind_node(node->if_statement.if_false, ctx);
+        return node;
+    }
+    case BNT_LOOP: {
+        node->block.statements = rebind_node(node->block.statements, ctx);
         return node;
     }
     case BNT_MODULE: {

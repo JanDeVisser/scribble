@@ -15,10 +15,13 @@
     S(BNT_ASSIGNMENT)       \
     S(BNT_BINARYEXPRESSION) \
     S(BNT_BLOCK)            \
+    S(BNT_BREAK)            \
+    S(BNT_CONTINUE)         \
     S(BNT_FUNCTION)         \
     S(BNT_FUNCTION_CALL)    \
     S(BNT_IF)               \
     S(BNT_INTRINSIC)        \
+    S(BNT_LOOP)             \
     S(BNT_MODULE)           \
     S(BNT_NUMBER)           \
     S(BNT_PARAMETER)        \
@@ -55,12 +58,13 @@ typedef enum intrinsic {
 } Intrinsic;
 
 typedef struct bound_node {
-    BoundNodeType      type;
-    StringView         name;
-    struct bound_node *next;
-    size_t             index;
-    struct bound_node *parent;
-    TypeSpec           typespec;
+    BoundNodeType        type;
+    StringView           name;
+    struct bound_node   *next;
+    size_t               index;
+    struct bound_node   *parent;
+    TypeSpec             typespec;
+    struct intermediate *intermediate;
     union {
         struct {
             struct bound_node *intrinsics;

@@ -82,9 +82,12 @@ typedef struct operator_mapping {
     S(SNT_ASSIGNMENT)       \
     S(SNT_BINARYEXPRESSION) \
     S(SNT_BLOCK)            \
+    S(SNT_BREAK)            \
+    S(SNT_CONTINUE)         \
     S(SNT_FUNCTION)         \
     S(SNT_FUNCTION_CALL)    \
     S(SNT_IF)               \
+    S(SNT_LOOP)             \
     S(SNT_MODULE)           \
     S(SNT_NUMBER)           \
     S(SNT_PARAMETER)        \

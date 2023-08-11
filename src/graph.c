@@ -233,6 +233,9 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(sn->if_statement.if_false), "if false", f);
         }
         break;
+    case SNT_LOOP:
+        graph_node_forward(node, abstract(sn->block.statements), "statement", f);
+        break;
     case SNT_PARAMETER:
         graph_node_forward(node, abstract(sn->parameter.parameter_type), NULL, f);
         break;
