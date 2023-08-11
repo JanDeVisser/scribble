@@ -76,7 +76,32 @@ long datum_signed_integer_value(Datum d)
     }
 }
 
-Datum datum_add(Datum d1, Datum d2)
+Datum datum_INVALID(Datum, Datum)
+{
+    UNREACHABLE();
+}
+
+Datum datum_MEMBER_ACCESS(Datum, Datum)
+{
+    NYI("datum_MEMBER_ACCESS");
+}
+
+Datum datum_RANGE(Datum, Datum)
+{
+    NYI("datum_RANGE");
+}
+
+Datum datum_SUBSCRIPT(Datum, Datum)
+{
+    NYI("datum_SUBSCRIPT");
+}
+
+Datum datum_CALL(Datum, Datum)
+{
+    NYI("datum_CALL");
+}
+
+Datum datum_ADD(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -95,7 +120,7 @@ Datum datum_add(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_subtract(Datum d1, Datum d2)
+Datum datum_SUBTRACT(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -114,7 +139,7 @@ Datum datum_subtract(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_multiply(Datum d1, Datum d2)
+Datum datum_MULTIPLY(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -133,7 +158,7 @@ Datum datum_multiply(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_divide(Datum d1, Datum d2)
+Datum datum_DIVIDE(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -152,7 +177,7 @@ Datum datum_divide(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_modulo(Datum d1, Datum d2)
+Datum datum_MODULO(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -171,7 +196,7 @@ Datum datum_modulo(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_equals(Datum d1, Datum d2)
+Datum datum_EQUALS(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -190,7 +215,26 @@ Datum datum_equals(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_less(Datum d1, Datum d2)
+Datum datum_NOT_EQUALS(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    switch (d1.type) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct)         \
+    case DT_##dt:                      \
+        ret.bool_value = d1.n != d2.n; \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_LESS(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -209,7 +253,26 @@ Datum datum_less(Datum d1, Datum d2)
     return ret;
 }
 
-Datum datum_greater(Datum d1, Datum d2)
+Datum datum_LESS_EQUALS(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    switch (d1.type) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct)         \
+    case DT_##dt:                      \
+        ret.bool_value = d1.n <= d2.n; \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_GREATER(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
     Datum ret = { 0 };
@@ -228,23 +291,157 @@ Datum datum_greater(Datum d1, Datum d2)
     return ret;
 }
 
+Datum datum_GREATER_EQUALS(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    switch (d1.type) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct)         \
+    case DT_##dt:                      \
+        ret.bool_value = d1.n >= d2.n; \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_BITWISE_AND(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = d1.type;
+    switch (d1.type) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    case DT_##dt:                                       \
+        ret.bool_value = d1.n & d2.n;                   \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_BITWISE_OR(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = d1.type;
+    switch (d1.type) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    case DT_##dt:                                       \
+        ret.bool_value = d1.n | d2.n;                   \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_BITWISE_XOR(Datum d1, Datum d2)
+{
+    assert(d1.type == d2.type);
+    Datum ret = { 0 };
+    ret.type = d1.type;
+    switch (d1.type) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    case DT_##dt:                                       \
+        ret.bool_value = d1.n ^ d2.n;                   \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot determine equality of data of type '%s' yet", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_LOGICAL_AND(Datum d1, Datum d2)
+{
+    assert(d1.type == DT_BOOL && d2.type == DT_BOOL);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    ret.bool_value = d1.bool_value && d2.bool_value;
+    return ret;
+}
+
+Datum datum_LOGICAL_OR(Datum d1, Datum d2)
+{
+    assert(d1.type == DT_BOOL && d2.type == DT_BOOL);
+    Datum ret = { 0 };
+    ret.type = DT_BOOL;
+    ret.bool_value = d1.bool_value || d2.bool_value;
+    return ret;
+}
+
+Datum datum_BIT_SHIFT_LEFT(Datum d1, Datum d2)
+{
+    assert(d2.type == DT_U8);
+    Datum ret = { 0 };
+    ret.type = d1.type;
+    switch (d1.type) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size)   \
+    case DT_##dt:                                         \
+        ret.n = d1.n << datum_unsigned_integer_value(d2); \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot shift left datum of type '%s'", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+Datum datum_BIT_SHIFT_RIGHT(Datum d1, Datum d2)
+{
+    assert(d2.type == DT_U8);
+    Datum ret = { 0 };
+    ret.type = d1.type;
+    switch (d1.type) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size)   \
+    case DT_##dt:                                         \
+        ret.n = d1.n >> datum_unsigned_integer_value(d2); \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot shift left datum of type '%s'", DatumType_name(d1.type));
+    }
+    return ret;
+}
+
+typedef Datum (*BinaryDatumFunction)(Datum, Datum);
+
+typedef struct operator_functions {
+    Operator            op;
+    BinaryDatumFunction function;
+} OperatorFunctions;
+
+static OperatorFunctions s_functions[] = {
+#undef ENUM_BINARY_OPERATOR
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_ ## op, datum_ ## op },
+    BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
+#undef ENUM_BINARY_OPERATOR
+};
+
 Datum datum_apply(Datum d1, Operator op, Datum d2)
 {
-    switch (op) {
-    case OP_ADD:
-        return datum_add(d1, d2);
-    case OP_MULTIPLY:
-        return datum_multiply(d1, d2);
-    case OP_EQUALS:
-        return datum_equals(d1, d2);
-    case OP_LESS:
-        return datum_less(d1, d2);
-    case OP_GREATER:
-        return datum_greater(d1, d2);
-    default: {
-        fatal("Cannot apply operator '%s' to data of type '%s' yet", Operator_name(op), DatumType_name(d1.type));
-    }
-    }
+    assert(s_functions[(size_t) op].op == op);
+    BinaryDatumFunction fnc = s_functions[(size_t) op].function;
+    return fnc(d1, d2);
 }
 
 void datum_print(Datum d)

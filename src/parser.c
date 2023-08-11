@@ -89,13 +89,13 @@ char *Operator_name(Operator op)
     switch (op) {
 #undef ENUM_BINARY_OPERATOR
 #define ENUM_BINARY_OPERATOR(op, a, p, k, c) \
-    case op:                                 \
+    case OP_ ## op:                                 \
         return #op;
         BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
 #define ENUM_UNARY_OPERATOR(op, k, c) \
-    case op:                          \
+    case OP_ ## op:                          \
         return #op;
         UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
 #undef ENUM_UNARY_OPERATOR
@@ -106,11 +106,11 @@ char *Operator_name(Operator op)
 
 static OperatorMapping s_operator_mapping[] = {
 #undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { op, true, k, (TokenCode) c, p },
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_ ## op, true, k, (TokenCode) c, p },
     BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
-#define ENUM_UNARY_OPERATOR(op, k, c) { op, false, k, (TokenCode) c, -1 },
+#define ENUM_UNARY_OPERATOR(op, k, c) { OP_ ## op, false, k, (TokenCode) c, -1 },
         UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
             { OP_COUNT, false, TK_UNKNOWN, TC_NONE, -1 }
