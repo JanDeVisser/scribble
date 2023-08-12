@@ -77,6 +77,13 @@ void generate_node(BoundNode *node, void *target)
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
     } break;
+    case BNT_BOOL: {
+        IROperation op;
+        op.operation = IR_PUSH_BOOL_CONSTANT;
+        op.bool_value = sv_eq_cstr(node->name, "true");
+        ir_function_add_operation(fnc, op);
+        break;
+    }
     case BNT_BREAK: {
         assert(node->block.statements->intermediate);
         IROperation op;
@@ -356,6 +363,9 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         break;
     case IR_DECL_VAR:
         ir_var_decl_print(&op->var_decl);
+        break;
+    case IR_PUSH_BOOL_CONSTANT:
+        printf("%s", (op->bool_value) ? "true" : "false");
         break;
     case IR_PUSH_INT_CONSTANT:
         printf("%d", op->int_value);

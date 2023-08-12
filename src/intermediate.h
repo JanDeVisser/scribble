@@ -22,6 +22,7 @@
     S(LABEL)                  \
     S(OPERATOR)               \
     S(POP_VAR)                \
+    S(PUSH_BOOL_CONSTANT)     \
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \

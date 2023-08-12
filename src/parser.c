@@ -29,8 +29,8 @@ char const *SyntaxNodeType_name(SyntaxNodeType type)
     switch (type) {
 #undef SYNTAXNODETYPE_ENUM
 #define SYNTAXNODETYPE_ENUM(type) \
-    case type:                    \
-        return #type;
+    case SNT_##type:              \
+        return "SNT_" #type;
         SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
     default:
@@ -260,6 +260,15 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
         case TC_DOUBLE_QUOTED_STRING:
             lexer_lex(lexer);
             return syntax_node_make(SNT_STRING, cleanup_string(token.text), token);
+        default:
+            return NULL;
+        }
+    case TK_KEYWORD:
+        switch (token.code) {
+        case KW_TRUE:
+        case KW_FALSE:
+            lexer_lex(lexer);
+            return syntax_node_make(SNT_BOOL, token.text, token);
         default:
             return NULL;
         }

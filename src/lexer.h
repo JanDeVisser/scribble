@@ -79,25 +79,27 @@ typedef struct {
     S(STRUCT, struct, 11)          \
     S(VAR, var, 12)                \
     S(WHILE, while, 13)            \
-    S(ASSIGN_BITWISE_AND, &=, 14)  \
-    S(ASSIGN_BITWISE_OR, |=, 15)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 16)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 17)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 18) \
-    S(BINARY_DECREMENT, -=, 19)    \
-    S(BINARY_INCREMENT, +=, 20)    \
-    S(BIT_SHIFT_LEFT, <<, 21)      \
-    S(BIT_SHIFT_RIGHT, >>, 22)     \
-    S(EQUALS, ==, 23)              \
-    S(GREATER_EQUALS, >=, 24)      \
-    S(LESS_EQUALS, <=, 25)         \
-    S(LOGICAL_AND, &&, 26)         \
-    S(LOGICAL_OR, ||, 27)          \
-    S(NOT_EQUALS, !=, 28)          \
-    S(RANGE, .., 29)               \
-    S(FUNC_BINDING, ->, 30)        \
-    S(UNARY_DECREMENT, --, 31)     \
-    S(UNARY_INCREMENT, ++, 32)
+    S(TRUE, true, 14)              \
+    S(FALSE, false, 15)            \
+    S(ASSIGN_BITWISE_AND, &=, 16)  \
+    S(ASSIGN_BITWISE_OR, |=, 17)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 18)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 19)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 20) \
+    S(BINARY_DECREMENT, -=, 21)    \
+    S(BINARY_INCREMENT, +=, 22)    \
+    S(BIT_SHIFT_LEFT, <<, 23)      \
+    S(BIT_SHIFT_RIGHT, >>, 24)     \
+    S(EQUALS, ==, 25)              \
+    S(GREATER_EQUALS, >=, 26)      \
+    S(LESS_EQUALS, <=, 27)         \
+    S(LOGICAL_AND, &&, 28)         \
+    S(LOGICAL_OR, ||, 29)          \
+    S(NOT_EQUALS, !=, 30)          \
+    S(RANGE, .., 31)               \
+    S(FUNC_BINDING, ->, 32)        \
+    S(UNARY_DECREMENT, --, 33)     \
+    S(UNARY_INCREMENT, ++, 34)
 
 typedef enum {
 #undef KEYWORD_ENUM

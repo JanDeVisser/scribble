@@ -229,9 +229,28 @@ void scope_dump_variables(Scope *scope)
             }
         }
         for (VarList *var = s->var_list; var; var = var->next) {
-            printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), DatumType_name(var->value.type));
-            datum_print(var->value);
-            printf("\n");
+            ExpressionType *et = type_registry_get_type_by_id(var->type);
+            assert(et);
+            switch (et->kind) {
+            case TK_PRIMITIVE: {
+                printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), DatumType_name(var->value.type));
+                datum_print(var->value);
+                printf("\n");
+            } break;
+            case TK_COMPOSITE: {
+                printf("%5.5s" SV_SPEC "  %10.10s " SV_SPEC "\n", "", SV_ARG(var->name), "struct", SV_ARG(et->name));
+                TypeComponent *component = &et->component;
+                size_t ix = 0;
+                while (component) {
+                    printf("%7.7s" SV_SPEC "  %10.10s  ", "", SV_ARG(component->name), DatumType_name(var->composite.components[ix].type));
+                    datum_print(var->composite.components[ix++]);
+                    component = component->next;
+                    printf("\n");
+                }
+            } break;
+            default:
+                UNREACHABLE();
+            }
         }
     }
 }
@@ -319,6 +338,12 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             next.exception = err;
             return next;
         }
+    } break;
+    case IR_PUSH_BOOL_CONSTANT: {
+        Datum d = { 0 };
+        d.type = DT_BOOL;
+        d.bool_value = op->bool_value;
+        datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_INT_CONSTANT: {
         Datum d = { 0 };
@@ -504,7 +529,7 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
                     printf(SV_SPEC " -> %s\n", SV_ARG(native->name), native->native_name);
                 } break;
                 case FK_INTRINSIC: {
-                    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) intrinsic;
+                    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) fnc;
                     printf(SV_SPEC " -> intrinsic %s\n", SV_ARG(intrinsic->name), Intrinsic_name(intrinsic->intrinsic));
                 } break;
                 }

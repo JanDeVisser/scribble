@@ -37,8 +37,8 @@ char const *BoundNodeType_name(BoundNodeType type)
     switch (type) {
 #undef BOUNDNODETYPE_ENUM
 #define BOUNDNODETYPE_ENUM(type) \
-    case type:                   \
-        return #type;
+    case BNT_##type:             \
+        return "BNT_" #type;
         BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 #undef BOUNDNODETYPE_ENUM
     default:
@@ -226,6 +226,13 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         bind_nodes(ret, stmt->block.statements, &ret->block.statements, block_ctx);
         return ret;
     }
+    case SNT_BOOL: {
+        BoundNode *ret = bound_node_make(BNT_BOOL, parent);
+        ret->name = stmt->token.text;
+        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_BOOL);
+        ret->typespec.optional = false;
+        return ret;
+    }
     case SNT_BREAK: {
         BoundNode *breakable = parent;
         while (breakable) {
@@ -353,7 +360,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
             num++;
         }
-        size_t *types = allocate_array(size_t, num);
+        size_t     *types = allocate_array(size_t, num);
         StringView *names = allocate_array(StringView, num);
         num = 0;
         for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
@@ -416,7 +423,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
                     fatal("Cannot initialize variables with non-compound types using a compound initializer");
                 }
                 TypeComponent *type_component = &et->component;
-                BoundNode *arg = expr->compound_initializer.argument;
+                BoundNode     *arg = expr->compound_initializer.argument;
                 while (type_component) {
                     if (!arg) {
                         fatal("No initializer argument values for " SV_SPEC "." SV_SPEC, SV_ARG(et->name), SV_ARG(type_component->name));

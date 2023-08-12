@@ -70,35 +70,36 @@ typedef struct operator_mapping {
     int       precedence;
 } OperatorMapping;
 
-#define SYNTAXNODETYPES(S)      \
-    S(SNT_ASSIGNMENT)           \
-    S(SNT_BINARYEXPRESSION)     \
-    S(SNT_BLOCK)                \
-    S(SNT_BREAK)                \
-    S(SNT_TYPE_COMPONENT)       \
-    S(SNT_COMPOUND_INITIALIZER) \
-    S(SNT_CONTINUE)             \
-    S(SNT_FUNCTION)             \
-    S(SNT_FUNCTION_CALL)        \
-    S(SNT_IF)                   \
-    S(SNT_LOOP)                 \
-    S(SNT_MODULE)               \
-    S(SNT_NUMBER)               \
-    S(SNT_PARAMETER)            \
-    S(SNT_PROGRAM)              \
-    S(SNT_RETURN)               \
-    S(SNT_STRING)               \
-    S(SNT_STRUCT)               \
-    S(SNT_TYPE)                 \
-    S(SNT_UNARYEXPRESSION)      \
-    S(SNT_VARIABLE)             \
-    S(SNT_VARIABLE_DECL)        \
-    S(SNT_WHILE)
+#define SYNTAXNODETYPES(S)  \
+    S(ASSIGNMENT)           \
+    S(BINARYEXPRESSION)     \
+    S(BLOCK)                \
+    S(BOOL)                 \
+    S(BREAK)                \
+    S(TYPE_COMPONENT)       \
+    S(COMPOUND_INITIALIZER) \
+    S(CONTINUE)             \
+    S(FUNCTION)             \
+    S(FUNCTION_CALL)        \
+    S(IF)                   \
+    S(LOOP)                 \
+    S(MODULE)               \
+    S(NUMBER)               \
+    S(PARAMETER)            \
+    S(PROGRAM)              \
+    S(RETURN)               \
+    S(STRING)               \
+    S(STRUCT)               \
+    S(TYPE)                 \
+    S(UNARYEXPRESSION)      \
+    S(VARIABLE)             \
+    S(VARIABLE_DECL)        \
+    S(WHILE)
 
 typedef enum {
     SNT_UNKNOWN = 0,
 #undef SYNTAXNODETYPE_ENUM
-#define SYNTAXNODETYPE_ENUM(type) type,
+#define SYNTAXNODETYPE_ENUM(type) SNT_ ## type,
     SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
 } SyntaxNodeType;

@@ -11,37 +11,38 @@
 #ifndef __BINDER_H__
 #define __BINDER_H__
 
-#define BOUNDNODETYPES(S)       \
-    S(BNT_ASSIGNMENT)           \
-    S(BNT_BINARYEXPRESSION)     \
-    S(BNT_BLOCK)                \
-    S(BNT_BREAK)                \
-    S(BNT_COMPOUND_INITIALIZER) \
-    S(BNT_CONTINUE)             \
-    S(BNT_FUNCTION)             \
-    S(BNT_FUNCTION_CALL)        \
-    S(BNT_IF)                   \
-    S(BNT_INTRINSIC)            \
-    S(BNT_LOOP)                 \
-    S(BNT_MODULE)               \
-    S(BNT_NUMBER)               \
-    S(BNT_PARAMETER)            \
-    S(BNT_PROGRAM)              \
-    S(BNT_RETURN)               \
-    S(BNT_STRING)               \
-    S(BNT_TYPE)                 \
-    S(BNT_TYPE_COMPONENT)       \
-    S(BNT_UNARYEXPRESSION)      \
-    S(BNT_UNBOUND_NODE)         \
-    S(BNT_UNBOUND_TYPE)         \
-    S(BNT_VARIABLE)             \
-    S(BNT_VARIABLE_DECL)        \
-    S(BNT_WHILE)
+#define BOUNDNODETYPES(S)   \
+    S(ASSIGNMENT)           \
+    S(BINARYEXPRESSION)     \
+    S(BLOCK)                \
+    S(BOOL)                 \
+    S(BREAK)                \
+    S(COMPOUND_INITIALIZER) \
+    S(CONTINUE)             \
+    S(FUNCTION)             \
+    S(FUNCTION_CALL)        \
+    S(IF)                   \
+    S(INTRINSIC)            \
+    S(LOOP)                 \
+    S(MODULE)               \
+    S(NUMBER)               \
+    S(PARAMETER)            \
+    S(PROGRAM)              \
+    S(RETURN)               \
+    S(STRING)               \
+    S(TYPE)                 \
+    S(TYPE_COMPONENT)       \
+    S(UNARYEXPRESSION)      \
+    S(UNBOUND_NODE)         \
+    S(UNBOUND_TYPE)         \
+    S(VARIABLE)             \
+    S(VARIABLE_DECL)        \
+    S(WHILE)
 
 typedef enum bound_node_type {
     BNT_OFFSET = 1000,
 #undef BOUNDNODETYPE_ENUM
-#define BOUNDNODETYPE_ENUM(type) type,
+#define BOUNDNODETYPE_ENUM(type) BNT_ ## type,
     BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 #undef BOUNDNODETYPE_ENUM
         BNT_LAST
