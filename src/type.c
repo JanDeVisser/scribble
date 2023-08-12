@@ -4,14 +4,15 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <type.h>
 #include <log.h>
 #include <sv.h>
+#include <type.h>
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
-static size_t type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
+static ExpressionType *type_registry_next_type(TypeKind kind, StringView name);
+static type_id         type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
 
 typedef struct {
     size_t          size;
@@ -38,17 +39,23 @@ char const *PrimitiveType_name(PrimitiveType type)
     }
 }
 
-size_t type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
+ExpressionType *type_registry_next_type(TypeKind kind, StringView name)
 {
     if (type_registry.capacity <= type_registry.size + 1) {
         OUT_OF_MEMORY("Could not expand Type Registry");
     }
     ExpressionType *type = &type_registry.types[type_registry.size];
-    type->type_id = type_registry.size;
+    type->kind = kind;
     type->name = name;
-    type->kind = TK_PRIMITIVE;
-    type->primitive = primitive_type;
+    type->type_id = type_registry.size;
     ++type_registry.size;
+    return type;
+}
+
+type_id type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
+{
+    ExpressionType *type = type_registry_next_type(TK_PRIMITIVE, name);
+    type->primitive = primitive_type;
     return type->type_id;
 }
 
@@ -62,7 +69,7 @@ ExpressionType *type_registry_get_type_by_name(StringView name)
     return NULL;
 }
 
-ExpressionType *type_registry_get_type_by_id(size_t id)
+ExpressionType *type_registry_get_type_by_id(type_id id)
 {
     if (id <= type_registry.size) {
         return &type_registry.types[id];
@@ -70,7 +77,7 @@ ExpressionType *type_registry_get_type_by_id(size_t id)
     return NULL;
 }
 
-size_t type_registry_id_of_primitive_type(PrimitiveType type)
+type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (int ix = 0; ix < type_registry.size; ++ix) {
         if (type_registry.types[ix].kind == TK_PRIMITIVE && type_registry.types[ix].primitive == type) {
@@ -80,7 +87,7 @@ size_t type_registry_id_of_primitive_type(PrimitiveType type)
     fatal("Primitive type '%s' not in registry", PrimitiveType_name(type));
 }
 
-size_t type_registry_get_variant(size_t num, size_t *types)
+type_id type_registry_get_variant(size_t num, type_id *types)
 {
     assert(num > 0);
     for (int ix = 0; ix < type_registry.size; ++ix) {
@@ -100,50 +107,75 @@ size_t type_registry_get_variant(size_t num, size_t *types)
         }
     }
 
-    if (type_registry.capacity <= type_registry.size + 1) {
-        OUT_OF_MEMORY("Could not expand Type Registry");
-    }
     if (type_registry.components_capacity <= type_registry.components_size + num) {
         OUT_OF_MEMORY("Could not expand Type Component Registry");
     }
 
-    ExpressionType *type = &type_registry.types[type_registry.size];
-    type->type_id = type_registry.size;
-    type->kind = TK_VARIANT;
-
-    TypeComponent *component = &type->component;
-    size_t         name_len = 3; // "<>\0"
+    size_t name_len = 2; // "<>"
     for (int ix = 0; ix < num; ++ix) {
         ExpressionType *expr_type = type_registry_get_type_by_id(types[ix]);
         assert(expr_type);
         name_len += sv_length(expr_type->name);
-        component->name = expr_type->name;
-        component->type_id = types[ix];
         if (ix < num - 1) {
-            component->next = &type_registry.components[type_registry.components_size++];
-            component = component->next;
             ++name_len; // for the comma
         }
     }
 
     char *name_buf = allocate(name_len);
-    strcpy(name_buf, "<");
+    name_buf[0] = '<';
+    size_t len = 1;
     for (int ix = 0; ix < num; ++ix) {
         ExpressionType *expr_type = type_registry_get_type_by_id(types[ix]);
-        sprintf(name_buf + strlen(name_buf), SV_SPEC, SV_ARG(expr_type->name));
+        memcpy(name_buf + len, expr_type->name.ptr, expr_type->name.length);
+        len += expr_type->name.length;
         if (ix < num - 1) {
-            name_buf[strlen(name_buf)] = ',';
+            name_buf[len++] = ',';
         }
     }
-    name_buf[name_len - 2] = '>';
-    type->name = sv_from(name_buf);
-    ++type_registry.components_size;
+    name_buf[name_len - 1] = '>';
+
+    ExpressionType *type = type_registry_next_type(TK_VARIANT, sv_from(name_buf));
+    TypeComponent  *component = &type->component;
+    for (int ix = 0; ix < num; ++ix) {
+        ExpressionType *expr_type = type_registry_get_type_by_id(types[ix]);
+        assert(expr_type);
+        component->name = expr_type->name;
+        component->type_id = types[ix];
+        if (ix < num - 1) {
+            component->next = &type_registry.components[type_registry.components_size++];
+            component = component->next;
+        }
+    }
     return type->type_id;
 }
 
-size_t type_registry_get_variant2(size_t t1, size_t t2)
+type_id type_registry_make_struct(StringView name, size_t num, StringView *names, type_id *types)
 {
-    size_t types[2];
+    if (type_registry_get_type_by_name(name)) {
+        fatal("Type '" SV_SPEC "' already exists", SV_ARG(name));
+    }
+    if (type_registry.components_capacity <= type_registry.components_size + num) {
+        OUT_OF_MEMORY("Could not expand Type Component Registry");
+    }
+
+    ExpressionType *type = type_registry_next_type(TK_COMPOSITE, name);
+    TypeComponent  *component = &type->component;
+    for (int ix = 0; ix < num; ++ix) {
+        ExpressionType *expr_type = type_registry_get_type_by_id(types[ix]);
+        assert(expr_type);
+        component->name = names[ix];
+        component->type_id = types[ix];
+        if (ix < num - 1) {
+            component->next = &type_registry.components[type_registry.components_size++];
+            component = component->next;
+        }
+    }
+    return type->type_id;
+}
+
+type_id type_registry_get_variant2(type_id t1, type_id t2)
+{
+    type_id types[2];
     types[0] = t1;
     types[1] = t2;
     return type_registry_get_variant(2, types);

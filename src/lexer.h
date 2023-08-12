@@ -60,8 +60,8 @@ typedef enum {
 } TokenCode;
 
 typedef struct {
-    StringView  keyword;
-    int         code;
+    StringView keyword;
+    int        code;
 } Keyword;
 
 #define KEYWORDS(S)                \
@@ -75,28 +75,29 @@ typedef struct {
     S(IF, if, 7)                   \
     S(LOOP, loop, 8)               \
     S(MATCH, match, 9)             \
-    S(RETURN, return, 10)           \
-    S(VAR, var, 11)                \
-    S(WHILE, while, 12)            \
-    S(ASSIGN_BITWISE_AND, &=, 13)  \
-    S(ASSIGN_BITWISE_OR, |=, 14)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 15)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 16)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 17) \
-    S(BINARY_DECREMENT, -=, 18)    \
-    S(BINARY_INCREMENT, +=, 19)    \
-    S(BIT_SHIFT_LEFT, <<, 20)      \
-    S(BIT_SHIFT_RIGHT, >>, 21)     \
-    S(EQUALS, ==, 22)              \
-    S(GREATER_EQUALS, >=, 23)      \
-    S(LESS_EQUALS, <=, 24)         \
-    S(LOGICAL_AND, &&, 25)         \
-    S(LOGICAL_OR, ||, 26)          \
-    S(NOT_EQUALS, !=, 27)          \
-    S(RANGE, .., 28)               \
-    S(FUNC_BINDING, ->, 29)        \
-    S(UNARY_DECREMENT, --, 30)     \
-    S(UNARY_INCREMENT, ++, 31)
+    S(RETURN, return, 10)          \
+    S(STRUCT, struct, 11)          \
+    S(VAR, var, 12)                \
+    S(WHILE, while, 13)            \
+    S(ASSIGN_BITWISE_AND, &=, 14)  \
+    S(ASSIGN_BITWISE_OR, |=, 15)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 16)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 17)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 18) \
+    S(BINARY_DECREMENT, -=, 19)    \
+    S(BINARY_INCREMENT, +=, 20)    \
+    S(BIT_SHIFT_LEFT, <<, 21)      \
+    S(BIT_SHIFT_RIGHT, >>, 22)     \
+    S(EQUALS, ==, 23)              \
+    S(GREATER_EQUALS, >=, 24)      \
+    S(LESS_EQUALS, <=, 25)         \
+    S(LOGICAL_AND, &&, 26)         \
+    S(LOGICAL_OR, ||, 27)          \
+    S(NOT_EQUALS, !=, 28)          \
+    S(RANGE, .., 29)               \
+    S(FUNC_BINDING, ->, 30)        \
+    S(UNARY_DECREMENT, --, 31)     \
+    S(UNARY_INCREMENT, ++, 32)
 
 typedef enum {
 #undef KEYWORD_ENUM

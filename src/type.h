@@ -15,6 +15,7 @@
     S(TK_PRIMITIVE)  \
     S(TK_COMPOSITE)  \
     S(TK_VARIANT)    \
+    S(TK_ARRAY)      \
     S(TK_ALIAS)
 
 typedef enum {
@@ -40,37 +41,43 @@ typedef enum {
         PT_COUNT
 } PrimitiveType;
 
+typedef size_t                 type_id;
 typedef struct expression_type ExpressionType;
 
 // Used for both TK_COMPOSITE and TK_VARIANT.
 typedef struct type_component {
     StringView             name;
-    size_t                 type_id;
+    type_id                type_id;
     struct type_component *next;
 } TypeComponent;
 
 typedef struct expression_type {
-    size_t     type_id;
+    type_id    type_id;
     StringView name;
     TypeKind   kind;
     union {
         PrimitiveType primitive;
         TypeComponent component;
-        size_t        alias_for_id;
+        struct {
+            size_t base_type;
+            size_t size;
+        } array;
+        size_t alias_for_id;
     };
 } ExpressionType;
 
 typedef struct {
-    size_t type_id;
-    bool   optional;
+    type_id type_id;
+    bool    optional;
 } TypeSpec;
 
 extern char const     *PrimitiveType_name(PrimitiveType type);
 extern ExpressionType *type_registry_get_type_by_name(StringView name);
-extern ExpressionType *type_registry_get_type_by_id(size_t id);
-extern size_t          type_registry_id_of_primitive_type(PrimitiveType type);
-extern size_t          type_registry_get_variant(size_t num, size_t *types);
-extern size_t          type_registry_get_variant2(size_t t1, size_t t2);
+extern ExpressionType *type_registry_get_type_by_id(type_id id);
+extern type_id         type_registry_id_of_primitive_type(PrimitiveType type);
+extern type_id         type_registry_get_variant(type_id num, type_id *types);
+extern type_id         type_registry_get_variant2(type_id t1, type_id t2);
+extern type_id         type_registry_make_struct(StringView name, size_t num, StringView *names, type_id *types);
 extern void            type_registry_init();
 extern bool            typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
 extern StringView      typespec_name(TypeSpec typespec);

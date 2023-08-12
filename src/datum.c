@@ -6,6 +6,25 @@
 
 #include <datum.h>
 
+#undef ENUM_BINARY_OPERATOR
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c) static Datum datum_ ## op(Datum, Datum);
+    BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
+#undef ENUM_BINARY_OPERATOR
+
+typedef Datum (*BinaryDatumFunction)(Datum, Datum);
+
+typedef struct operator_functions {
+    Operator            op;
+    BinaryDatumFunction function;
+} OperatorFunctions;
+
+static OperatorFunctions s_functions[] = {
+#undef ENUM_BINARY_OPERATOR
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_ ## op, datum_ ## op },
+    BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
+#undef ENUM_BINARY_OPERATOR
+};
+
 char const *DatumType_name(DatumType dt)
 {
     switch (dt) {
@@ -422,20 +441,6 @@ Datum datum_BIT_SHIFT_RIGHT(Datum d1, Datum d2)
     }
     return ret;
 }
-
-typedef Datum (*BinaryDatumFunction)(Datum, Datum);
-
-typedef struct operator_functions {
-    Operator            op;
-    BinaryDatumFunction function;
-} OperatorFunctions;
-
-static OperatorFunctions s_functions[] = {
-#undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_ ## op, datum_ ## op },
-    BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
-#undef ENUM_BINARY_OPERATOR
-};
 
 Datum datum_apply(Datum d1, Operator op, Datum d2)
 {

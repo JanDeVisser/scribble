@@ -34,9 +34,9 @@ CallStackEntry         call_stack_pop(CallStack *stack);
 void                   call_stack_push(CallStack *stack, IRFunction *function, size_t index);
 void                   call_stack_dump(CallStack *stack);
 VarList               *scope_variable(Scope *scope, StringView name);
-char const            *scope_declare_variable(Scope *scope, StringView name);
-char const            *scope_assign_variable(Scope *scope, StringView name, Datum value);
-Datum                  scope_variable_value(Scope *scope, StringView name);
+char const            *scope_declare_variable(Scope *scope, StringView name, type_id type);
+char const            *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack);
+char const            *scope_push_variable(Scope *scope, StringView name, DatumStack *stack);
 void                   scope_dump_call_stack(Scope *scope);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
@@ -121,7 +121,7 @@ VarList *scope_variable(Scope *scope, StringView name)
     return NULL;
 }
 
-char const *scope_declare_variable(Scope *scope, StringView name)
+char const *scope_declare_variable(Scope *scope, StringView name, type_id type)
 {
     VarList *end;
     for (end = scope->var_list; end && end->next; end = end->next) {
@@ -131,6 +131,7 @@ char const *scope_declare_variable(Scope *scope, StringView name)
     }
     VarList *new = allocate(sizeof(VarList));
     new->name = name;
+    new->type = type;
     if (end) {
         end->next = new;
     } else {
@@ -139,13 +140,45 @@ char const *scope_declare_variable(Scope *scope, StringView name)
     return NULL;
 }
 
-char const *scope_assign_variable(Scope *scope, StringView name, Datum value)
+char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
 {
     Scope *s = scope;
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            v->value = value;
+            ExpressionType *et = type_registry_get_type_by_id(v->type);
+            switch (et->kind) {
+            case TK_PRIMITIVE: {
+                Datum d = datum_stack_pop(stack);
+                if (d.type == DT_ERROR) {
+                    return d.error;
+                }
+                v->value = d;
+            } break;
+            case TK_COMPOSITE: {
+                TypeComponent *type_component = &et->component;
+                v->composite.num_components = 0;
+                v->composite.components = NULL;
+                while (type_component) {
+                    ExpressionType *t = type_registry_get_type_by_id(type_component->type_id);
+                    assert(t->kind == TK_PRIMITIVE);
+                    ++v->composite.num_components;
+                    type_component = type_component->next;
+                }
+                v->composite.components = allocate_array(Datum, v->composite.num_components);
+                type_component = &et->component;
+                for (long ix = (long) v->composite.num_components - 1; ix >= 0; --ix) {
+                    // TODO check that types match
+                    Datum d = datum_stack_pop(stack);
+                    if (d.type == DT_ERROR) {
+                        return d.error;
+                    }
+                    v->composite.components[ix] = d;
+                }
+            } break;
+            default:
+                NYI("type kind in scope_push_variable");
+            }
             return NULL;
         }
         s = s->enclosing;
@@ -153,20 +186,36 @@ char const *scope_assign_variable(Scope *scope, StringView name, Datum value)
     return "Cannot assign undeclared variable";
 }
 
-Datum scope_variable_value(Scope *scope, StringView name)
+char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack)
 {
     Scope *s = scope;
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            return v->value;
+            ExpressionType *et = type_registry_get_type_by_id(v->type);
+            switch (et->kind) {
+            case TK_PRIMITIVE:
+                datum_stack_push(stack, v->value);
+                break;
+            case TK_COMPOSITE: {
+                TypeComponent *type_component = &et->component;
+                size_t         ix = 0;
+                while (type_component) {
+                    ExpressionType *t = type_registry_get_type_by_id(type_component->type_id);
+                    assert(t->kind == TK_PRIMITIVE);
+                    assert(ix < v->composite.num_components);
+                    datum_stack_push(stack, v->composite.components[ix++]);
+                    type_component = type_component->next;
+                }
+            } break;
+            default:
+                NYI("type kind in scope_push_variable");
+            }
+            return NULL;
         }
         s = s->enclosing;
     }
-    Datum error = { 0 };
-    error.type = DT_ERROR;
-    error.error = "Cannot get value of undeclared variable";
-    return error;
+    return "Cannot get value of undeclared variable";
 }
 
 void scope_dump_variables(Scope *scope)
@@ -222,7 +271,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         }
     } break;
     case IR_DECL_VAR: {
-        char const *err = scope_declare_variable(ctx->scope, op->var_decl.name);
+        char const *err = scope_declare_variable(ctx->scope, op->var_decl.name, op->var_decl.type.type_id);
         if (err) {
             next.type = NIT_EXCEPTION;
             next.exception = err;
@@ -264,13 +313,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_stack_push(&ctx->stack, datum_apply(d1, op->op, d2));
     } break;
     case IR_POP_VAR: {
-        Datum d = datum_stack_pop(&ctx->stack);
-        if (d.type == DT_ERROR) {
-            next.type = NIT_EXCEPTION;
-            next.exception = d.error;
-            return next;
-        }
-        char const *err = scope_assign_variable(ctx->scope, op->sv, d);
+        char const *err = scope_pop_variable(ctx->scope, op->sv, &ctx->stack);
         if (err) {
             next.type = NIT_EXCEPTION;
             next.exception = err;
@@ -290,13 +333,12 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_VAR: {
-        Datum d = scope_variable_value(ctx->scope, op->sv);
-        if (d.type == DT_ERROR) {
+        char const *err = scope_push_variable(ctx->scope, op->sv, &ctx->stack);
+        if (err) {
             next.type = NIT_EXCEPTION;
-            next.exception = d.error;
+            next.exception = err;
             return next;
         }
-        datum_stack_push(&ctx->stack, d);
     } break;
     case IR_RETURN: {
         NextInstructionPointer nip = { 0 };

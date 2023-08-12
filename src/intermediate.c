@@ -93,6 +93,12 @@ void generate_node(BoundNode *node, void *target)
         ir_function_add_operation(fnc, op);
         break;
     }
+    case BNT_COMPOUND_INITIALIZER: {
+        for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
+            generate_node(arg, fnc);
+        }
+        break;
+    }
     case BNT_FUNCTION: {
         IRProgram *program = (IRProgram *) target;
         if (program->num_functions == program->cap_functions - 1) {

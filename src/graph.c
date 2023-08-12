@@ -219,9 +219,9 @@ void graph_node_emit(GraphNode *node, FILE *f)
         }
     } break;
     case SNT_FUNCTION_CALL: {
-        if (sn->call.argument) {
+        if (sn->arguments.argument) {
             GraphNode *arguments = graph_node_create_virtual(node, sv_from("arguments"), f);
-            for (SyntaxNode *arg = sn->call.argument; arg != NULL; arg = arg->next) {
+            for (SyntaxNode *arg = sn->arguments.argument; arg != NULL; arg = arg->next) {
                 graph_node_forward(arguments, abstract(arg), NULL, f);
             }
         }

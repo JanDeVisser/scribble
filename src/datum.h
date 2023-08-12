@@ -68,11 +68,6 @@ bool          DatumType_is_integer(DatumType dt);
 bool          DatumType_is_number(DatumType dt);
 unsigned long datum_unsigned_integer_value(Datum d);
 long          datum_signed_integer_value(Datum d);
-Datum         datum_add(Datum d1, Datum d2);
-Datum         datum_subtract(Datum d1, Datum d2);
-Datum         datum_multiply(Datum d1, Datum d2);
-Datum         datum_modulo(Datum d1, Datum d2);
-Datum         datum_equals(Datum d1, Datum d2);
 Datum         datum_apply(Datum d1, Operator op, Datum d2);
 void          datum_print(Datum d);
 

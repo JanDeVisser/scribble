@@ -11,28 +11,31 @@
 #ifndef __BINDER_H__
 #define __BINDER_H__
 
-#define BOUNDNODETYPES(S)   \
-    S(BNT_ASSIGNMENT)       \
-    S(BNT_BINARYEXPRESSION) \
-    S(BNT_BLOCK)            \
-    S(BNT_BREAK)            \
-    S(BNT_CONTINUE)         \
-    S(BNT_FUNCTION)         \
-    S(BNT_FUNCTION_CALL)    \
-    S(BNT_IF)               \
-    S(BNT_INTRINSIC)        \
-    S(BNT_LOOP)             \
-    S(BNT_MODULE)           \
-    S(BNT_NUMBER)           \
-    S(BNT_PARAMETER)        \
-    S(BNT_PROGRAM)          \
-    S(BNT_RETURN)           \
-    S(BNT_STRING)           \
-    S(BNT_TYPE)             \
-    S(BNT_UNARYEXPRESSION)  \
-    S(BNT_UNBOUND_NODE)     \
-    S(BNT_VARIABLE)         \
-    S(BNT_VARIABLE_DECL)    \
+#define BOUNDNODETYPES(S)       \
+    S(BNT_ASSIGNMENT)           \
+    S(BNT_BINARYEXPRESSION)     \
+    S(BNT_BLOCK)                \
+    S(BNT_BREAK)                \
+    S(BNT_COMPOUND_INITIALIZER) \
+    S(BNT_CONTINUE)             \
+    S(BNT_FUNCTION)             \
+    S(BNT_FUNCTION_CALL)        \
+    S(BNT_IF)                   \
+    S(BNT_INTRINSIC)            \
+    S(BNT_LOOP)                 \
+    S(BNT_MODULE)               \
+    S(BNT_NUMBER)               \
+    S(BNT_PARAMETER)            \
+    S(BNT_PROGRAM)              \
+    S(BNT_RETURN)               \
+    S(BNT_STRING)               \
+    S(BNT_TYPE)                 \
+    S(BNT_TYPE_COMPONENT)       \
+    S(BNT_UNARYEXPRESSION)      \
+    S(BNT_UNBOUND_NODE)         \
+    S(BNT_UNBOUND_TYPE)         \
+    S(BNT_VARIABLE)             \
+    S(BNT_VARIABLE_DECL)        \
     S(BNT_WHILE)
 
 typedef enum bound_node_type {
@@ -87,15 +90,18 @@ typedef struct bound_node {
             Operator operator;
         } binary_expr;
         struct {
-            struct bound_node *init_expr;
-        } variable_decl;
-        struct {
             struct bound_node *decl;
         } variable;
+        struct {
+            struct bound_node *expression;
+        } assignment;
         struct {
             struct bound_node *function;
             struct bound_node *argument;
         } call;
+        struct {
+            struct bound_node *argument;
+        } compound_initializer;
         struct {
             struct bound_node *condition;
             struct bound_node *if_true;
@@ -105,8 +111,11 @@ typedef struct bound_node {
             struct bound_node *expression;
         } return_stmt;
         struct {
-            struct bound_node *expression;
-        } assignment;
+            struct bound_node *components;
+        } struct_def;
+        struct {
+            struct bound_node *init_expr;
+        } variable_decl;
         struct {
             struct bound_node *condition;
             struct bound_node *statement;

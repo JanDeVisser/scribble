@@ -9,14 +9,22 @@
 #include <datum.h>
 #include <intermediate.h>
 #include <sv.h>
+#include <type.h>
 
 #ifndef __EXECUTE_H__
 #define __EXECUTE_H__
 
 typedef struct var_list {
     StringView       name;
-    Datum            value;
+    type_id          type;
     struct var_list *next;
+    union {
+        Datum value;
+        struct {
+            size_t num_components;
+            Datum *components;
+        } composite;
+    };
 } VarList;
 
 typedef struct scope {
