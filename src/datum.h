@@ -44,7 +44,7 @@
     S(U32, u32, uint32_t, false, "u", 4)   \
     S(I32, i32, int32_t, true, "d", 4)     \
     S(U64, u64, uint64_t, false, "llu", 8) \
-    S(I64, i64, int64_t, true, "lld", )
+    S(I64, i64, int64_t, true, "lld", 8)
 
 typedef enum datum_type {
 #undef DATUMTYPE
@@ -64,8 +64,10 @@ typedef struct datum {
 } Datum;
 
 char const   *DatumType_name(DatumType dt);
+DatumType     DatumType_get_integer_type(size_t width, bool un_signed);
 bool          DatumType_is_integer(DatumType dt);
 bool          DatumType_is_number(DatumType dt);
+Datum         datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
 unsigned long datum_unsigned_integer_value(Datum d);
 long          datum_signed_integer_value(Datum d);
 Datum         datum_apply(Datum d1, Operator op, Datum d2);

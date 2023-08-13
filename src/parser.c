@@ -254,7 +254,29 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
     }
     case TK_NUMBER:
         lexer_lex(lexer);
-        return syntax_node_make(SNT_NUMBER, token.text, token);
+        SyntaxNode *ret = syntax_node_make(SNT_NUMBER, token.text, token);
+        ret->number.un_signed = false;
+        ret->number.width = 32;
+        Token type = lexer_next(lexer);
+        if (token_matches_kind(type, TK_IDENTIFIER)) {
+            if (sv_eq_cstr(type.text, "u8") || sv_eq_cstr(type.text, "i8") ||
+                sv_eq_cstr(type.text, "u16") || sv_eq_cstr(type.text, "i16") ||
+                sv_eq_cstr(type.text, "u32") || sv_eq_cstr(type.text, "i32") ||
+                sv_eq_cstr(type.text, "u64") || sv_eq_cstr(type.text, "i64")) {
+                lexer_lex(lexer);
+                ret->number.un_signed = type.text.ptr[0] == 'u';
+                if (type.text.ptr[1] == '8') {
+                    ret->number.width = 8;
+                } else if (type.text.ptr[1] == '1') {
+                    ret->number.width = 16;
+                } else if (type.text.ptr[1] == '3') {
+                    ret->number.width = 32;
+                } else {
+                    ret->number.width = 64;
+                }
+            }
+        }
+        return ret;
     case TK_QUOTED_STRING:
         switch (token.code) {
         case TC_DOUBLE_QUOTED_STRING:

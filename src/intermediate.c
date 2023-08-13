@@ -88,7 +88,7 @@ void generate_node(BoundNode *node, void *target)
         assert(node->block.statements->intermediate);
         IROperation op;
         op.operation = IR_JUMP;
-        op.unsigned_value = node->block.statements->intermediate->loop.done;
+        op.label = node->block.statements->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
         break;
     }
@@ -96,7 +96,7 @@ void generate_node(BoundNode *node, void *target)
         assert(node->block.statements->intermediate);
         IROperation op;
         op.operation = IR_JUMP;
-        op.unsigned_value = node->block.statements->intermediate->loop.loop;
+        op.label = node->block.statements->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         break;
     }
@@ -205,7 +205,14 @@ void generate_node(BoundNode *node, void *target)
     case BNT_NUMBER: {
         IROperation op;
         op.operation = IR_PUSH_INT_CONSTANT;
-        op.int_value = (int) strtol(node->name.ptr, NULL, 10);
+        ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
+        op.integer.width = PrimitiveType_width(et->primitive.type);
+        op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive.type);
+        if (op.integer.un_signed) {
+            op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
+        } else {
+            op.integer.int_value = strtol(node->name.ptr, NULL, 10);
+        }
         ir_function_add_operation(fnc, op);
     } break;
     case BNT_STRING: {
@@ -223,8 +230,6 @@ void generate_node(BoundNode *node, void *target)
         ir_function_add_operation(fnc, op);
     } break;
     case BNT_FUNCTION_CALL: {
-        size_t arg_count = 0;
-
         struct arg_list {
             BoundNode       *arg;
             struct arg_list *prev;
@@ -262,24 +267,24 @@ void generate_node(BoundNode *node, void *target)
         IROperation  op;
         unsigned int else_label = next_label();
         op.operation = IR_JUMP_F;
-        op.unsigned_value = else_label;
+        op.label = else_label;
         ir_function_add_operation(fnc, op);
         generate_node(node->if_statement.if_true, fnc);
         if (node->if_statement.if_false) {
             unsigned int end_label = next_label();
             op.operation = IR_JUMP;
-            op.unsigned_value = end_label;
+            op.label = end_label;
             ir_function_add_operation(fnc, op);
             op.operation = IR_LABEL;
-            op.unsigned_value = else_label;
+            op.label = else_label;
             ir_function_add_operation(fnc, op);
             generate_node(node->if_statement.if_false, fnc);
             op.operation = IR_LABEL;
-            op.unsigned_value = end_label;
+            op.label = end_label;
             ir_function_add_operation(fnc, op);
         } else {
             op.operation = IR_LABEL;
-            op.unsigned_value = else_label;
+            op.label = else_label;
             ir_function_add_operation(fnc, op);
         }
     } break;
@@ -289,14 +294,14 @@ void generate_node(BoundNode *node, void *target)
         node->intermediate->loop.done = next_label();
         IROperation  op;
         op.operation = IR_LABEL;
-        op.unsigned_value = node->intermediate->loop.loop;
+        op.label = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         generate_node(node->block.statements, fnc);
         op.operation = IR_JUMP;
-        op.unsigned_value = node->intermediate->loop.loop;
+        op.label = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         op.operation = IR_LABEL;
-        op.unsigned_value = node->intermediate->loop.done;
+        op.label = node->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
     } break;
     case BNT_BLOCK: {
@@ -315,18 +320,18 @@ void generate_node(BoundNode *node, void *target)
         node->intermediate->loop.loop = next_label();
         node->intermediate->loop.done = next_label();
         op.operation = IR_LABEL;
-        op.unsigned_value = node->intermediate->loop.loop;
+        op.label = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         generate_node(node->while_statement.condition, fnc);
         op.operation = IR_JUMP_F;
-        op.unsigned_value = node->intermediate->loop.done;
+        op.label = node->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
         generate_node(node->while_statement.statement, fnc);
         op.operation = IR_JUMP;
-        op.unsigned_value = node->intermediate->loop.loop;
+        op.label = node->intermediate->loop.loop;
         ir_function_add_operation(fnc, op);
         op.operation = IR_LABEL;
-        op.unsigned_value = node->intermediate->loop.done;
+        op.label = node->intermediate->loop.done;
         ir_function_add_operation(fnc, op);
     } break;
     default:
@@ -368,13 +373,17 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         printf("%s", (op->bool_value) ? "true" : "false");
         break;
     case IR_PUSH_INT_CONSTANT:
-        printf("%d", op->int_value);
+        if (op->integer.un_signed) {
+            printf("%llu", op->integer.unsigned_value);
+        } else {
+            printf("%lld", op->integer.int_value);
+        }
         break;
     case IR_JUMP:
     case IR_JUMP_F:
     case IR_JUMP_T:
     case IR_LABEL:
-        printf("lbl_%u", op->unsigned_value);
+        printf("lbl_%zu", op->label);
         break;
     case IR_OPERATOR:
         printf("%s", Operator_name(op->op));
@@ -397,7 +406,7 @@ size_t ir_function_resolve_label(IRFunction *function, size_t label)
 {
     assert(function);
     for (size_t ix = 0; ix < function->num_operations; ++ix) {
-        if (function->operations[ix].operation == IR_LABEL && function->operations[ix].unsigned_value == label) {
+        if (function->operations[ix].operation == IR_LABEL && function->operations[ix].label == label) {
             return ix;
         }
     }
@@ -430,7 +439,7 @@ void ir_function_list(IRFunction *function, size_t mark)
     printf("--------------------------------------------\n");
     for (size_t ix = 0; ix < function->num_operations; ++ix) {
         if (function->operations[ix].operation == IR_LABEL) {
-            printf("lbl_%u:\n", function->operations[ix].unsigned_value);
+            printf("lbl_%zu:\n", function->operations[ix].label);
         }
         if (ix == mark) {
             ir_operation_print_prefix(function->operations + ix, ">");

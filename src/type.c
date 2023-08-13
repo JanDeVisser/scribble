@@ -12,7 +12,7 @@
 #include <allocate.h>
 
 static ExpressionType *type_registry_next_type(TypeKind kind, StringView name);
-static type_id         type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
+type_id                type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed);
 
 typedef struct {
     size_t          size;
@@ -29,9 +29,37 @@ char const *PrimitiveType_name(PrimitiveType type)
 {
     switch (type) {
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name) \
-    case type:                         \
+#define PRIMITIVETYPE_ENUM(type, name, w, u) \
+    case type:                               \
         return #name;
+        PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
+#undef PRIMITIVETYPE_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
+size_t PrimitiveType_width(PrimitiveType type)
+{
+    switch (type) {
+#undef PRIMITIVETYPE_ENUM
+#define PRIMITIVETYPE_ENUM(type, name, w, u) \
+    case type:                               \
+        return w;
+        PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
+#undef PRIMITIVETYPE_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
+bool PrimitiveType_is_unsigned(PrimitiveType type)
+{
+    switch (type) {
+#undef PRIMITIVETYPE_ENUM
+#define PRIMITIVETYPE_ENUM(type, name, w, u) \
+    case type:                               \
+        return u;
         PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
     default:
@@ -52,10 +80,12 @@ ExpressionType *type_registry_next_type(TypeKind kind, StringView name)
     return type;
 }
 
-type_id type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
+type_id type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed)
 {
     ExpressionType *type = type_registry_next_type(TK_PRIMITIVE, name);
-    type->primitive = primitive_type;
+    type->primitive.type = primitive_type;
+    type->primitive.width = width;
+    type->primitive.un_signed = un_signed;
     return type->type_id;
 }
 
@@ -80,11 +110,27 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
 type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (type_registry.types[ix].kind == TK_PRIMITIVE && type_registry.types[ix].primitive == type) {
+        if (type_registry.types[ix].kind == TK_PRIMITIVE && type_registry.types[ix].primitive.type == type) {
             return type_registry.types[ix].type_id;
         }
     }
     fatal("Primitive type '%s' not in registry", PrimitiveType_name(type));
+}
+
+type_id type_registry_id_of_integer_type(size_t width, bool un_signed)
+{
+    switch (width) {
+    case 8:
+        return type_registry_id_of_primitive_type((un_signed) ? PT_U8 : PT_I8);
+    case 16:
+        return type_registry_id_of_primitive_type((un_signed) ? PT_U16 : PT_I16);
+    case 32:
+        return type_registry_id_of_primitive_type((un_signed) ? PT_U32 : PT_I32);
+    case 64:
+        return type_registry_id_of_primitive_type((un_signed) ? PT_U64 : PT_I64);
+    default:
+        fatal("Invalid integer width %d", width);
+    }
 }
 
 type_id type_registry_get_variant(size_t num, type_id *types)
@@ -181,6 +227,13 @@ type_id type_registry_get_variant2(type_id t1, type_id t2)
     return type_registry_get_variant(2, types);
 }
 
+type_id type_registry_alias(StringView name, type_id aliased)
+{
+    ExpressionType *type = type_registry_next_type(TK_ALIAS, name);
+    type->alias_for_id = aliased;
+    return type->type_id;
+}
+
 void type_registry_init()
 {
     type_registry.types = allocate_array(ExpressionType, 8 * 1024);
@@ -190,10 +243,24 @@ void type_registry_init()
     type_registry.components_capacity = 64 * 1024;
     type_registry.components_size = 0;
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(code, name) \
-    type_registry_add_primitive(sv_from(#name), code);
+#define PRIMITIVETYPE_ENUM(code, name, width, un_signed) \
+    type_registry_add_primitive(sv_from(#name), code, width, un_signed);
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
+    type_registry_alias(sv_from("int"), type_registry_id_of_primitive_type(PT_I32));
+    type_registry_alias(sv_from("unsigned"), type_registry_id_of_primitive_type(PT_U32));
+    type_registry_alias(sv_from("byte"), type_registry_id_of_primitive_type(PT_I8));
+    type_registry_alias(sv_from("char"), type_registry_id_of_primitive_type(PT_U8));
+    type_registry_alias(sv_from("short"), type_registry_id_of_primitive_type(PT_I16));
+    type_registry_alias(sv_from("ushort"), type_registry_id_of_primitive_type(PT_U16));
+    type_registry_alias(sv_from("long"), type_registry_id_of_primitive_type(PT_I64));
+    type_registry_alias(sv_from("ulong"), type_registry_id_of_primitive_type(PT_U64));
+}
+
+type_id type_registry_canonical_type(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return (et->kind == TK_ALIAS) ? type_registry_canonical_type(et->alias_for_id) : type;
 }
 
 bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
@@ -202,7 +269,7 @@ bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
     assert(et1);
     ExpressionType *et2 = type_registry_get_type_by_id(ts2.type_id);
     assert(et2);
-    return ts1.type_id == ts2.type_id;
+    return type_registry_canonical_type(ts1.type_id) == type_registry_canonical_type(ts2.type_id);
 }
 
 StringView typespec_name(TypeSpec typespec)

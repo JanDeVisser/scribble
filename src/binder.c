@@ -332,7 +332,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         ret->name = stmt->token.text;
         switch (stmt->token.code) {
         case TC_INTEGER:
-            ret->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+            ret->typespec.type_id = type_registry_id_of_integer_type(stmt->number.width, stmt->number.un_signed);
             break;
         case TC_DECIMAL:
             ret->typespec.type_id = type_registry_id_of_primitive_type(PT_FLOAT);
@@ -604,14 +604,14 @@ BoundNode *bind(SyntaxNode *program)
 
     *intrinsic = bound_node_make(BNT_INTRINSIC, ret);
     (*intrinsic)->name = sv_from("fputs");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
     (*intrinsic)->typespec.optional = false;
     (*intrinsic)->intrinsic.intrinsic = INT_FPUTS;
 
     BoundNode **param = &(*intrinsic)->intrinsic.parameter;
     *param = bound_node_make(BNT_PARAMETER, *intrinsic);
     (*param)->name = sv_from("fh");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
     (*param)->typespec.optional = false;
 
     (*param)->next = bound_node_make(BNT_PARAMETER, *intrinsic);
@@ -624,7 +624,7 @@ BoundNode *bind(SyntaxNode *program)
     intrinsic = &(*intrinsic)->next;
 
     (*intrinsic)->name = sv_from("putln");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_INT);
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
     (*intrinsic)->typespec.optional = false;
     (*intrinsic)->intrinsic.intrinsic = INT_PUTLN;
 

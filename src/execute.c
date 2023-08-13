@@ -160,7 +160,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 v->composite.num_components = 0;
                 v->composite.components = NULL;
                 while (type_component) {
-                    ExpressionType *t = type_registry_get_type_by_id(type_component->type_id);
+                    ExpressionType *t = type_registry_get_type_by_id(type_registry_canonical_type(type_component->type_id));
                     assert(t->kind == TK_PRIMITIVE);
                     ++v->composite.num_components;
                     type_component = type_component->next;
@@ -298,7 +298,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_JUMP: {
         next.type = NIT_LABEL;
-        next.pointer = op->unsigned_value;
+        next.pointer = op->label;
         return next;
     }
     case IR_JUMP_F: {
@@ -306,7 +306,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         assert(cond.type == DT_BOOL);
         if (!cond.bool_value) {
             next.type = NIT_LABEL;
-            next.pointer = op->unsigned_value;
+            next.pointer = op->label;
             return next;
         }
     } break;
@@ -320,7 +320,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         assert(cond.type == DT_BOOL);
         if (cond.bool_value) {
             next.type = NIT_LABEL;
-            next.pointer = op->unsigned_value;
+            next.pointer = op->label;
             return next;
         }
     } break;
@@ -346,9 +346,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_INT_CONSTANT: {
-        Datum d = { 0 };
-        d.type = DT_I32;
-        d.i32 = op->int_value;
+        Datum d = datum_make_integer(op->integer.width, op->integer.un_signed, op->integer.int_value, op->integer.int_value);
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_STRING_CONSTANT: {

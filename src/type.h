@@ -25,17 +25,24 @@ typedef enum {
 #undef TYPEKINDS_ENUM
 } TypeKind;
 
-#define PRIMITIVETYPES(S) \
-    S(PT_VOID, void)      \
-    S(PT_INT, int)        \
-    S(PT_STRING, string)  \
-    S(PT_BOOL, bool)      \
-    S(PT_POINTER, void *) \
-    S(PT_FLOAT, float)
+#define PRIMITIVETYPES(S)          \
+    S(PT_VOID, void, 0, false)     \
+    S(PT_I8, i8, 8, false)         \
+    S(PT_U8, u8, 8, true)          \
+    S(PT_I16, i16, 16, false)      \
+    S(PT_U16, u16, 16, true)       \
+    S(PT_I32, i32, 32, false)      \
+    S(PT_U32, u32, 32, true)       \
+    S(PT_I64, i64, 64, false)      \
+    S(PT_U64, u64, 64, true)       \
+    S(PT_STRING, string, 0, false) \
+    S(PT_BOOL, bool, 8, false)     \
+    S(PT_POINTER, ptr, 64, false)  \
+    S(PT_FLOAT, float, 64, false)
 
 typedef enum {
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name) type,
+#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) type,
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
         PT_COUNT
@@ -56,7 +63,11 @@ typedef struct expression_type {
     StringView name;
     TypeKind   kind;
     union {
-        PrimitiveType primitive;
+        struct {
+            PrimitiveType type;
+            size_t        width;
+            bool          un_signed;
+        } primitive;
         TypeComponent component;
         struct {
             size_t base_type;
@@ -72,12 +83,16 @@ typedef struct {
 } TypeSpec;
 
 extern char const     *PrimitiveType_name(PrimitiveType type);
+extern size_t          PrimitiveType_width(PrimitiveType type);
+extern bool            PrimitiveType_is_unsigned(PrimitiveType type);
 extern ExpressionType *type_registry_get_type_by_name(StringView name);
 extern ExpressionType *type_registry_get_type_by_id(type_id id);
 extern type_id         type_registry_id_of_primitive_type(PrimitiveType type);
+extern type_id         type_registry_id_of_integer_type(size_t width, bool un_signed);
 extern type_id         type_registry_get_variant(type_id num, type_id *types);
 extern type_id         type_registry_get_variant2(type_id t1, type_id t2);
 extern type_id         type_registry_make_struct(StringView name, size_t num, StringView *names, type_id *types);
+extern type_id         type_registry_canonical_type(type_id type);
 extern void            type_registry_init();
 extern bool            typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
 extern StringView      typespec_name(TypeSpec typespec);

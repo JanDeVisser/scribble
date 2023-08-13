@@ -39,6 +39,18 @@ char const *DatumType_name(DatumType dt)
     }
 }
 
+DatumType DatumType_get_integer_type(size_t width, bool un_signed)
+{
+    bool s = !un_signed;
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) if ((width == (size*8)) && (s == is_signed)) return DT_##dt;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    UNREACHABLE();
+}
+
+
+
 bool DatumType_is_integer(DatumType dt)
 {
     switch (dt) {
@@ -478,4 +490,64 @@ void datum_print(Datum d)
         printf("%s", (d.bool_value) ? "true" : "false");
         break;
     }
+}
+
+Datum datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value)
+{
+    Datum d = {0};
+    d.type = DatumType_get_integer_type(width, un_signed);
+    if (un_signed) {
+        switch (width) {
+        case 8:
+            if (unsigned_value > UINT8_MAX) {
+                fatal("u8 value out of range: %zu", unsigned_value);
+            }
+            d.u8 = (uint8_t) unsigned_value;
+            break;
+        case 16:
+            if (unsigned_value > UINT16_MAX) {
+                fatal("u16 value out of range: %zu", unsigned_value);
+            }
+            d.u16 = (uint16_t) unsigned_value;
+            break;
+        case 32:
+            if (unsigned_value > UINT32_MAX) {
+                fatal("u32 value out of range: %zu", unsigned_value);
+            }
+            d.u32 = (uint32_t) unsigned_value;
+            break;
+        case 64:
+            d.u64 = unsigned_value;
+            break;
+        default:
+            UNREACHABLE();
+        }
+    } else {
+        switch (width) {
+        case 8:
+            if (signed_value > INT8_MAX || signed_value < INT8_MIN) {
+                fatal("i8 value out of range: %zu", signed_value);
+            }
+            d.i8 = (int8_t) signed_value;
+            break;
+        case 16:
+            if (signed_value > INT16_MAX || signed_value < INT16_MIN) {
+                fatal("i16 value out of range: %zu", signed_value);
+            }
+            d.i16 = (int16_t) signed_value;
+            break;
+        case 32:
+            if (signed_value > INT32_MAX || signed_value < INT32_MIN) {
+                fatal("i32 value out of range: %zu", signed_value);
+            }
+            d.i32 = (int32_t) signed_value;
+            break;
+        case 64:
+            d.u64 = signed_value;
+            break;
+        default:
+            UNREACHABLE();
+        }
+    }
+    return d;
 }

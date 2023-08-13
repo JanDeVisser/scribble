@@ -6,8 +6,8 @@
 
 #include <ctype.h>
 
-#include "log.h"
-#include "sv.h"
+#include <log.h>
+#include <sv.h>
 
 #ifndef __LEXER_H__
 #define __LEXER_H__

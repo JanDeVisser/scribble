@@ -99,7 +99,7 @@ typedef struct operator_mapping {
 typedef enum {
     SNT_UNKNOWN = 0,
 #undef SYNTAXNODETYPE_ENUM
-#define SYNTAXNODETYPE_ENUM(type) SNT_ ## type,
+#define SYNTAXNODETYPE_ENUM(type) SNT_##type,
     SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
 } SyntaxNodeType;
@@ -144,6 +144,10 @@ typedef struct syntax_node {
             struct syntax_node *if_true;
             struct syntax_node *if_false;
         } if_statement;
+        struct {
+            size_t width;
+            bool   un_signed;
+        } number;
         struct {
             struct syntax_node *expression;
         } return_stmt;

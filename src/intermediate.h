@@ -46,13 +46,20 @@ typedef struct ir_operation {
     IROperationType operation;
     size_t          index;
     union {
-        int          int_value;
-        unsigned int unsigned_value;
-        double       double_value;
-        bool         bool_value;
-        StringView   sv;
-        IRVarDecl    var_decl;
-        Operator     op;
+        struct {
+            union {
+                int64_t  int_value;
+                uint64_t unsigned_value;
+            };
+            size_t width;
+            bool   un_signed;
+        } integer;
+        size_t     label;
+        double     double_value;
+        bool       bool_value;
+        StringView sv;
+        IRVarDecl  var_decl;
+        Operator   op;
     };
 } IROperation;
 
