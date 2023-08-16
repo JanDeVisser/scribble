@@ -13,6 +13,7 @@
 
 int main(int argc, char **argv)
 {
+    bool   trace = false;
     bool   debug = false;
     bool   graph = false;
     char  *program_dir = NULL;
@@ -26,6 +27,8 @@ int main(int argc, char **argv)
                     debug = true;
                 } else if (!strcmp(argv[ix], "--graph")) {
                     graph = true;
+                } else if (!strcmp(argv[ix], "--trace")) {
+                    trace = true;
                 }
             } else {
                 program_dir = argv[ix];
@@ -35,6 +38,7 @@ int main(int argc, char **argv)
             scribble_params = argv + ix;
         }
     }
+    log_init(trace);
     type_registry_init();
 
     SyntaxNode *program = parse((program_dir) ? program_dir : ".");

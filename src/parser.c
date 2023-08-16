@@ -210,10 +210,8 @@ SyntaxNode *parse_expression_1(Lexer *lexer, SyntaxNode *lhs, int min_precedence
 {
     Token           lookahead = lexer_next(lexer);
     OperatorMapping op = operator_for_token(lookahead);
-    Token           t;
     while (op.binary && op.precedence >= min_precedence) {
         lexer_lex(lexer);
-        t = token_merge(lhs->token, lookahead);
 
         SyntaxNode *rhs = parse_primary_expression(lexer);
         int         prec = op.precedence;
@@ -225,8 +223,7 @@ SyntaxNode *parse_expression_1(Lexer *lexer, SyntaxNode *lhs, int min_precedence
             lookahead = lexer_next(lexer);
             op_1 = operator_for_token(lookahead);
         }
-        t = token_merge(t, rhs->token);
-        SyntaxNode *expr = syntax_node_make(SNT_BINARYEXPRESSION, sv_from(""), t);
+        SyntaxNode *expr = syntax_node_make(SNT_BINARYEXPRESSION, sv_from(""), lhs->token);
         expr->binary_expr.lhs = lhs;
         expr->binary_expr.rhs = rhs;
         expr->binary_expr.operator= op.operator;
@@ -259,10 +256,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
         ret->number.width = 32;
         Token type = lexer_next(lexer);
         if (token_matches_kind(type, TK_IDENTIFIER)) {
-            if (sv_eq_cstr(type.text, "u8") || sv_eq_cstr(type.text, "i8") ||
-                sv_eq_cstr(type.text, "u16") || sv_eq_cstr(type.text, "i16") ||
-                sv_eq_cstr(type.text, "u32") || sv_eq_cstr(type.text, "i32") ||
-                sv_eq_cstr(type.text, "u64") || sv_eq_cstr(type.text, "i64")) {
+            if (sv_eq_cstr(type.text, "u8") || sv_eq_cstr(type.text, "i8") || sv_eq_cstr(type.text, "u16") || sv_eq_cstr(type.text, "i16") || sv_eq_cstr(type.text, "u32") || sv_eq_cstr(type.text, "i32") || sv_eq_cstr(type.text, "u64") || sv_eq_cstr(type.text, "i64")) {
                 lexer_lex(lexer);
                 ret->number.un_signed = type.text.ptr[0] == 'u';
                 if (type.text.ptr[1] == '8') {
@@ -311,12 +305,10 @@ SyntaxNode *parse_variable_declaration(Lexer *lexer, bool is_const)
     if (ident.kind != TK_IDENTIFIER) {
         fatal("Expected variable name after 'var' keyword");
     }
-    t = token_merge(var, ident);
     token = lexer_next(lexer);
     if (token_matches(token, TK_SYMBOL, ':')) {
         lexer_lex(lexer);
         type = parse_type(lexer);
-        t = token_merge(t, type->token);
     }
     token = lexer_next(lexer);
     if (token_matches(token, TK_SYMBOL, '=')) {
@@ -328,11 +320,10 @@ SyntaxNode *parse_variable_declaration(Lexer *lexer, bool is_const)
         } else {
             expr = parse_expression(lexer);
         }
-        t = token_merge(t, expr->token);
     } else if (is_const) {
         fatal("'const' declaration without initializer expression");
     }
-    SyntaxNode *ret = syntax_node_make(SNT_VARIABLE_DECL, ident.text, t);
+    SyntaxNode *ret = syntax_node_make(SNT_VARIABLE_DECL, ident.text, var);
     ret->variable_decl.var_type = type;
     ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = is_const;
@@ -425,7 +416,6 @@ SyntaxNode *parse_block(Lexer *lexer)
     SyntaxNode **dst = &ret->block.statements;
     while (true) {
         token = lexer_next(lexer);
-        ret->token = token_merge(ret->token, token);
         if (token.kind == TK_SYMBOL && token.code == '}') {
             lexer_lex(lexer);
             return ret;
@@ -460,11 +450,11 @@ SyntaxNode *parse_assignment_or_call(Lexer *lexer)
             } else {
                 expression = parse_expression(lexer);
             }
-            ret = syntax_node_make(SNT_ASSIGNMENT, name, token_merge(token, expression->token));
+            ret = syntax_node_make(SNT_ASSIGNMENT, name, token);
             ret->assignment.expression = expression;
         } break;
         case '(': {
-            ret = syntax_node_make(SNT_FUNCTION_CALL, name, token_merge(token, t));
+            ret = syntax_node_make(SNT_FUNCTION_CALL, name, token);
             parse_arguments(lexer, ret, '(', ')');
         } break;
         default:
@@ -712,18 +702,14 @@ SyntaxNode *parse_struct_def(Lexer *lexer)
     }
 }
 
-SyntaxNode *parse_module(int dir_fd, char const *file)
+SyntaxNode *parse_module(SyntaxNode *program, StringView buffer, StringView name)
 {
-    char       *name_owned = (char *) allocate(strlen(file) + 1);
-    Token       token = { 0, sv_from(name_owned), TK_MODULE, TC_NONE };
-    SyntaxNode *module = syntax_node_make(SNT_MODULE, sv_from(name_owned), token);
+    Token       token = { name, TK_MODULE, TC_NONE };
+    SyntaxNode *module = syntax_node_make(SNT_MODULE, name, token);
     Lexer       lexer = { 0 };
 
-    MUST(Char, char *, buffer, read_file_at(dir_fd, file))
-    strcpy(name_owned, file);
-    lexer.buffer = buffer;
     lexer.skip_whitespace = true;
-    lexer.tail = sv_from(buffer);
+    lexer_push_source(&lexer, buffer);
     SyntaxNode *last_statement = NULL;
     do {
         token = lexer_next(&lexer);
@@ -745,7 +731,17 @@ SyntaxNode *parse_module(int dir_fd, char const *file)
             lexer_lex(&lexer);
         }
     } while (token.kind != TK_END_OF_FILE);
+    module->next = program->program.modules;
+    program->program.modules = module;
     return module;
+}
+
+SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
+{
+    char *name_owned = (char *) allocate(strlen(file) + 1);
+    MUST(Char, char *, buffer, read_file_at(dir_fd, file))
+    strcpy(name_owned, file);
+    return parse_module(program, sv_from(buffer), sv_from(name_owned));
 }
 
 SyntaxNode *parse(char const *dir_name)
@@ -754,19 +750,12 @@ SyntaxNode *parse(char const *dir_name)
     if (dir == NULL)
         return NULL;
 
-    Token          token = { 0, sv_from(dir_name), TK_PROGRAM, TC_NONE };
+    Token          token = { sv_from(dir_name), TK_PROGRAM, TC_NONE };
     SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_name), token);
     struct dirent *dp;
-    SyntaxNode    *last_module = NULL;
     while ((dp = readdir(dir)) != NULL) {
         if ((dp->d_namlen > 8) && strcmp(dp->d_name + (dp->d_namlen - 9), ".scribble") == 0) {
-            SyntaxNode *module = parse_module(dirfd(dir), dp->d_name);
-            if (!last_module) {
-                program->program.modules = module;
-            } else {
-                last_module->next = module;
-            }
-            last_module = module;
+            SyntaxNode *module = parse_module_file(program, dirfd(dir), dp->d_name);
         }
     }
     closedir(dir);

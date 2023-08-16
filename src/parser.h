@@ -76,7 +76,6 @@ typedef struct operator_mapping {
     S(BLOCK)                \
     S(BOOL)                 \
     S(BREAK)                \
-    S(TYPE_COMPONENT)       \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(FUNCTION)             \
@@ -91,6 +90,7 @@ typedef struct operator_mapping {
     S(STRING)               \
     S(STRUCT)               \
     S(TYPE)                 \
+    S(TYPE_COMPONENT)       \
     S(UNARYEXPRESSION)      \
     S(VARIABLE)             \
     S(VARIABLE_DECL)        \

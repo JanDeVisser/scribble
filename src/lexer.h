@@ -112,7 +112,6 @@ typedef enum {
 #define KW_COUNT (KW_MAX - TC_COUNT)
 
 typedef struct {
-    size_t     pos;
     StringView text;
     TokenKind  kind;
     int        code;
@@ -125,24 +124,29 @@ typedef struct {
                      t.text.ptr,             \
                      t.text.length
 
+typedef struct source_stack {
+    StringView           source;
+    struct source_stack *prev;
+} SourceStackEntry;
+
 typedef struct {
-    char const *buffer;
-    bool        skip_whitespace;
-    StringView  tail;
-    Token       current;
-    size_t      ptr;
+    bool              skip_whitespace;
+    SourceStackEntry *sources;
+    Token             current;
 } Lexer;
 
 extern char const *TokenKind_name(TokenKind kind);
 extern char const *TokenCode_name(int code);
-extern Token       token_merge(Token t1, Token t2);
-extern Token       token_merge3(Token t1, Token t2, Token t3);
 
 #define token_matches_kind(t, k) ((t).kind == k)
 #define token_matches(t, k, c) (token_matches_kind((t), (k)) && (t).code == c)
 
-extern Token lexer_peek(Lexer *lexer);
-extern Token lexer_next(Lexer *lexer);
-extern Token lexer_lex(Lexer *lexer);
+extern StringView lexer_source(Lexer *lexer);
+extern void       lexer_update_source(Lexer *lexer, StringView new_source);
+extern void       lexer_push_source(Lexer *lexer, StringView source);
+extern void       lexer_pop_source(Lexer *lexer);
+extern Token      lexer_peek(Lexer *lexer);
+extern Token      lexer_next(Lexer *lexer);
+extern Token      lexer_lex(Lexer *lexer);
 
 #endif /* __LEXER_H__ */

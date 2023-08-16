@@ -32,6 +32,11 @@ static BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ct
 static BoundNode *rebind_node(BoundNode *node, BindContext *ctx);
 static void       rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx);
 
+#undef SYNTAXNODETYPE_ENUM
+#define SYNTAXNODETYPE_ENUM(type) static BoundNode *bind_##type(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx);
+SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
+#undef SYNTAXNODETYPE_ENUM
+
 char const *BoundNodeType_name(BoundNodeType type)
 {
     switch (type) {
@@ -172,6 +177,403 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
     return true;
 }
 
+BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
+    if (!decl) {
+        fprintf(stderr, "Assignment to undeclared variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_ASSIGNMENT, parent);
+    ret->name = stmt->name;
+    ret->typespec = decl->typespec;
+    ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);
+    if (ret->assignment.expression->type == BNT_UNBOUND_NODE) {
+        return ret;
+    }
+    if (!typespec_assignment_compatible(ret->typespec, ret->assignment.expression->typespec)) {
+        fatal("Cannot assign value of expression of type '" SV_SPEC "' to variable of type '" SV_SPEC "'",
+            SV_ARG(typespec_name(ret->assignment.expression->typespec)), SV_ARG(typespec_name(ret->typespec)));
+    }
+    return ret;
+}
+
+BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_BINARYEXPRESSION, parent);
+    BoundNode *lhs = bind_node(ret, stmt->binary_expr.lhs, ctx);
+    BoundNode *rhs = bind_node(ret, stmt->binary_expr.rhs, ctx);
+    if (lhs->type == BNT_UNBOUND_NODE || rhs->type == BNT_UNBOUND_NODE) {
+        return bound_node_make_unbound(parent, stmt, NULL);
+    }
+    TypeSpec type;
+    if (!resolve_expression_type(stmt->binary_expr.operator, lhs->typespec, rhs->typespec, &type)) {
+        ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
+        ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
+        fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
+            Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
+    }
+    ret->typespec = type;
+    ret->name = sv_from(Operator_name(stmt->binary_expr.operator));
+    ret->binary_expr.lhs = lhs;
+    ret->binary_expr.rhs = rhs;
+    ret->binary_expr.operator= stmt->binary_expr.operator;
+    return ret;
+}
+
+BoundNode *bind_BLOCK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode   *ret = bound_node_make(BNT_BLOCK, parent);
+    BindContext *block_ctx = context_make_subcontext(ctx);
+
+    bind_nodes(ret, stmt->block.statements, &ret->block.statements, block_ctx);
+    return ret;
+}
+
+BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_BOOL, parent);
+    ret->name = stmt->token.text;
+    ret->typespec.type_id = type_registry_id_of_primitive_type(PT_BOOL);
+    ret->typespec.optional = false;
+    return ret;
+}
+
+BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *breakable = parent;
+    while (breakable) {
+        if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
+            break;
+        }
+        breakable = breakable->parent;
+    }
+    if (!breakable) {
+        fatal("'break' must be in a 'while' or 'loop' block");
+    }
+    BoundNode *ret = bound_node_make(BNT_BREAK, parent);
+    ret->block.statements = breakable;
+    return ret;
+}
+
+BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_COMPOUND_INITIALIZER, parent);
+    ret->name = stmt->name;
+    bind_nodes(ret, stmt->arguments.argument, &ret->compound_initializer.argument, ctx);
+    return ret;
+}
+
+BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *breakable = parent;
+    while (breakable) {
+        if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
+            break;
+        }
+        breakable = breakable->parent;
+    }
+    if (!breakable) {
+        fatal("'continue' must be in a 'while' or 'loop' block");
+    }
+    BoundNode *ret = bound_node_make(BNT_CONTINUE, parent);
+    ret->block.statements = breakable;
+    return ret;
+}
+
+BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    TypeSpec return_type = { VOID_ID, false };
+    TypeSpec error_type = { VOID_ID, false };
+    if (stmt->function.return_type != NULL && !resolve_type_node(stmt->function.return_type, &return_type)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    if (stmt->function.error_type != NULL && !resolve_type_node(stmt->function.error_type, &error_type)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    if (return_type.type_id != VOID_ID && error_type.type_id != VOID_ID) {
+        return_type.type_id = type_registry_get_variant2(return_type.type_id, error_type.type_id);
+    }
+
+    int        unbound_cnt = ctx->unbound;
+    BoundNode *ret = bound_node_make(BNT_FUNCTION, parent);
+
+    ret->typespec = return_type;
+    ret->name = stmt->name;
+    bind_nodes(ret, stmt->function.parameter, &ret->function.parameter, ctx);
+    if (ctx->unbound > unbound_cnt) {
+        return bound_node_make_unbound(parent, stmt, NULL);
+    }
+    BindContext *func_ctx = context_make_subcontext(ctx);
+    bind_nodes(ret, stmt->function.statements, &ret->function.statements, func_ctx);
+    return ret;
+}
+
+BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
+    if (!fnc) {
+        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
+    ret->name = stmt->name;
+    ret->call.function = fnc;
+    ret->typespec = fnc->typespec;
+    bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
+    return ret;
+}
+
+BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_IF, parent);
+    ret->if_statement.condition = bind_node(ret, stmt->if_statement.condition, ctx);
+    ret->if_statement.if_true = bind_node(ret, stmt->if_statement.if_true, ctx);
+    ret->if_statement.if_false = bind_node(ret, stmt->if_statement.if_false, ctx);
+    return ret;
+}
+
+BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_LOOP, parent);
+    ret->block.statements = bind_node(ret, stmt->block.statements, ctx);
+    return ret;
+}
+
+BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
+    char        *mod_name = (char *) allocate(sv_length(stmt->name) + 1);
+    BindContext *mod_ctx = context_make_subcontext(ctx);
+
+    strncpy(mod_name, stmt->name.ptr, sv_length(stmt->name));
+    mod_name[sv_length(stmt->name)] = 0;
+    if (sv_endswith(stmt->name, sv_from(".scribble"))) {
+        mod_name[sv_length(stmt->name) - 9] = 0;
+    }
+    for (char *ptr = strchr(mod_name, '/'); ptr; ptr = strchr(mod_name, '/')) {
+        *ptr = '.';
+    }
+    ret->name = sv_from(mod_name);
+    bind_nodes(ret, stmt->block.statements, &ret->block.statements, mod_ctx);
+    return ret;
+}
+
+BoundNode *bind_NUMBER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_NUMBER, parent);
+    ret->name = stmt->token.text;
+    switch (stmt->token.code) {
+    case TC_INTEGER:
+        ret->typespec.type_id = type_registry_id_of_integer_type(stmt->number.width, stmt->number.un_signed);
+        break;
+    case TC_DECIMAL:
+        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_FLOAT);
+        break;
+    default:
+        fatal("Invalid token code '%s' for number", PrimitiveType_name(stmt->token.code));
+    }
+    ret->typespec.optional = false;
+    return ret;
+}
+
+BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    TypeSpec param_type = { VOID_ID, false };
+    if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_VARIABLE_DECL, parent);
+    ret->name = stmt->name;
+    ret->typespec = param_type;
+    ret->variable_decl.init_expr = NULL;
+    return ret;
+}
+
+BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
+    ret->name = program->name;
+
+    BoundNode **intrinsic = &ret->program.intrinsics;
+
+    *intrinsic = bound_node_make(BNT_INTRINSIC, ret);
+    (*intrinsic)->name = sv_from("fputs");
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
+    (*intrinsic)->typespec.optional = false;
+    (*intrinsic)->intrinsic.intrinsic = INT_FPUTS;
+
+    BoundNode **param = &(*intrinsic)->intrinsic.parameter;
+    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
+    (*param)->name = sv_from("fh");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
+    (*param)->typespec.optional = false;
+
+    (*param)->next = bound_node_make(BNT_PARAMETER, *intrinsic);
+    param = &(*param)->next;
+    (*param)->name = sv_from("s");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    (*param)->typespec.optional = false;
+
+    (*intrinsic)->next = bound_node_make(BNT_INTRINSIC, ret);
+    intrinsic = &(*intrinsic)->next;
+
+    (*intrinsic)->name = sv_from("putln");
+    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
+    (*intrinsic)->typespec.optional = false;
+    (*intrinsic)->intrinsic.intrinsic = INT_PUTLN;
+
+    param = &(*intrinsic)->intrinsic.parameter;
+    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
+    (*param)->name = sv_from("s");
+    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    (*param)->typespec.optional = false;
+
+    bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
+    return ret;
+}
+
+BoundNode *bind_RETURN(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_RETURN, parent);
+    if (stmt->return_stmt.expression) {
+        ret->return_stmt.expression = bind_node(ret, stmt->return_stmt.expression, ctx);
+    }
+    return ret;
+}
+
+BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_STRING, parent);
+    ret->name = stmt->name;
+    ret->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    ret->typespec.optional = false;
+    return ret;
+}
+
+BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *type_node = bound_node_make(BNT_UNBOUND_TYPE, parent);
+    type_node->name = stmt->name;
+    if (bind_nodes(type_node, stmt->struct_def.components, &type_node->struct_def.components, ctx) != 0) {
+        return type_node;
+    }
+    int num = 0;
+    for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
+        num++;
+    }
+    size_t     *types = allocate_array(size_t, num);
+    StringView *names = allocate_array(StringView, num);
+    num = 0;
+    for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
+        types[num] = component->typespec.type_id;
+        names[num] = component->name;
+        num++;
+    }
+    type_registry_make_struct(stmt->name, num, names, types);
+    return NULL;
+}
+
+BoundNode *bind_TYPE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    return NULL;
+}
+
+BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    TypeSpec param_type = { VOID_ID, false };
+    if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_TYPE_COMPONENT, parent);
+    ret->name = stmt->name;
+    ret->typespec = param_type;
+    return ret;
+}
+
+BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    return NULL;
+}
+
+BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
+    if (!decl) {
+        fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_VARIABLE, parent);
+    ret->typespec = decl->typespec;
+    ret->variable.decl = decl;
+    ret->name = stmt->name;
+    return ret;
+}
+
+BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *expr = NULL;
+    TypeSpec   var_type = { VOID_ID, false };
+    if (stmt->variable_decl.var_type != NULL && !resolve_type_node(stmt->variable_decl.var_type, &var_type)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_VARIABLE_DECL, parent);
+    if (stmt->variable_decl.init_expr) {
+        expr = bind_node(parent, stmt->variable_decl.init_expr, ctx);
+        if (expr->type == BNT_UNBOUND_NODE) {
+            return bound_node_make_unbound(parent, stmt, NULL);
+        }
+    }
+    if (expr) {
+        if (expr->type != BNT_COMPOUND_INITIALIZER) {
+            if (var_type.type_id != VOID_ID && expr->typespec.type_id != var_type.type_id) {
+                fatal("Declaration type and expression type are different");
+            }
+            if (var_type.type_id == VOID_ID) {
+                var_type = expr->typespec;
+            }
+        } else {
+            if (var_type.type_id == VOID_ID) {
+                fatal("Variable type with compound initializer cannot be inferred");
+            }
+            ExpressionType *et = type_registry_get_type_by_id(var_type.type_id);
+            if (et->kind != TK_COMPOSITE) {
+                fatal("Cannot initialize variables with non-compound types using a compound initializer");
+            }
+            TypeComponent *type_component = &et->component;
+            BoundNode     *arg = expr->compound_initializer.argument;
+            while (type_component) {
+                if (!arg) {
+                    fatal("No initializer argument values for " SV_SPEC "." SV_SPEC, SV_ARG(et->name), SV_ARG(type_component->name));
+                }
+                if (!typespec_assignment_compatible((TypeSpec) { type_component->type_id, false }, arg->typespec)) {
+                    fatal("Declaration type element and initializer argument value types are different");
+                }
+                type_component = type_component->next;
+                arg = arg->next;
+            }
+            if (arg) {
+                fatal("Too many initializer argument values for type '" SV_SPEC "'", et->name);
+            }
+        }
+    } else if (var_type.type_id == VOID_ID) {
+        fprintf(stderr, "Could not infer type of variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    ret->typespec = var_type;
+    ret->name = stmt->name;
+    ret->variable_decl.init_expr = expr;
+    return ret;
+}
+
+BoundNode *bind_WHILE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_WHILE, parent);
+    ret->while_statement.condition = bind_node(ret, stmt->while_statement.condition, ctx);
+    ret->while_statement.statement = bind_node(ret, stmt->while_statement.statement, ctx);
+    return ret;
+}
+
 BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     static size_t VOID_ID = -1;
@@ -182,311 +584,16 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     if (!stmt) {
         return NULL;
     }
+
     switch (stmt->type) {
-    case SNT_ASSIGNMENT: {
-        BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
-        if (!decl) {
-            fprintf(stderr, "Assignment to undeclared variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_ASSIGNMENT, parent);
-        ret->name = stmt->name;
-        ret->typespec = decl->typespec;
-        ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);
-        if (ret->assignment.expression->type == BNT_UNBOUND_NODE) {
-            return ret;
-        }
-        if (!typespec_assignment_compatible(ret->typespec, ret->assignment.expression->typespec)) {
-            fatal("Cannot assign value of expression of type '" SV_SPEC "' to variable of type '" SV_SPEC "'",
-                SV_ARG(typespec_name(ret->assignment.expression->typespec)), SV_ARG(typespec_name(ret->typespec)));
-        }
-        return ret;
-    }
-    case SNT_MODULE: {
-        BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
-        char        *mod_name = (char *) allocate(sv_length(stmt->name) + 1);
-        BindContext *mod_ctx = context_make_subcontext(ctx);
-
-        strncpy(mod_name, stmt->name.ptr, sv_length(stmt->name));
-        mod_name[sv_length(stmt->name)] = 0;
-        if (sv_endswith(stmt->name, sv_from(".scribble"))) {
-            mod_name[sv_length(stmt->name) - 9] = 0;
-        }
-        for (char *ptr = strchr(mod_name, '/'); ptr; ptr = strchr(mod_name, '/')) {
-            *ptr = '.';
-        }
-        ret->name = sv_from(mod_name);
-        bind_nodes(ret, stmt->block.statements, &ret->block.statements, mod_ctx);
-        return ret;
-    }
-    case SNT_BLOCK: {
-        BoundNode   *ret = bound_node_make(BNT_BLOCK, parent);
-        BindContext *block_ctx = context_make_subcontext(ctx);
-
-        bind_nodes(ret, stmt->block.statements, &ret->block.statements, block_ctx);
-        return ret;
-    }
-    case SNT_BOOL: {
-        BoundNode *ret = bound_node_make(BNT_BOOL, parent);
-        ret->name = stmt->token.text;
-        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_BOOL);
-        ret->typespec.optional = false;
-        return ret;
-    }
-    case SNT_BREAK: {
-        BoundNode *breakable = parent;
-        while (breakable) {
-            if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
-                break;
-            }
-            breakable = breakable->parent;
-        }
-        if (!breakable) {
-            fatal("'break' must be in a 'while' or 'loop' block");
-        }
-        BoundNode *ret = bound_node_make(BNT_BREAK, parent);
-        ret->block.statements = breakable;
-        return ret;
-    }
-    case SNT_COMPOUND_INITIALIZER: {
-        BoundNode *ret = bound_node_make(BNT_COMPOUND_INITIALIZER, parent);
-        ret->name = stmt->name;
-        bind_nodes(ret, stmt->arguments.argument, &ret->compound_initializer.argument, ctx);
-        return ret;
-    }
-    case SNT_CONTINUE: {
-        BoundNode *breakable = parent;
-        while (breakable) {
-            if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
-                break;
-            }
-            breakable = breakable->parent;
-        }
-        if (!breakable) {
-            fatal("'continue' must be in a 'while' or 'loop' block");
-        }
-        BoundNode *ret = bound_node_make(BNT_CONTINUE, parent);
-        ret->block.statements = breakable;
-        return ret;
-    }
-    case SNT_FUNCTION: {
-        TypeSpec return_type = { VOID_ID, false };
-        TypeSpec error_type = { VOID_ID, false };
-        if (stmt->function.return_type != NULL && !resolve_type_node(stmt->function.return_type, &return_type)) {
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        if (stmt->function.error_type != NULL && !resolve_type_node(stmt->function.error_type, &error_type)) {
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        if (return_type.type_id != VOID_ID && error_type.type_id != VOID_ID) {
-            return_type.type_id = type_registry_get_variant2(return_type.type_id, error_type.type_id);
-        }
-
-        int        unbound_cnt = ctx->unbound;
-        BoundNode *ret = bound_node_make(BNT_FUNCTION, parent);
-
-        ret->typespec = return_type;
-        ret->name = stmt->name;
-        bind_nodes(ret, stmt->function.parameter, &ret->function.parameter, ctx);
-        if (ctx->unbound > unbound_cnt) {
-            return bound_node_make_unbound(parent, stmt, NULL);
-        }
-        BindContext *func_ctx = context_make_subcontext(ctx);
-        bind_nodes(ret, stmt->function.statements, &ret->function.statements, func_ctx);
-        return ret;
-    }
-    case SNT_PARAMETER: {
-        TypeSpec param_type = { VOID_ID, false };
-        if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_VARIABLE_DECL, parent);
-        ret->name = stmt->name;
-        ret->typespec = param_type;
-        ret->variable_decl.init_expr = NULL;
-        return ret;
-    }
-    case SNT_BINARYEXPRESSION: {
-        BoundNode *ret = bound_node_make(BNT_BINARYEXPRESSION, parent);
-        BoundNode *lhs = bind_node(ret, stmt->binary_expr.lhs, ctx);
-        BoundNode *rhs = bind_node(ret, stmt->binary_expr.rhs, ctx);
-        if (lhs->type == BNT_UNBOUND_NODE || rhs->type == BNT_UNBOUND_NODE) {
-            return bound_node_make_unbound(parent, stmt, NULL);
-        }
-        TypeSpec type;
-        if (!resolve_expression_type(stmt->binary_expr.operator, lhs->typespec, rhs->typespec, &type)) {
-            ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
-            ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
-            fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
-                Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
-        }
-        ret->typespec = type;
-        ret->name = sv_from(Operator_name(stmt->binary_expr.operator));
-        ret->binary_expr.lhs = lhs;
-        ret->binary_expr.rhs = rhs;
-        ret->binary_expr.operator= stmt->binary_expr.operator;
-        return ret;
-    }
-    case SNT_NUMBER: {
-        BoundNode *ret = bound_node_make(BNT_NUMBER, parent);
-        ret->name = stmt->token.text;
-        switch (stmt->token.code) {
-        case TC_INTEGER:
-            ret->typespec.type_id = type_registry_id_of_integer_type(stmt->number.width, stmt->number.un_signed);
-            break;
-        case TC_DECIMAL:
-            ret->typespec.type_id = type_registry_id_of_primitive_type(PT_FLOAT);
-            break;
-        default:
-            fatal("Invalid token code '%s' for number", PrimitiveType_name(stmt->token.code));
-        }
-        ret->typespec.optional = false;
-        return ret;
-    }
-    case SNT_STRING: {
-        BoundNode *ret = bound_node_make(BNT_STRING, parent);
-        ret->name = stmt->name;
-        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
-        ret->typespec.optional = false;
-        return ret;
-    }
-    case SNT_STRUCT: {
-        BoundNode *type_node = bound_node_make(BNT_UNBOUND_TYPE, parent);
-        type_node->name = stmt->name;
-        if (bind_nodes(type_node, stmt->struct_def.components, &type_node->struct_def.components, ctx) != 0) {
-            return type_node;
-        }
-        int num = 0;
-        for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
-            num++;
-        }
-        size_t     *types = allocate_array(size_t, num);
-        StringView *names = allocate_array(StringView, num);
-        num = 0;
-        for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
-            types[num] = component->typespec.type_id;
-            names[num] = component->name;
-            num++;
-        }
-        type_registry_make_struct(stmt->name, num, names, types);
-        return NULL;
-    }
-    case SNT_TYPE_COMPONENT: {
-        TypeSpec param_type = { VOID_ID, false };
-        if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_TYPE_COMPONENT, parent);
-        ret->name = stmt->name;
-        ret->typespec = param_type;
-        return ret;
-    }
-    case SNT_VARIABLE: {
-        BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
-        if (!decl) {
-            fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_VARIABLE, parent);
-        ret->typespec = decl->typespec;
-        ret->variable.decl = decl;
-        ret->name = stmt->name;
-        return ret;
-    }
-    case SNT_VARIABLE_DECL: {
-        BoundNode *expr = NULL;
-        TypeSpec   var_type = { VOID_ID, false };
-        if (stmt->variable_decl.var_type != NULL && !resolve_type_node(stmt->variable_decl.var_type, &var_type)) {
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_VARIABLE_DECL, parent);
-        if (stmt->variable_decl.init_expr) {
-            expr = bind_node(parent, stmt->variable_decl.init_expr, ctx);
-            if (expr->type == BNT_UNBOUND_NODE) {
-                return bound_node_make_unbound(parent, stmt, NULL);
-            }
-        }
-        if (expr) {
-            if (expr->type != BNT_COMPOUND_INITIALIZER) {
-                if (var_type.type_id != VOID_ID && expr->typespec.type_id != var_type.type_id) {
-                    fatal("Declaration type and expression type are different");
-                }
-                if (var_type.type_id == VOID_ID) {
-                    var_type = expr->typespec;
-                }
-            } else {
-                if (var_type.type_id == VOID_ID) {
-                    fatal("Variable type with compound initializer cannot be inferred");
-                }
-                ExpressionType *et = type_registry_get_type_by_id(var_type.type_id);
-                if (et->kind != TK_COMPOSITE) {
-                    fatal("Cannot initialize variables with non-compound types using a compound initializer");
-                }
-                TypeComponent *type_component = &et->component;
-                BoundNode     *arg = expr->compound_initializer.argument;
-                while (type_component) {
-                    if (!arg) {
-                        fatal("No initializer argument values for " SV_SPEC "." SV_SPEC, SV_ARG(et->name), SV_ARG(type_component->name));
-                    }
-                    if (!typespec_assignment_compatible((TypeSpec) { type_component->type_id, false }, arg->typespec)) {
-                        fatal("Declaration type element and initializer argument value types are different");
-                    }
-                    type_component = type_component->next;
-                    arg = arg->next;
-                }
-                if (arg) {
-                    fatal("Too many initializer argument values for type '" SV_SPEC "'", et->name);
-                }
-            }
-        } else if (var_type.type_id == VOID_ID) {
-            fprintf(stderr, "Could not infer type of variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        ret->typespec = var_type;
-        ret->name = stmt->name;
-        ret->variable_decl.init_expr = expr;
-        return ret;
-    }
-    case SNT_FUNCTION_CALL: {
-        BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
-        if (!fnc) {
-            fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
-            return bound_node_make_unbound(parent, stmt, ctx);
-        }
-        BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
-        ret->name = stmt->name;
-        ret->call.function = fnc;
-        ret->typespec = fnc->typespec;
-        bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
-        return ret;
-    }
-    case SNT_IF: {
-        BoundNode *ret = bound_node_make(BNT_IF, parent);
-        ret->if_statement.condition = bind_node(ret, stmt->if_statement.condition, ctx);
-        ret->if_statement.if_true = bind_node(ret, stmt->if_statement.if_true, ctx);
-        ret->if_statement.if_false = bind_node(ret, stmt->if_statement.if_false, ctx);
-        return ret;
-    }
-    case SNT_LOOP: {
-        BoundNode *ret = bound_node_make(BNT_LOOP, parent);
-        ret->block.statements = bind_node(ret, stmt->block.statements, ctx);
-        return ret;
-    }
-    case SNT_RETURN: {
-        BoundNode *ret = bound_node_make(BNT_RETURN, parent);
-        if (stmt->return_stmt.expression) {
-            ret->return_stmt.expression = bind_node(ret, stmt->return_stmt.expression, ctx);
-        }
-        return ret;
-    }
-    case SNT_WHILE: {
-        BoundNode *ret = bound_node_make(BNT_WHILE, parent);
-        ret->while_statement.condition = bind_node(ret, stmt->while_statement.condition, ctx);
-        ret->while_statement.statement = bind_node(ret, stmt->while_statement.statement, ctx);
-        return ret;
-    }
+#define SYNTAXNODETYPE_ENUM(type)                                        \
+    case SNT_##type:                                                     \
+        log("Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
+        return bind_##type(parent, stmt, ctx);
+        SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
+#undef SYNTAXNODETYPE_ENUM
     default:
-        fatal("Unexpected statement type '%s' in bind_node", SyntaxNodeType_name(stmt->type));
+        UNREACHABLE();
     }
 }
 
@@ -556,6 +663,7 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
         node->block.statements = rebind_node(node->block.statements, ctx);
         return node;
     }
+    case BNT_BLOCK:
     case BNT_MODULE: {
         rebind_nodes(node, &node->block.statements, ctx);
         return node;
@@ -597,52 +705,10 @@ static BindingObserver s_observer = NULL;
 
 BoundNode *bind(SyntaxNode *program)
 {
-    BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
-    ret->name = program->name;
-
-    BoundNode **intrinsic = &ret->program.intrinsics;
-
-    *intrinsic = bound_node_make(BNT_INTRINSIC, ret);
-    (*intrinsic)->name = sv_from("fputs");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*intrinsic)->typespec.optional = false;
-    (*intrinsic)->intrinsic.intrinsic = INT_FPUTS;
-
-    BoundNode **param = &(*intrinsic)->intrinsic.parameter;
-    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
-    (*param)->name = sv_from("fh");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*param)->typespec.optional = false;
-
-    (*param)->next = bound_node_make(BNT_PARAMETER, *intrinsic);
-    param = &(*param)->next;
-    (*param)->name = sv_from("s");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
-    (*param)->typespec.optional = false;
-
-    (*intrinsic)->next = bound_node_make(BNT_INTRINSIC, ret);
-    intrinsic = &(*intrinsic)->next;
-
-    (*intrinsic)->name = sv_from("putln");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*intrinsic)->typespec.optional = false;
-    (*intrinsic)->intrinsic.intrinsic = INT_PUTLN;
-
-    param = &(*intrinsic)->intrinsic.parameter;
-    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
-    (*param)->name = sv_from("s");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
-    (*param)->typespec.optional = false;
-
     BindContext *ctx = allocate(sizeof(BindContext));
-
-    assert(program->type == SNT_PROGRAM);
-    bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
-
-    find_main(ret);
-
-    int current_unbound = INT32_MAX;
-    int iter = 1;
+    BoundNode   *ret = bind_node(NULL, program, ctx);
+    int          current_unbound = INT32_MAX;
+    int          iter = 1;
     if (s_observer) {
         s_observer(iter, ret);
     }
@@ -659,6 +725,7 @@ BoundNode *bind(SyntaxNode *program)
         fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
     }
     fprintf(stderr, "Iteration %d: All bound\n", iter);
+    find_main(ret);
     return ret;
 }
 

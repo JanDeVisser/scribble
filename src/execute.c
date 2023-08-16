@@ -146,7 +146,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            ExpressionType *et = type_registry_get_type_by_id(v->type);
+            ExpressionType *et = type_registry_get_type_by_id(type_registry_canonical_type(v->type));
             switch (et->kind) {
             case TK_PRIMITIVE: {
                 Datum d = datum_stack_pop(stack);
@@ -177,7 +177,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 }
             } break;
             default:
-                NYI("type kind in scope_push_variable");
+                NYI("type '" SV_SPEC "' kind '%d' in scope_push_variable ", SV_ARG(et->name), et->kind);
             }
             return NULL;
         }

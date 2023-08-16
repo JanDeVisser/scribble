@@ -258,6 +258,11 @@ void graph_node_emit(GraphNode *node, FILE *f)
         graph_node_forward(node, abstract(bn->binary_expr.lhs), "lhs", f);
         graph_node_forward(node, abstract(bn->binary_expr.rhs), "rhs", f);
         break;
+    case BNT_BLOCK:
+        for (BoundNode *stmt = bn->block.statements; stmt != NULL; stmt = stmt->next) {
+            graph_node_forward(node, abstract(stmt), NULL, f);
+        }
+        break;
     case BNT_FUNCTION: {
         if (bn->function.parameter) {
             GraphNode *parameters = graph_node_create_virtual(node, sv_from("parameters"), f);
