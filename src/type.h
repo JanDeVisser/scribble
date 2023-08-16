@@ -25,24 +25,24 @@ typedef enum {
 #undef TYPEKINDS_ENUM
 } TypeKind;
 
-#define PRIMITIVETYPES(S)          \
-    S(PT_VOID, void, 0, false)     \
-    S(PT_I8, i8, 8, false)         \
-    S(PT_U8, u8, 8, true)          \
-    S(PT_I16, i16, 16, false)      \
-    S(PT_U16, u16, 16, true)       \
-    S(PT_I32, i32, 32, false)      \
-    S(PT_U32, u32, 32, true)       \
-    S(PT_I64, i64, 64, false)      \
-    S(PT_U64, u64, 64, true)       \
-    S(PT_STRING, string, 0, false) \
-    S(PT_BOOL, bool, 8, false)     \
-    S(PT_POINTER, ptr, 64, false)  \
-    S(PT_FLOAT, float, 64, false)
+#define PRIMITIVETYPES(S)       \
+    S(VOID, void, 0, false)     \
+    S(I8, i8, 8, false)         \
+    S(U8, u8, 8, true)          \
+    S(I16, i16, 16, false)      \
+    S(U16, u16, 16, true)       \
+    S(I32, i32, 32, false)      \
+    S(U32, u32, 32, true)       \
+    S(I64, i64, 64, false)      \
+    S(U64, u64, 64, true)       \
+    S(STRING, string, 0, false) \
+    S(BOOL, bool, 8, false)     \
+    S(POINTER, ptr, 64, false)  \
+    S(FLOAT, float, 64, false)
 
 typedef enum {
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) type,
+#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) PT_ ## type,
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
         PT_COUNT
@@ -81,6 +81,10 @@ typedef struct {
     type_id type_id;
     bool    optional;
 } TypeSpec;
+
+#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) extern type_id type ## _ID;
+    PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
+#undef PRIMITIVETYPE_ENUM
 
 extern char const     *PrimitiveType_name(PrimitiveType type);
 extern size_t          PrimitiveType_width(PrimitiveType type);

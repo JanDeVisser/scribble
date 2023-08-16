@@ -12,7 +12,7 @@
 #include <allocate.h>
 
 static ExpressionType *type_registry_next_type(TypeKind kind, StringView name);
-type_id                type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed);
+static type_id         type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed);
 
 typedef struct {
     size_t          size;
@@ -25,12 +25,16 @@ typedef struct {
 
 static TypeRegistry type_registry = { 0 };
 
+#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) type_id type ## _ID = 0;
+    PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
+#undef PRIMITIVETYPE_ENUM
+
 char const *PrimitiveType_name(PrimitiveType type)
 {
     switch (type) {
 #undef PRIMITIVETYPE_ENUM
 #define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case type:                               \
+    case PT_##type:                          \
         return #name;
         PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
@@ -44,7 +48,7 @@ size_t PrimitiveType_width(PrimitiveType type)
     switch (type) {
 #undef PRIMITIVETYPE_ENUM
 #define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case type:                               \
+    case PT_##type:                          \
         return w;
         PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
@@ -58,7 +62,7 @@ bool PrimitiveType_is_unsigned(PrimitiveType type)
     switch (type) {
 #undef PRIMITIVETYPE_ENUM
 #define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case type:                               \
+    case PT_##type:                          \
         return u;
         PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
@@ -244,7 +248,7 @@ void type_registry_init()
     type_registry.components_size = 0;
 #undef PRIMITIVETYPE_ENUM
 #define PRIMITIVETYPE_ENUM(code, name, width, un_signed) \
-    type_registry_add_primitive(sv_from(#name), code, width, un_signed);
+    code ## _ID = type_registry_add_primitive(sv_from(#name), PT_ ## code, width, un_signed);
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
     type_registry_alias(sv_from("int"), type_registry_id_of_primitive_type(PT_I32));
