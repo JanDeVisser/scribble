@@ -189,15 +189,18 @@ void *allocator_allocate(Allocator *alloc, size_t size)
     } else if (!alloc->arenas.capacity) {
         arena_init(&alloc->arenas, alloc->num_slabs_per_arena, alloc->size_of_slab);
     }
+    void *ret = NULL;
     if (size > alloc->size_of_slab) {
-        fatal("Cannot allocate '%zu' bytes using an allocator with slab size '%zu'", size, alloc->size_of_slab);
+        while (size > alloc->size_of_slab) {
+            alloc->size_of_slab *= 2;
+        }
+    } else {
+        ret = arena_allocate(alloc->current, size);
     }
-    void *ret;
-    ret = arena_allocate(alloc->current, size);
     if (!ret) {
         allocator_allocate_arena(alloc);
+        ret = arena_allocate(alloc->current, size);
     }
-    ret = arena_allocate(alloc->current, size);
     assert(ret);
     return ret;
 }
