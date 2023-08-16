@@ -11,10 +11,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct {
+typedef struct string_view {
     char const* ptr;
     size_t length;
 } StringView;
+
+typedef struct string_builder {
+    StringView view;
+    size_t capacity;
+} StringBuilder;
 
 extern StringView sv_null();
 extern StringView sv_from(char const* s);
@@ -36,5 +41,19 @@ extern StringView sv_vprintf(char const* fmt, va_list args);
 
 #define SV_SPEC "%.*s"
 #define SV_ARG(sv) (int)sv.length, sv.ptr
+
+extern StringBuilder sb_create();
+extern StringBuilder sb_copy_chars(char const* ptr, size_t len);
+extern StringBuilder sb_copy_cstr(char const* s);
+extern StringBuilder sb_copy_sv(StringView sv);
+extern void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len);
+extern void sb_append_sv(StringBuilder *sb, StringView sv);
+extern void sb_append_cstr(StringBuilder *sb, char const* s);
+extern void sb_vprintf(StringBuilder *sb, char const* fmt, va_list args);
+extern void sb_printf(StringBuilder *sb, char const* fmt, ...);
+extern StringView sb_view(StringBuilder *sb);
+
+#define SB_SPEC SV_SPEC
+#define SB_ARG(sb) (int)sb->view.length, sb->view.ptr
 
 #endif /* __SV_H__ */

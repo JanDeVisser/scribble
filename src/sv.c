@@ -21,7 +21,7 @@ StringView sv_null()
     return ret;
 }
 
-StringView sv_printf(char const* fmt, ...)
+StringView sv_printf(char const *fmt, ...)
 {
     va_list args;
 
@@ -31,13 +31,13 @@ StringView sv_printf(char const* fmt, ...)
     return ret;
 }
 
-StringView sv_vprintf(char const* fmt, va_list args)
+StringView sv_vprintf(char const *fmt, va_list args)
 {
     va_list args2;
     va_copy(args2, args);
-    int len = vsnprintf(NULL, 0, fmt, args);
-    char *str = mem_allocate(len+1);
-    vsnprintf(str, len+1, fmt, args2);
+    int   len = vsnprintf(NULL, 0, fmt, args);
+    char *str = mem_allocate(len + 1);
+    vsnprintf(str, len + 1, fmt, args2);
     va_end(args2);
     return sv_from(str);
 }
@@ -124,8 +124,8 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     }
 
     AllocatorState state = mem_save();
-    char       *sv_str = mem_allocate(sv.length + 1);
-    char       *tail_str;
+    char          *sv_str = mem_allocate(sv.length + 1);
+    char          *tail_str;
     memcpy(sv_str, sv.ptr, sv.length);
     sv_str[sv.length] = 0;
     long res = strtol(sv_str, &tail_str, 10);
@@ -140,4 +140,120 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     }
     mem_release(state);
     return ret;
+}
+
+#define BLOCKSIZES(S) S(32) S(64) S(128) S(256) S(512) S(1024) S(2048) S(4096) S(8192) S(16384)
+
+#undef BLOCKSIZE
+#define BLOCKSIZE(size) char *fl_##size = NULL;
+BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+
+char *sb_reallocate(char *old_buf, size_t *capacity, size_t new_len)
+{
+    char  *ret = NULL;
+    size_t new_cap = (*capacity) ? *capacity : 32;
+    while (new_cap < new_len) new_cap *= 2;
+    if (new_cap == *capacity) {
+        return old_buf;
+    }
+    switch (new_cap) {
+#define BLOCKSIZE(size)                         \
+    case size:                                  \
+        if (fl_##size) {                        \
+            ret = fl_##size;                    \
+            fl_##size = *((char **) fl_##size); \
+        }                                       \
+        break;
+        BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+    default:
+        break;
+    }
+    if (!ret) {
+        ret = allocate(new_cap);
+    }
+    if (old_buf) {
+        memcpy(ret, old_buf, *capacity);
+        switch (*capacity) {
+#undef BLOCKSIZE
+#define BLOCKSIZE(size)                   \
+    case size:                            \
+        *((char **) old_buf) = fl_##size; \
+        fl_##size = old_buf;              \
+        break;
+            BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+        default:
+            break;
+        }
+    }
+    *capacity = new_cap;
+    return ret;
+}
+
+StringBuilder sb_create()
+{
+    StringBuilder sb = { 0 };
+    return sb;
+}
+
+StringBuilder sb_copy_chars(char const *ptr, size_t len)
+{
+    StringBuilder sb = { 0 };
+    sb.view.ptr = sb_reallocate(NULL, &sb.capacity, len + 1);
+    if (len > 0) {
+        memcpy((char *) sb.view.ptr, ptr, len);
+        sb.view.length = len;
+    }
+    return sb;
+}
+
+StringBuilder sb_copy_sv(StringView sv)
+{
+    return sb_copy_chars(sv.ptr, sv.length + 1);
+}
+
+StringBuilder sb_copy_cstr(char const *s)
+{
+    return sb_copy_chars(s, strlen(s) + 1);
+}
+
+void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
+{
+    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->capacity, sb->view.length + len + 1);
+    memcpy((char *) sb->view.ptr + sb->view.length, ptr, len);
+    sb->view.length += len;
+}
+
+void sb_append_sv(StringBuilder *sb, StringView sv)
+{
+    sb_append_chars(sb, sv.ptr, sv.length);
+}
+
+void sb_append_cstr(StringBuilder *sb, char const *s)
+{
+    sb_append_chars(sb, s, strlen(s));
+}
+
+void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
+{
+    va_list args2;
+    va_copy(args2, args);
+    size_t len = vsnprintf(NULL, 0, fmt, args);
+    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->capacity, sb->view.length + len + 1);
+    vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args2);
+    sb->view.length += len;
+}
+
+void sb_printf(StringBuilder *sb, char const *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    sb_vprintf(sb, fmt, args);
+}
+
+StringView sb_view(StringBuilder *sb)
+{
+    return sb->view;
 }
