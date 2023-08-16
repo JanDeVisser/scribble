@@ -242,18 +242,8 @@ Token lexer_peek(Lexer *lexer)
             size_t text_start = directive_end;
             while (buffer[text_start] && isspace(buffer[text_start]))
                 ++text_start;
-            directive_handle(directive, (StringView) { buffer + text_start }, lexer);
+            directive_handle(directive, (StringView) { buffer + text_start, source.length - text_start }, lexer);
             return lexer_peek(lexer);
-
-//                size_t     ix = directive_end;
-//                StringView text = { buffer + directive_end, ix - directive_end };
-//            while ((ix < (sv_length(source) - 4)) && !sv_endswith(text, sv_from("#end"))) {
-//                ++ix;
-//                text = (StringView) { buffer + directive_end, ix - directive_end };
-//            }
-//            if (sv_endswith(text, sv_from("#end"))) {
-//                directive_handle(directive, (StringView) { text.ptr, text.length - 4 });
-//            }
         }
     }
     default:
