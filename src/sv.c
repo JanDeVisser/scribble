@@ -113,6 +113,27 @@ StringView sv_chop(StringView sv, size_t num)
     return ret;
 }
 
+size_t sv_split(StringView sv, StringView sep, size_t num, StringView components[])
+{
+    size_t      ix = 0;
+    char const *ptr = sv.ptr;
+    char const *component_start = sv.ptr;
+    while (ix < num) {
+        if (ptr - sv.ptr > sv.length - sep.length) {
+            components[ix++] = (StringView) { component_start, sv.ptr + sv.length - component_start };
+            return ix;
+        }
+        if (memcmp(ptr, sep.ptr, sep.length) == 0) {
+            components[ix++] = (StringView) { component_start, ptr - component_start };
+            ptr += sep.length;
+            component_start = ptr;
+            continue;
+        }
+        ++ptr;
+    }
+    return ix;
+}
+
 bool sv_tolong(StringView sv, long *result, StringView *tail)
 {
     assert(result);
@@ -153,7 +174,8 @@ char *sb_reallocate(char *old_buf, size_t *capacity, size_t new_len)
 {
     char  *ret = NULL;
     size_t new_cap = (*capacity) ? *capacity : 32;
-    while (new_cap < new_len) new_cap *= 2;
+    while (new_cap < new_len)
+        new_cap *= 2;
     if (new_cap == *capacity) {
         return old_buf;
     }
@@ -257,3 +279,30 @@ StringView sb_view(StringBuilder *sb)
 {
     return sb->view;
 }
+
+#ifdef SV_TEST
+
+void test_split(char const *s, char const *sep, size_t expected)
+{
+    StringView parts[1024];
+    size_t num = sv_split(sv_from(s), sv_from(sep), 1024, parts);
+    printf("Separate '%s' by '%s': Parts: %zu", s, sep, num);
+    if (num != expected) {
+        printf(" (WHICH IS NOT %zu!)", expected);
+    }
+    for (size_t ix = 0; ix < num; ++ix) {
+        printf(", %zu: '" SV_SPEC "'", ix, SV_ARG(parts[ix]));
+    }
+    printf("\n");
+}
+
+int main(int argc, char **argv)
+{
+    test_split("foo:get_bar", ":", 2);
+    test_split("get_bar", ":", 1);
+    test_split("get_bar:", ":", 2);
+    test_split(":get_bar", ":", 2);
+    test_split(":get_bar:", ":", 3);
+}
+
+#endif

@@ -35,6 +35,7 @@ extern bool sv_endswith(StringView s1, StringView s2);
 extern bool sv_tolong(StringView sv, long *result, StringView *tail);
 
 extern StringView sv_chop(StringView sv, size_t num);
+extern size_t sv_split(StringView sv, StringView sep, size_t num, StringView components[]);
 
 extern StringView sv_printf(char const* fmt, ...);
 extern StringView sv_vprintf(char const* fmt, va_list args);

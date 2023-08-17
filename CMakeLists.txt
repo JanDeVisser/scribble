@@ -8,7 +8,9 @@ include_directories(src)
 add_executable(
         scribble
         src/binder.c
+        src/datum.c
         src/error.c
+        src/execute.c
         src/graph.c
         src/intermediate.c
         src/io.c
@@ -19,6 +21,15 @@ add_executable(
         src/parser.c
         src/sv.c
         src/type.c
-        src/execute.c src/datum.c)
+)
+
+add_executable(
+        sv_test
+        src/log.c
+        src/mem.c
+        src/sv.c
+)
+
+target_compile_definitions(sv_test PUBLIC SV_TEST)
 
 add_subdirectory("rt/arch/arm64")
