@@ -21,11 +21,13 @@
     S(CONTINUE)             \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
+    S(FUNCTION_IMPL)        \
     S(IF)                   \
     S(INTRINSIC)            \
     S(LOOP)                 \
     S(MODULE)               \
     S(NUMBER)               \
+    S(NATIVE_FUNCTION)      \
     S(PARAMETER)            \
     S(PROGRAM)              \
     S(RETURN)               \
@@ -42,17 +44,20 @@
 typedef enum bound_node_type {
     BNT_OFFSET = 1000,
 #undef BOUNDNODETYPE_ENUM
-#define BOUNDNODETYPE_ENUM(type) BNT_ ## type,
+#define BOUNDNODETYPE_ENUM(type) BNT_##type,
     BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 #undef BOUNDNODETYPE_ENUM
         BNT_LAST
 } BoundNodeType;
 
-extern char const *BoundNodeType_name(BoundNodeType type);
-
 #define INTRINSICS(S) \
+    S(ALLOC)          \
+    S(CLOSE)          \
     S(FPUTS)          \
-    S(PUTLN)
+    S(OPEN)           \
+    S(PUTLN)          \
+    S(READ)           \
+    S(WRITE)
 
 typedef enum intrinsic {
 #undef INTRINSIC_ENUM
@@ -79,7 +84,7 @@ typedef struct bound_node {
         } block;
         struct {
             struct bound_node *parameter;
-            struct bound_node *statements;
+            struct bound_node *function_impl;
         } function;
         struct {
             struct bound_node *parameter;

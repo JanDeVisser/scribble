@@ -4,11 +4,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <execute.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
-#include <unistd.h>
+#include <execute.h>
+#include <native.h>
 
 typedef enum next_instruction_type {
     NIT_LABEL,
@@ -42,11 +44,16 @@ void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 FunctionReturn         execute_function(ExecutionContext *ctx, IRFunction *function);
 
+#undef INTRINSIC_ENUM
+#define INTRINSIC_ENUM(i) static Datum execute_##i(ExecutionContext *ctx);
+INTRINSICS(INTRINSIC_ENUM)
+#undef INTRINSIC_ENUM
+
 Datum datum_stack_pop(DatumStack *stack)
 {
     if (!stack->top) {
         Datum error = { 0 };
-        error.type = DT_ERROR;
+        error.type = PT_ERROR;
         error.error = "Stack underflow";
         return error;
     }
@@ -146,11 +153,11 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            ExpressionType *et = type_registry_get_type_by_id(type_registry_canonical_type(v->type));
+            ExpressionType *et = type_registry_get_type_by_id(type_registry_canonical_type_id(v->type));
             switch (et->kind) {
             case TK_PRIMITIVE: {
                 Datum d = datum_stack_pop(stack);
-                if (d.type == DT_ERROR) {
+                if (d.type == PT_ERROR) {
                     return d.error;
                 }
                 v->value = d;
@@ -160,7 +167,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 v->composite.num_components = 0;
                 v->composite.components = NULL;
                 while (type_component) {
-                    ExpressionType *t = type_registry_get_type_by_id(type_registry_canonical_type(type_component->type_id));
+                    ExpressionType *t = type_registry_get_type_by_id(type_registry_canonical_type_id(type_component->type_id));
                     assert(t->kind == TK_PRIMITIVE);
                     ++v->composite.num_components;
                     type_component = type_component->next;
@@ -170,7 +177,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 for (long ix = (long) v->composite.num_components - 1; ix >= 0; --ix) {
                     // TODO check that types match
                     Datum d = datum_stack_pop(stack);
-                    if (d.type == DT_ERROR) {
+                    if (d.type == PT_ERROR) {
                         return d.error;
                     }
                     v->composite.components[ix] = d;
@@ -233,16 +240,16 @@ void scope_dump_variables(Scope *scope)
             assert(et);
             switch (et->kind) {
             case TK_PRIMITIVE: {
-                printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), DatumType_name(var->value.type));
+                printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), PrimitiveType_name(var->value.type));
                 datum_print(var->value);
                 printf("\n");
             } break;
             case TK_COMPOSITE: {
                 printf("%5.5s" SV_SPEC "  %10.10s " SV_SPEC "\n", "", SV_ARG(var->name), "struct", SV_ARG(et->name));
                 TypeComponent *component = &et->component;
-                size_t ix = 0;
+                size_t         ix = 0;
                 while (component) {
-                    printf("%7.7s" SV_SPEC "  %10.10s  ", "", SV_ARG(component->name), DatumType_name(var->composite.components[ix].type));
+                    printf("%7.7s" SV_SPEC "  %10.10s  ", "", SV_ARG(component->name), PrimitiveType_name(var->composite.components[ix].type));
                     datum_print(var->composite.components[ix++]);
                     component = component->next;
                     printf("\n");
@@ -303,7 +310,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     }
     case IR_JUMP_F: {
         Datum cond = datum_stack_pop(&ctx->stack);
-        assert(cond.type == DT_BOOL);
+        assert(cond.type == PT_BOOL);
         if (!cond.bool_value) {
             next.type = NIT_LABEL;
             next.pointer = op->label;
@@ -312,12 +319,12 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_JUMP_T: {
         Datum cond = datum_stack_pop(&ctx->stack);
-        if (cond.type == DT_ERROR) {
+        if (cond.type == PT_ERROR) {
             next.type = NIT_EXCEPTION;
             next.exception = cond.error;
             return next;
         }
-        assert(cond.type == DT_BOOL);
+        assert(cond.type == PT_BOOL);
         if (cond.bool_value) {
             next.type = NIT_LABEL;
             next.pointer = op->label;
@@ -326,6 +333,23 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_LABEL:
         break;
+    case IR_NATIVE_CALL: {
+        Datum *args = allocate_array(Datum, op->native.signature.argc);
+        trace("Preparing native call of '%.*s'", SV_ARG(op->native.name));
+        for (size_t ix = 0; ix < op->native.signature.argc; ++ix) {
+            args[ix] = datum_stack_pop(&ctx->stack);
+            StringView arg_sv = datum_sprint(args[ix]);
+            trace("Parameter %d: '%.*s'", ix+1, SV_ARG(arg_sv));
+            sv_free(arg_sv);
+        }
+        Datum ret;
+        ret.type = type_registry_canonical_type(op->native.signature.ret_type->type_id)->primitive_type;
+        native_call(op->native.name, op->native.signature.argc, args, &ret);
+        StringView ret_sv = datum_sprint(ret);
+        trace("Native call of '%.*s' returned %.*s (%s)", SV_ARG(op->native.name), SV_ARG(ret_sv), PrimitiveType_name(ret.type));
+        sv_free(ret_sv);
+        datum_stack_push(&ctx->stack, ret);
+    } break;
     case IR_OPERATOR: {
         Datum d2 = datum_stack_pop(&ctx->stack);
         Datum d1 = datum_stack_pop(&ctx->stack);
@@ -341,7 +365,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_PUSH_BOOL_CONSTANT: {
         Datum d = { 0 };
-        d.type = DT_BOOL;
+        d.type = PT_BOOL;
         d.bool_value = op->bool_value;
         datum_stack_push(&ctx->stack, d);
     } break;
@@ -351,7 +375,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_PUSH_STRING_CONSTANT: {
         Datum d = { 0 };
-        d.type = DT_STRING;
+        d.type = PT_STRING;
         d.string = op->sv;
         datum_stack_push(&ctx->stack, d);
     } break;
@@ -651,7 +675,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 FunctionReturn ret = { 0 };
                 ret.type = FRT_EXCEPTION;
                 Datum exception = { 0 };
-                exception.type = DT_ERROR;
+                exception.type = PT_ERROR;
                 exception.error = pointer.exception;
                 ctx->scope = current;
                 return ret;
@@ -670,25 +694,100 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     return ret;
 }
 
-FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *intrinsic)
+Datum execute_ALLOC(ExecutionContext *ctx)
 {
     (void) ctx;
+    Datum ret = { 0 };
+    Datum size = datum_stack_pop(&ctx->stack);
+    ret.type = PT_POINTER;
+    ret.pointer = allocate(datum_unsigned_integer_value(size));
+    return ret;
+}
+
+Datum execute_CLOSE(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum fh = datum_stack_pop(&ctx->stack);
+    ret.type = PT_I32;
+    ret.i32 = close((int) datum_signed_integer_value(fh));
+    return ret;
+}
+
+Datum execute_FPUTS(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum fh = datum_stack_pop(&ctx->stack);
+    Datum s = datum_stack_pop(&ctx->stack);
+    ret.type = PT_U32;
+    ret.u32 = write((int) datum_signed_integer_value(fh), s.string.ptr, s.string.length);
+    return ret;
+}
+
+Datum execute_OPEN(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum name = datum_stack_pop(&ctx->stack);
+    Datum mode = datum_stack_pop(&ctx->stack);
+    ret.type = PT_I32;
+    assert(*(name.string.ptr + name.string.length) == 0);
+    ret.i32 = open(name.string.ptr, mode.i32);
+    return ret;
+}
+
+Datum execute_PUTLN(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum s = datum_stack_pop(&ctx->stack);
+    ret.type = PT_U32;
+    ret.u32 = write(1, s.string.ptr, s.string.length);
+    if (ret.u32 == s.string.length) {
+        ret.u32 += write(1, "\n", 1);
+    }
+    return ret;
+}
+
+Datum execute_READ(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum fh = datum_stack_pop(&ctx->stack);
+    Datum buffer = datum_stack_pop(&ctx->stack);
+    Datum bytes = datum_stack_pop(&ctx->stack);
+    ret.type = PT_I64;
+    ret.i64 = read((int) datum_signed_integer_value(fh), buffer.pointer, datum_unsigned_integer_value(fh));
+    return ret;
+}
+
+Datum execute_WRITE(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum fh = datum_stack_pop(&ctx->stack);
+    Datum buffer = datum_stack_pop(&ctx->stack);
+    Datum bytes = datum_stack_pop(&ctx->stack);
+    ret.type = PT_I64;
+    ret.i64 = write((int) datum_signed_integer_value(fh), buffer.pointer, datum_unsigned_integer_value(fh));
+    return ret;
+}
+
+FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *intrinsic)
+{
     FunctionReturn ret = { 0 };
     ret.type = FRT_NORMAL;
     Datum ret_val = { 0 };
+
     switch (intrinsic->intrinsic) {
-    case INT_FPUTS: {
-        Datum fh = datum_stack_pop(&ctx->stack);
-        Datum s = datum_stack_pop(&ctx->stack);
-        ret_val.type = DT_U32;
-        ret_val.u32 = write((int) datum_signed_integer_value(fh), s.string.ptr, s.string.length);
-    } break;
-    case INT_PUTLN: {
-        Datum s = datum_stack_pop(&ctx->stack);
-        ret_val.type = DT_U32;
-        ret_val.u32 = write(1, s.string.ptr, s.string.length);
-        ret_val.u32 += write(1, "\n", 1);
-    } break;
+#undef INTRINSIC_ENUM
+#define INTRINSIC_ENUM(i)           \
+    case INT_##i:                   \
+        ret_val = execute_##i(ctx); \
+        break;
+        INTRINSICS(INTRINSIC_ENUM)
+#undef INTRINSIC_ENUM
     default:
         NYI("Intrinsic");
     }
@@ -707,7 +806,7 @@ int execute(IRProgram program, bool debug /*, int argc, char **argv*/)
     ctx.execution_mode = (debug) ? EM_SINGLE_STEP : EM_RUN;
     execute_function(&ctx, (IRFunction *) (program.functions + program.main));
     Datum d = datum_stack_pop(&ctx.stack);
-    if (DatumType_is_integer(d.type)) {
+    if (PrimitiveType_is_integer(d.type)) {
         return (int) datum_signed_integer_value(d);
     }
     return 0;

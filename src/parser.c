@@ -6,6 +6,7 @@
 
 #include <dirent.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <error.h>
 #include <io.h>
@@ -624,25 +625,39 @@ SyntaxNode *parse_function(Lexer *lexer)
 {
     SyntaxNode *func = parse_function_decl(lexer);
     Token       token = lexer_lex(lexer);
-    if (!token_matches(token, TK_SYMBOL, '{')) {
-        fatal("Expected '{' to start definition of function '" SV_SPEC "'", SV_ARG(func->name));
-    }
-    SyntaxNode *last_stmt = NULL;
-    while (true) {
+    if (token_matches(token, TK_SYMBOL, '{')) {
+        SyntaxNode *impl = syntax_node_make(SNT_FUNCTION_IMPL, func->name, token);
+        func->function.function_impl = impl;
+        SyntaxNode *last_stmt = NULL;
+        while (true) {
+            token = lexer_next(lexer);
+            if (token_matches(token, TK_SYMBOL, '}')) {
+                return func;
+            }
+            if (token_matches_kind(token, TK_END_OF_FILE)) {
+                fatal("Expected '}' to end definition of function '" SV_SPEC "'", SV_ARG(func->name));
+            }
+            SyntaxNode *stmt = parse_statement(lexer);
+            if (last_stmt == NULL) {
+                impl->function_impl.statements = stmt;
+            } else {
+                last_stmt->next = stmt;
+            }
+            last_stmt = stmt;
+        }
+    } else if (token_matches(token, TK_KEYWORD, KW_FUNC_BINDING)) {
         token = lexer_next(lexer);
-        if (token_matches(token, TK_SYMBOL, '}')) {
-            return func;
+        if (!token_matches(token, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING)) {
+            fatal("Expected native function reference after '->'");
         }
-        if (token_matches_kind(token, TK_END_OF_FILE)) {
-            fatal("Expected '}' to end definition of function '" SV_SPEC "'", SV_ARG(func->name));
-        }
-        SyntaxNode *stmt = parse_statement(lexer);
-        if (last_stmt == NULL) {
-            func->function.statements = stmt;
-        } else {
-            last_stmt->next = stmt;
-        }
-        last_stmt = stmt;
+        lexer_lex(lexer);
+        func->function.function_impl = syntax_node_make(
+            SNT_NATIVE_FUNCTION,
+            (StringView) { token.text.ptr + 1, token.text.length - 2},
+            token);
+        return func;
+    } else {
+        fatal("Expected '{' or '->' after function header");
     }
 }
 
@@ -746,6 +761,9 @@ SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
 
 SyntaxNode *parse(char const *dir_name)
 {
+    char *cwd = getwd(NULL);
+    trace("CWD: %s dir: %s", cwd, dir_name);
+    free(cwd);
     DIR *dir = opendir(dir_name);
     if (dir == NULL)
         return NULL;

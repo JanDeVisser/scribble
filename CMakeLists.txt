@@ -3,33 +3,29 @@ project(scribble C)
 
 set(CMAKE_C_STANDARD 23)
 
-include_directories(src)
+set(scribble_NAME Scribble)
+set(scribble_VERSION_MAJOR 1)
+set(scribble_VERSION_MINOR 0)
 
-add_executable(
-        scribble
-        src/binder.c
-        src/datum.c
-        src/error.c
-        src/execute.c
-        src/graph.c
-        src/intermediate.c
-        src/io.c
-        src/lexer.c
-        src/log.c
-        src/main.c
-        src/mem.c
-        src/parser.c
-        src/sv.c
-        src/type.c
+#if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR} CACHE PATH "..." FORCE)
+#endif()
+set(scribble_DIR ${CMAKE_INSTALL_PREFIX})
+set(scribble_DATADIR ${CMAKE_INSTALL_PREFIX}/share)
+
+configure_file (
+  "${PROJECT_SOURCE_DIR}/config.h.in"
+  "${PROJECT_BINARY_DIR}/config.h"
 )
 
-add_executable(
-        sv_test
-        src/log.c
-        src/mem.c
-        src/sv.c
-)
+# add the binary tree to the search path for include files
+# so that we will find config.h
+include_directories("${PROJECT_BINARY_DIR}")
 
-target_compile_definitions(sv_test PUBLIC SV_TEST)
-
+add_subdirectory("src")
 add_subdirectory("rt/arch/arm64")
+
+install(TARGETS scribble scribblert testlib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib)

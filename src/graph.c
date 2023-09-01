@@ -6,9 +6,10 @@
 
 #include <stdio.h>
 
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 #include <graph.h>
 #include <log.h>
-#include <mem.h>
 #include <type.h>
 
 typedef enum node_kind {
@@ -62,7 +63,7 @@ char const *VirtualNodeType_name(VirtualNodeType type)
 
 VirtualNode *virtual_node_create(StringView name)
 {
-    VirtualNode *ret = mem_allocate(sizeof(VirtualNode));
+    VirtualNode *ret = allocate_new(VirtualNode);
     ret->type = VNT_DUMMY;
     ret->name = name;
     ret->index = next_index();
@@ -71,7 +72,7 @@ VirtualNode *virtual_node_create(StringView name)
 
 GraphNode *graph_node_create(AbstractNode *node, GraphNode *parent, char *prefix)
 {
-    GraphNode *ret = mem_allocate(sizeof(GraphNode));
+    GraphNode *ret = allocate_new(GraphNode);
     if (node->type < BNT_OFFSET) {
         ret->kind = NK_SYNTAX;
     } else if (node->type < VNT_DUMMY) {
@@ -213,12 +214,18 @@ void graph_node_emit(GraphNode *node, FILE *f)
                 graph_node_forward(node, abstract(sn->function.return_type), "return type", f);
             }
         }
-        GraphNode *statements = graph_node_create_virtual(node, sv_from("statements"), f);
-        for (SyntaxNode *stmt = sn->function.statements; stmt != NULL; stmt = stmt->next) {
-            graph_node_forward(statements, abstract(stmt), NULL, f);
-        }
+        GraphNode *impl = graph_node_create_virtual(node, sv_from("impl"), f);
+        graph_node_forward(impl, abstract(sn->function.function_impl), NULL, f);
     } break;
     case SNT_FUNCTION_CALL: {
+        if (sn->arguments.argument) {
+            GraphNode *arguments = graph_node_create_virtual(node, sv_from("arguments"), f);
+            for (SyntaxNode *arg = sn->arguments.argument; arg != NULL; arg = arg->next) {
+                graph_node_forward(arguments, abstract(arg), NULL, f);
+            }
+        }
+    } break;
+    case SNT_FUNCTION_IMPL: {
         if (sn->arguments.argument) {
             GraphNode *arguments = graph_node_create_virtual(node, sv_from("arguments"), f);
             for (SyntaxNode *arg = sn->arguments.argument; arg != NULL; arg = arg->next) {
@@ -270,10 +277,8 @@ void graph_node_emit(GraphNode *node, FILE *f)
                 graph_node_forward(parameters, abstract(param), NULL, f);
             }
         }
-        GraphNode *statements = graph_node_create_virtual(node, sv_from("statements"), f);
-        for (BoundNode *stmt = bn->function.statements; stmt != NULL; stmt = stmt->next) {
-            graph_node_forward(statements, abstract(stmt), NULL, f);
-        }
+        GraphNode *impl = graph_node_create_virtual(node, sv_from("impl"), f);
+        graph_node_forward(impl, abstract(bn->function.function_impl), NULL, f);
     } break;
     case BNT_FUNCTION_CALL: {
         GraphNode *decl_node = graph_node_create(abstract(bn->call.function), node, NULL);
@@ -283,6 +288,11 @@ void graph_node_emit(GraphNode *node, FILE *f)
             for (BoundNode *arg = bn->call.argument; arg != NULL; arg = arg->next) {
                 graph_node_forward(arguments, abstract(arg), NULL, f);
             }
+        }
+    } break;
+    case BNT_FUNCTION_IMPL: {
+        for (BoundNode *stmt = bn->block.statements; stmt != NULL; stmt = stmt->next) {
+            graph_node_forward(node, abstract(stmt), NULL, f);
         }
     } break;
     case BNT_IF:
@@ -326,7 +336,7 @@ void graph_node_emit(GraphNode *node, FILE *f)
 void graph_program(SyntaxNode *program)
 {
     assert(program->type == SNT_PROGRAM);
-    AllocatorState alloc_state = mem_save();
+    AllocatorState alloc_state = save_allocator();
     StringView     dot_file = sv_printf(SV_SPEC "-syntax.dot", SV_ARG(program->name));
     FILE          *f = fopen(dot_file.ptr, "w");
     fprintf(f, "digraph " SV_SPEC " {\n", SV_ARG(program->name));
@@ -336,14 +346,14 @@ void graph_program(SyntaxNode *program)
     fclose(f);
     StringView cmd_line = sv_printf("dot -Tsvg -O " SV_SPEC " %s", SV_ARG(program->name), dot_file);
     system(cmd_line.ptr);
-    mem_release(alloc_state);
+    release_allocator(alloc_state);
 }
 
 void graph_ast(int iteration, BoundNode *program)
 {
     assert(program->type == BNT_PROGRAM);
 
-    AllocatorState alloc_state = mem_save();
+    AllocatorState alloc_state = save_allocator();
     StringView     dot_file = sv_printf(SV_SPEC "-ast-%d.dot", SV_ARG(program->name), iteration);
     FILE          *f = fopen(dot_file.ptr, "w");
     fprintf(f, "digraph " SV_SPEC " {\n", SV_ARG(program->name));
@@ -354,5 +364,5 @@ void graph_ast(int iteration, BoundNode *program)
     char cmd_line[256];
     snprintf(cmd_line, 256, "dot -Tsvg -O " SV_SPEC " " SV_SPEC, SV_ARG(program->name), SV_ARG(dot_file));
     system(cmd_line);
-    mem_release(alloc_state);
+    release_allocator(alloc_state);
 }

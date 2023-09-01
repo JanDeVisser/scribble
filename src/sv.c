@@ -9,15 +9,108 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
+#define BLOCKSIZES(S) S(32) S(64) S(128) S(256) S(512) S(1024) S(2048) S(4096) S(8192) S(16384)
+
+#undef BLOCKSIZE
+#define BLOCKSIZE(size) char *fl_##size = NULL;
+BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+
+char *allocate_for_length(size_t length, size_t *capacity)
+{
+    char  *ret = NULL;
+    size_t cap = (!capacity || !*capacity) ? 32 : *capacity;
+    while (cap < length)
+        cap *= 2;
+    switch (cap) {
+#define BLOCKSIZE(size)                         \
+    case size:                                  \
+        if (fl_##size) {                        \
+            ret = fl_##size;                    \
+            fl_##size = *((char **) fl_##size); \
+        }                                       \
+        break;
+        BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+    default:
+        break;
+    }
+    if (!ret) {
+        ret = allocate(cap);
+    }
+    if (capacity) {
+        *capacity = cap;
+    }
+    return ret;
+}
+
+void free_buffer(char *buffer, size_t capacity)
+{
+    if (capacity) {
+        switch (capacity) {
+#undef BLOCKSIZE
+#define BLOCKSIZE(size)                  \
+    case size:                           \
+        *((char **) buffer) = fl_##size; \
+        fl_##size = buffer;              \
+        break;
+            BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+        default:
+            break;
+        }
+    }
+}
+
 StringView sv_from(char const *s)
 {
-    StringView ret = { s, strlen(s) };
+    size_t     len = (s) ? strlen(s) : 0;
+    StringView ret = { 0 };
+    if (len) {
+        ret.ptr = s;
+        ret.length = len;
+    }
     return ret;
+}
+
+StringView sv_copy(StringView sv)
+{
+    if (sv_empty(sv)) {
+        return sv;
+    }
+    return sv_copy_chars(sv.ptr, sv.length);
+}
+
+StringView sv_copy_chars(char const *ptr, size_t len)
+{
+    if (!ptr || !len) {
+        return sv_null();
+    }
+    StringView ret = { 0 };
+    ret.ptr = allocate_for_length(len, NULL);
+    ret.length = len;
+    memcpy((char *) ret.ptr, ptr, len);
+    ((char *) ret.ptr)[ret.length] = 0;
+    return ret;
+}
+
+StringView sv_copy_cstr(char const *s)
+{
+    size_t len = strlen(s);
+    if (!s || !len) {
+        return sv_null();
+    }
+    return sv_copy_chars(s, len);
+}
+
+void sv_free(StringView sv)
+{
+    free_buffer((char *) sv.ptr, sv.capacity);
 }
 
 StringView sv_null()
 {
-    StringView ret = { NULL, 0 };
+    StringView ret = { 0 };
     return ret;
 }
 
@@ -35,11 +128,14 @@ StringView sv_vprintf(char const *fmt, va_list args)
 {
     va_list args2;
     va_copy(args2, args);
-    int   len = vsnprintf(NULL, 0, fmt, args);
-    char *str = mem_allocate(len + 1);
+    int        len = vsnprintf(NULL, 0, fmt, args);
+    StringView ret = { 0 };
+    char      *str = allocate_for_length(len + 1, &ret.capacity);
     vsnprintf(str, len + 1, fmt, args2);
     va_end(args2);
-    return sv_from(str);
+    ret.ptr = str;
+    ret.length = len;
+    return ret;
 }
 
 bool sv_empty(StringView sv)
@@ -62,6 +158,9 @@ int sv_cmp(StringView s1, StringView s2)
     if (s1.length != s2.length) {
         return ((int) s1.length) - ((int) s2.length);
     }
+    if (s1.length == 0 && s2.length == 0) {
+        return 0;
+    }
     return memcmp(s1.ptr, s2.ptr, s1.length);
 }
 
@@ -70,13 +169,20 @@ bool sv_eq(StringView s1, StringView s2)
     if (s1.length != s2.length) {
         return false;
     }
+    if (s1.length == 0 && s2.length == 0) {
+        return true;
+    }
     return memcmp(s1.ptr, s2.ptr, s1.length) == 0;
 }
 
 bool sv_eq_cstr(StringView s1, char const *s2)
 {
-    if (s1.length != strlen(s2)) {
+    size_t len = (s2) ? strlen(s2) : 0;
+    if (s1.length != len) {
         return false;
+    }
+    if (s1.length == 0 && len == 0) {
+        return true;
     }
     return memcmp(s1.ptr, s2, s1.length) == 0;
 }
@@ -85,6 +191,9 @@ bool sv_eq_cstr_n(StringView s1, char const *s2, size_t n)
 {
     if (s1.length != n) {
         return false;
+    }
+    if (s1.length == 0 && (!s2 || !*s2)) {
+        return true;
     }
     return memcmp(s1.ptr, s2, n) == 0;
 }
@@ -99,7 +208,7 @@ bool sv_startswith(StringView s1, StringView s2)
 
 bool sv_endswith(StringView s1, StringView s2)
 {
-    if (s1.length < s2.length) {
+    if (!s2.length || s1.length < s2.length) {
         return false;
     }
     return memcmp(s1.ptr + (s1.length - s2.length), s2.ptr, s2.length) == 0;
@@ -113,12 +222,41 @@ StringView sv_chop(StringView sv, size_t num)
     return ret;
 }
 
-size_t sv_split(StringView sv, StringView sep, size_t num, StringView components[])
+int sv_find_char(StringView sv, char ch)
+{
+    for (int ix = 0; ix < sv.length; ++ix) {
+        if (*(sv.ptr + ix) == ch)
+            return ix;
+    }
+    return -1;
+}
+
+int sv_find_str(StringView sv, StringView sub)
+{
+    for (int ix = 0; ix <= sv.length - sub.length; ++ix) {
+        if (!memcmp(sv.ptr + ix, sub.ptr, sub.length))
+            return ix;
+    }
+    return -1;
+}
+
+StringView sv_substring(StringView sv, size_t at, size_t len)
+{
+    if (at >= sv.length) {
+        return sv_null();
+    }
+    if (at + len > sv.length) {
+        len = sv.length - at;
+    }
+    return (StringView) { sv.ptr + at, len };
+}
+
+size_t sv_split(StringView sv, StringView sep, size_t max_components, StringView components[])
 {
     size_t      ix = 0;
     char const *ptr = sv.ptr;
     char const *component_start = sv.ptr;
-    while (ix < num) {
+    while (ix < max_components) {
         if (ptr - sv.ptr > sv.length - sep.length) {
             components[ix++] = (StringView) { component_start, sv.ptr + sv.length - component_start };
             return ix;
@@ -163,13 +301,6 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     return ret;
 }
 
-#define BLOCKSIZES(S) S(32) S(64) S(128) S(256) S(512) S(1024) S(2048) S(4096) S(8192) S(16384)
-
-#undef BLOCKSIZE
-#define BLOCKSIZE(size) char *fl_##size = NULL;
-BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-
 char *sb_reallocate(char *old_buf, size_t *capacity, size_t new_len)
 {
     char  *ret = NULL;
@@ -179,36 +310,10 @@ char *sb_reallocate(char *old_buf, size_t *capacity, size_t new_len)
     if (new_cap == *capacity) {
         return old_buf;
     }
-    switch (new_cap) {
-#define BLOCKSIZE(size)                         \
-    case size:                                  \
-        if (fl_##size) {                        \
-            ret = fl_##size;                    \
-            fl_##size = *((char **) fl_##size); \
-        }                                       \
-        break;
-        BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-    default:
-        break;
-    }
-    if (!ret) {
-        ret = allocate(new_cap);
-    }
+    ret = allocate_for_length(new_len, capacity);
     if (old_buf) {
         memcpy(ret, old_buf, *capacity);
-        switch (*capacity) {
-#undef BLOCKSIZE
-#define BLOCKSIZE(size)                   \
-    case size:                            \
-        *((char **) old_buf) = fl_##size; \
-        fl_##size = old_buf;              \
-        break;
-            BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-        default:
-            break;
-        }
+        free_buffer(old_buf, *capacity);
     }
     *capacity = new_cap;
     return ret;
@@ -223,7 +328,7 @@ StringBuilder sb_create()
 StringBuilder sb_copy_chars(char const *ptr, size_t len)
 {
     StringBuilder sb = { 0 };
-    sb.view.ptr = sb_reallocate(NULL, &sb.capacity, len + 1);
+    sb.view.ptr = allocate_for_length(len + 1, &sb.view.capacity);
     if (len > 0) {
         memcpy((char *) sb.view.ptr, ptr, len);
         sb.view.length = len;
@@ -243,7 +348,7 @@ StringBuilder sb_copy_cstr(char const *s)
 
 void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
 {
-    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->capacity, sb->view.length + len + 1);
+    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->view.capacity, sb->view.length + len + 1);
     memcpy((char *) sb->view.ptr + sb->view.length, ptr, len);
     sb->view.length += len;
 }
@@ -263,7 +368,7 @@ void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
     va_list args2;
     va_copy(args2, args);
     size_t len = vsnprintf(NULL, 0, fmt, args);
-    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->capacity, sb->view.length + len + 1);
+    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->view.capacity, sb->view.length + len + 1);
     vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args2);
     sb->view.length += len;
 }
@@ -285,7 +390,7 @@ StringView sb_view(StringBuilder *sb)
 void test_split(char const *s, char const *sep, size_t expected)
 {
     StringView parts[1024];
-    size_t num = sv_split(sv_from(s), sv_from(sep), 1024, parts);
+    size_t     num = sv_split(sv_from(s), sv_from(sep), 1024, parts);
     printf("Separate '%s' by '%s': Parts: %zu", s, sep, num);
     if (num != expected) {
         printf(" (WHICH IS NOT %zu!)", expected);

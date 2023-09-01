@@ -80,9 +80,11 @@ typedef struct operator_mapping {
     S(CONTINUE)             \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
+    S(FUNCTION_IMPL)        \
     S(IF)                   \
     S(LOOP)                 \
     S(MODULE)               \
+    S(NATIVE_FUNCTION)      \
     S(NUMBER)               \
     S(PARAMETER)            \
     S(PROGRAM)              \
@@ -122,8 +124,11 @@ typedef struct syntax_node {
             struct syntax_node *return_type;
             struct syntax_node *error_type;
             struct syntax_node *parameter;
-            struct syntax_node *statements;
+            struct syntax_node *function_impl;
         } function;
+        struct {
+            struct syntax_node *statements;
+        } function_impl;
         struct {
             struct syntax_node *parameter_type;
         } parameter;

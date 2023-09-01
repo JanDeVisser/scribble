@@ -19,7 +19,14 @@ static Allocator *s_alloc = NULL;
 static void *allocate(size_t size)
 {
     if (!s_alloc) {
+#ifdef ALLOCATOR_SLAB_SZ
+#ifndef ALLOCATOR_SLABS
+#define ALLOCATOR_SLABS 1024
+#endif
+        s_alloc = allocator_new_with_size(ALLOCATOR_SLABS, ALLOCATOR_SLAB_SZ);
+#else
         s_alloc = allocator_new();
+#endif
     }
     return allocator_allocate(s_alloc, size);
 }

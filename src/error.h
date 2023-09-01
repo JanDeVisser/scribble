@@ -11,67 +11,71 @@
 #ifndef __ERROR_H__
 #define __ERROR_H__
 
-#define ERRORCODES(S) \
-    S(NoError, 0)     \
-    S(IOError, 1)     \
-    S(OutOfMemory, 2)
+#define ERRORCATEGORIES(S) \
+    S(NoError, 0)          \
+    S(IOError, 1)          \
+    S(OutOfMemory, 2)      \
+    S(DLError, 3)
 
 typedef enum {
-#undef ERRORCODE_ENUM
-#define ERRORCODE_ENUM(code, value) code = value,
-    ERRORCODES(ERRORCODE_ENUM)
-#undef ERRORCODE_ENUM
-} ErrorCode;
+#undef ERRORCATEGORY_ENUM
+#define ERRORCATEGORY_ENUM(code, value) code = value,
+    ERRORCATEGORIES(ERRORCATEGORY_ENUM)
+#undef ERRORCATEGORY_ENUM
+} ErrorCategory;
 
 typedef struct {
-    ErrorCode   code;
-    char const* message;
+    ErrorCategory cat;
+    int           code;
+    char const   *message;
 } Error;
 
-extern char const* ErrorCode_name(ErrorCode code);
-extern char const* Error_to_string(Error error);
+extern char const *ErrorCategory_name(ErrorCategory code);
+extern char const *Error_to_string(Error error);
 
-#define ErrorOr(name, typ)                                                             \
-    typedef struct {                                                                   \
-        typ   value;                                                                   \
-        Error error;                                                                   \
-    } ErrorOr##name;                                                                   \
-                                                                                       \
-    inline static ErrorOr##name ErrorOr##name##_error(ErrorCode code, const char* msg) \
-    {                                                                                  \
-        ErrorOr##name ret = { 0 };                                                     \
-        ret.error.code = code;                                                         \
-        ret.error.message = msg;                                                       \
-        return ret;                                                                    \
-    }                                                                                  \
-                                                                                       \
-    inline static ErrorOr##name ErrorOr##name##_copy(Error error)                      \
-    {                                                                                  \
-        ErrorOr##name ret = { 0 };                                                     \
-        ret.error.code = error.code;                                                   \
-        ret.error.message = error.message;                                             \
-        return ret;                                                                    \
-    }                                                                                  \
-                                                                                       \
-    inline static ErrorOr##name ErrorOr##name##_return(typ value)                      \
-    {                                                                                  \
-        ErrorOr##name ret = { 0 };                                                     \
-        ret.value = value;                                                             \
-        return ret;                                                                    \
-    }                                                                                  \
-                                                                                       \
-    inline static bool ErrorOr##name##_is_error(ErrorOr##name error_or)                \
-    {                                                                                  \
-        return error_or.error.code != NoError;                                         \
-    }                                                                                  \
-                                                                                       \
-    inline static bool ErrorOr##name##_has_value(ErrorOr##name error_or)               \
-    {                                                                                  \
-        return !ErrorOr##name##_is_error(error_or);                                    \
+#define ErrorOr(name, typ)                                                                          \
+    typedef struct {                                                                                \
+        typ   value;                                                                                \
+        Error error;                                                                                \
+    } ErrorOr##name;                                                                                \
+                                                                                                    \
+    inline static ErrorOr##name ErrorOr##name##_error(ErrorCategory cat, int code, const char *msg) \
+    {                                                                                               \
+        ErrorOr##name ret = { 0 };                                                                  \
+        ret.error.cat = cat;                                                                        \
+        ret.error.code = code;                                                                      \
+        ret.error.message = msg;                                                                    \
+        return ret;                                                                                 \
+    }                                                                                               \
+                                                                                                    \
+    inline static ErrorOr##name ErrorOr##name##_copy(Error error)                                   \
+    {                                                                                               \
+        ErrorOr##name ret = { 0 };                                                                  \
+        ret.error.cat = error.cat;                                                                  \
+        ret.error.code = error.code;                                                                \
+        ret.error.message = error.message;                                                          \
+        return ret;                                                                                 \
+    }                                                                                               \
+                                                                                                    \
+    inline static ErrorOr##name ErrorOr##name##_return(typ value)                                   \
+    {                                                                                               \
+        ErrorOr##name ret = { 0 };                                                                  \
+        ret.value = value;                                                                          \
+        return ret;                                                                                 \
+    }                                                                                               \
+                                                                                                    \
+    inline static bool ErrorOr##name##_is_error(ErrorOr##name error_or)                             \
+    {                                                                                               \
+        return error_or.error.cat != NoError;                                                       \
+    }                                                                                               \
+                                                                                                    \
+    inline static bool ErrorOr##name##_has_value(ErrorOr##name error_or)                            \
+    {                                                                                               \
+        return !ErrorOr##name##_is_error(error_or);                                                 \
     }
 
 #define RETURN(name, expr) return ErrorOr##name##_return((expr))
-#define ERROR(name, code, msg) return ErrorOr##name##_error(code, msg)
+#define ERROR(name, cat, code, msg) return ErrorOr##name##_error(cat, code, msg)
 
 #define MUST(name, typ, var, expr)                     \
     typ var;                                           \
@@ -103,6 +107,6 @@ extern char const* Error_to_string(Error error);
         var = var##_maybe.value;                          \
     }
 
-ErrorOr(Char, char*);
+ErrorOr(Char, char *);
 
 #endif /* __ERROR_H__ */

@@ -6,15 +6,15 @@
 
 #include "error.h"
 
-char const* ErrorCode_name(ErrorCode code)
+char const* ErrorCode_name(ErrorCategory cat)
 {
-    switch (code) {
-#undef ERRORCODE_ENUM
-#define ERRORCODE_ENUM(code, value) \
+    switch (cat) {
+#undef ERRORCATEGORY_ENUM
+#define ERRORCATEGORY_ENUM(code, value) \
     case code:                      \
         return #code;
-        ERRORCODES(ERRORCODE_ENUM)
-#undef ERRORCODE_ENUM
+        ERRORCATEGORIES(ERRORCATEGORY_ENUM)
+#undef ERRORCATEGORY_ENUM
     default:
         UNREACHABLE();
     }

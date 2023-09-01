@@ -33,14 +33,14 @@ void vemit_log_message(LogLevel level, char const* msg, va_list args)
     }
 }
 
-void log(char const* msg, ...)
+void trace(char const* msg, ...)
 {
     va_list args;
     va_start(args, msg);
     vemit_log_message(LL_TRACE, msg, args);
 }
 
-void vlog(char const* msg, va_list args)
+void vtrace(char const* msg, va_list args)
 {
     vemit_log_message(LL_TRACE, msg, args);
 }

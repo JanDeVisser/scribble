@@ -110,7 +110,7 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
         }
         break;
     }
-    case BNT_FUNCTION: {
+    case BNT_FUNCTION_IMPL: {
         if (type == BNT_VARIABLE_DECL) {
             for (BoundNode *n = node->function.parameter; n; n = n->next) {
                 if (sv_eq(n->name, name)) {
@@ -118,7 +118,7 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
                 }
             }
         }
-        for (BoundNode *n = node->function.statements; n; n = n->next) {
+        for (BoundNode *n = node->block.statements; n; n = n->next) {
             if (n->type == type && sv_eq(n->name, name)) {
                 return n;
             }
@@ -305,7 +305,7 @@ BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         return bound_node_make_unbound(parent, stmt, NULL);
     }
     BindContext *func_ctx = context_make_subcontext(ctx);
-    bind_nodes(ret, stmt->function.statements, &ret->function.statements, func_ctx);
+    ret->function.function_impl = bind_node(ret, stmt->function.function_impl, func_ctx);
     return ret;
 }
 
@@ -321,6 +321,13 @@ BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     ret->call.function = fnc;
     ret->typespec = fnc->typespec;
     bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
+    return ret;
+}
+
+BoundNode *bind_FUNCTION_IMPL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_FUNCTION_IMPL, parent);
+    bind_nodes(ret, stmt->function_impl.statements, &ret->block.statements, ctx);
     return ret;
 }
 
@@ -359,6 +366,13 @@ BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+BoundNode *bind_NATIVE_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_NATIVE_FUNCTION, parent);
+    ret->name = stmt->name;
+    return ret;
+}
+
 BoundNode *bind_NUMBER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_NUMBER, parent);
@@ -390,44 +404,53 @@ BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+#define DEFINE_INTRINSIC(n, ret_type, intrinsic_code)                           \
+    intrinsic = bound_node_make(BNT_INTRINSIC, ret);                            \
+    intrinsic->next = ret->program.intrinsics;                                  \
+    ret->program.intrinsics = intrinsic;                                        \
+    intrinsic->name = sv_from(n);                                               \
+    intrinsic->typespec.type_id = type_registry_id_of_primitive_type(ret_type); \
+    intrinsic->typespec.optional = false;                                       \
+    intrinsic->intrinsic.intrinsic = intrinsic_code;
+
+#define DEFINE_INTRINSIC_PARAM(n, type)                                 \
+    param = bound_node_make(BNT_PARAMETER, intrinsic);                  \
+    param->next = intrinsic->intrinsic.parameter;                       \
+    intrinsic->intrinsic.parameter = param;                             \
+    param->name = sv_from(n);                                           \
+    param->typespec.type_id = type_registry_id_of_primitive_type(type); \
+    param->typespec.optional = false
+
 BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
+    BoundNode *intrinsic;
+    BoundNode *param;
     ret->name = program->name;
 
-    BoundNode **intrinsic = &ret->program.intrinsics;
+    DEFINE_INTRINSIC("close", PT_I32, INT_CLOSE);
+    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
 
-    *intrinsic = bound_node_make(BNT_INTRINSIC, ret);
-    (*intrinsic)->name = sv_from("fputs");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*intrinsic)->typespec.optional = false;
-    (*intrinsic)->intrinsic.intrinsic = INT_FPUTS;
+    DEFINE_INTRINSIC("fputs", PT_I32, INT_FPUTS);
+    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
+    DEFINE_INTRINSIC_PARAM("s", PT_STRING);
 
-    BoundNode **param = &(*intrinsic)->intrinsic.parameter;
-    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
-    (*param)->name = sv_from("fh");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*param)->typespec.optional = false;
+    DEFINE_INTRINSIC("open", PT_I32, INT_OPEN);
+    DEFINE_INTRINSIC_PARAM("name", PT_STRING);
+    DEFINE_INTRINSIC_PARAM("mode", PT_U32);
 
-    (*param)->next = bound_node_make(BNT_PARAMETER, *intrinsic);
-    param = &(*param)->next;
-    (*param)->name = sv_from("s");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
-    (*param)->typespec.optional = false;
+    DEFINE_INTRINSIC("putln", PT_I32, INT_PUTLN);
+    DEFINE_INTRINSIC_PARAM("s", PT_STRING);
 
-    (*intrinsic)->next = bound_node_make(BNT_INTRINSIC, ret);
-    intrinsic = &(*intrinsic)->next;
+    DEFINE_INTRINSIC("read", PT_I64, INT_FPUTS);
+    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
+    DEFINE_INTRINSIC_PARAM("buffer", PT_POINTER);
+    DEFINE_INTRINSIC_PARAM("bytes", PT_U64);
 
-    (*intrinsic)->name = sv_from("putln");
-    (*intrinsic)->typespec.type_id = type_registry_id_of_primitive_type(PT_I32);
-    (*intrinsic)->typespec.optional = false;
-    (*intrinsic)->intrinsic.intrinsic = INT_PUTLN;
-
-    param = &(*intrinsic)->intrinsic.parameter;
-    *param = bound_node_make(BNT_PARAMETER, *intrinsic);
-    (*param)->name = sv_from("s");
-    (*param)->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
-    (*param)->typespec.optional = false;
+    DEFINE_INTRINSIC("write", PT_I64, INT_FPUTS);
+    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
+    DEFINE_INTRINSIC_PARAM("buffer", PT_POINTER);
+    DEFINE_INTRINSIC_PARAM("bytes", PT_U64);
 
     bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
     return ret;
@@ -586,9 +609,9 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     }
 
     switch (stmt->type) {
-#define SYNTAXNODETYPE_ENUM(type)                                        \
-    case SNT_##type:                                                     \
-        log("Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
+#define SYNTAXNODETYPE_ENUM(type)                                          \
+    case SNT_##type:                                                       \
+        trace("Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
         return bind_##type(parent, stmt, ctx);
         SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
@@ -646,11 +669,15 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
         return node;
     }
     case BNT_FUNCTION: {
-        rebind_nodes(node, &node->function.statements, ctx);
+        node->function.function_impl = rebind_node(node->function.function_impl, ctx);
         return node;
     }
     case BNT_FUNCTION_CALL: {
         rebind_nodes(node, &node->call.argument, ctx);
+        return node;
+    }
+    case BNT_FUNCTION_IMPL: {
+        rebind_nodes(node, &node->block.statements, ctx);
         return node;
     }
     case BNT_IF: {

@@ -18,6 +18,13 @@ typedef struct intermediate {
     };
 } Intermediate;
 
+#undef BOUNDNODETYPE_ENUM
+#define BOUNDNODETYPE_ENUM(type) static void generate_##type(BoundNode *parent, void *target);
+BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
+#undef BOUNDNODETYPE_ENUM
+
+void generate_node(BoundNode *node, void *target);
+
 static unsigned int s_label = 0;
 
 IRVarDecl *allocate_parameters(size_t num)
@@ -66,274 +73,377 @@ void ir_function_add_operation(IRFunction *fnc, IROperation op)
     fnc->operations[fnc->num_operations++] = op;
 }
 
-void generate_node(BoundNode *node, void *target)
+void generate_ASSIGNMENT(BoundNode *node, void *target)
+{
+    generate_node(node->assignment.expression, target);
+    IROperation op;
+    op.operation = IR_POP_VAR;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_BINARYEXPRESSION(BoundNode *node, void *target)
+{
+    IROperation op;
+    generate_node(node->binary_expr.lhs, target);
+    generate_node(node->binary_expr.rhs, target);
+    op.operation = IR_OPERATOR;
+    op.op = node->binary_expr.operator;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_BLOCK(BoundNode *node, void *target)
 {
     IRFunction *fnc = (IRFunction *) target;
-    switch (node->type) {
-    case BNT_ASSIGNMENT: {
-        generate_node(node->assignment.expression, fnc);
-        IROperation op;
+    IROperation op;
+    op.operation = IR_SCOPE_BEGIN;
+    ir_function_add_operation(fnc, op);
+    for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
+        generate_node(stmt, target);
+    }
+    op.operation = IR_SCOPE_END;
+    ir_function_add_operation(fnc, op);
+}
+
+void generate_BOOL(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_BOOL_CONSTANT;
+    op.bool_value = sv_eq_cstr(node->name, "true");
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_BREAK(BoundNode *node, void *target)
+{
+    assert(node->block.statements->intermediate);
+    IROperation op;
+    op.operation = IR_JUMP;
+    op.label = node->block.statements->intermediate->loop.done;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_COMPOUND_INITIALIZER(BoundNode *node, void *target)
+{
+    for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
+        generate_node(arg, target);
+    }
+}
+
+void generate_CONTINUE(BoundNode *node, void *target)
+{
+    assert(node->block.statements->intermediate);
+    IROperation op;
+    op.operation = IR_JUMP;
+    op.label = node->block.statements->intermediate->loop.loop;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_FUNCTION(BoundNode *node, void *target)
+{
+    IRProgram *program = (IRProgram *) target;
+    if (program->num_functions == program->cap_functions - 1) {
+        IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
+        memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
+        program->functions = new_functions;
+        program->cap_functions *= 2;
+    }
+    if (sv_eq_cstr(node->name, "main")) {
+        program->main = (int) program->num_functions;
+    }
+    IRFunction *fnc = (IRFunction *) &program->functions[program->num_functions++];
+    fnc->kind = FK_SCRIBBLE;
+    fnc->type = node->typespec;
+    fnc->name = node->name;
+    fnc->cap_operations = 256;
+    fnc->operations = allocate_operations(256);
+    for (BoundNode *param = node->function.parameter; param; param = param->next) {
+        ++fnc->num_parameters;
+    }
+    if (fnc->num_parameters) {
+        fnc->parameters = allocate_parameters(fnc->num_parameters);
+        int ix = 0;
+        for (BoundNode *param = node->function.parameter; param; param = param->next) {
+            fnc->parameters[ix].name = param->name;
+            fnc->parameters[ix].type = param->typespec;
+            ++ix;
+            IROperation op;
+            op.operation = IR_DECL_VAR;
+            op.var_decl.name = param->name;
+            op.var_decl.type = param->typespec;
+            ir_function_add_operation(fnc, op);
+            op.operation = IR_POP_VAR;
+            op.sv = param->name;
+            ir_function_add_operation(fnc, op);
+        }
+    }
+    generate_node(node->function.function_impl, fnc);
+}
+
+void generate_FUNCTION_CALL(BoundNode *node, void *target)
+{
+    struct arg_list {
+        BoundNode       *arg;
+        struct arg_list *prev;
+        struct arg_list *next;
+    };
+
+    struct arg_list *last_arg = NULL;
+    size_t           argc = 0;
+    for (BoundNode *arg = node->call.argument; arg; arg = arg->next) {
+        struct arg_list *current = allocate(sizeof(struct arg_list));
+        current->arg = arg;
+        current->prev = last_arg;
+        if (last_arg)
+            last_arg->next = current;
+        last_arg = current;
+        ++argc;
+    }
+    for (struct arg_list *arg = last_arg; arg; arg = arg->prev) {
+        generate_node(arg->arg, target);
+    }
+    IROperation op;
+    BoundNode *func = node->call.function;
+    if (func->function.function_impl->type == BNT_FUNCTION_IMPL) {
+        op.operation = IR_CALL;
+        op.sv = node->name;
+    } else {
+        op.operation = IR_NATIVE_CALL;
+        op.native.name = func->function.function_impl->name;
+        op.native.signature.argc = argc;
+        op.native.signature.types = allocate_array(ExpressionType*, argc);
+        int ix = 0;
+        for (BoundNode *param = func->function.parameter; param; param = param->next) {
+            op.native.signature.types[ix++] = type_registry_get_type_by_id(param->typespec.type_id);
+        }
+        op.native.signature.ret_type = type_registry_get_type_by_id(func->typespec.type_id);
+    }
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_FUNCTION_IMPL(BoundNode *node, void *target)
+{
+    for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
+        generate_node(stmt, target);
+    }
+}
+
+void generate_IF(BoundNode *node, void *target)
+{
+    IRFunction  *fnc = (IRFunction *) target;
+    IROperation  op;
+    unsigned int else_label = next_label();
+
+    generate_node(node->if_statement.condition, target);
+    op.operation = IR_JUMP_F;
+    op.label = else_label;
+    ir_function_add_operation(fnc, op);
+    generate_node(node->if_statement.if_true, target);
+    if (node->if_statement.if_false) {
+        unsigned int end_label = next_label();
+        op.operation = IR_JUMP;
+        op.label = end_label;
+        ir_function_add_operation(fnc, op);
+        op.operation = IR_LABEL;
+        op.label = else_label;
+        ir_function_add_operation(fnc, op);
+        generate_node(node->if_statement.if_false, target);
+        op.operation = IR_LABEL;
+        op.label = end_label;
+        ir_function_add_operation(fnc, op);
+    } else {
+        op.operation = IR_LABEL;
+        op.label = else_label;
+        ir_function_add_operation(fnc, op);
+    }
+}
+
+void generate_INTRINSIC(BoundNode *node, void *target)
+{
+    IRProgram *program = (IRProgram *) target;
+    if (program->num_functions == program->cap_functions - 1) {
+        IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
+        memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
+        program->functions = new_functions;
+        program->cap_functions *= 2;
+    }
+    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) &program->functions[program->num_functions++];
+    intrinsic->kind = FK_INTRINSIC;
+    intrinsic->type = node->typespec;
+    intrinsic->name = node->name;
+    intrinsic->intrinsic = node->intrinsic.intrinsic;
+    for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
+        ++intrinsic->num_parameters;
+    }
+    if (intrinsic->num_parameters) {
+        intrinsic->parameters = allocate_parameters(intrinsic->num_parameters);
+        int ix = 0;
+        for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
+            intrinsic->parameters[ix].name = param->name;
+            intrinsic->parameters[ix].type = param->typespec;
+            ++ix;
+        }
+    }
+}
+
+void generate_LOOP(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+    node->intermediate = allocate(sizeof(Intermediate));
+    node->intermediate->loop.loop = next_label();
+    node->intermediate->loop.done = next_label();
+    IROperation op;
+    op.operation = IR_LABEL;
+    op.label = node->intermediate->loop.loop;
+    ir_function_add_operation(fnc, op);
+    generate_node(node->block.statements, target);
+    op.operation = IR_JUMP;
+    op.label = node->intermediate->loop.loop;
+    ir_function_add_operation(fnc, op);
+    op.operation = IR_LABEL;
+    op.label = node->intermediate->loop.done;
+    ir_function_add_operation(fnc, op);
+}
+
+void generate_MODULE(BoundNode *node, void *target)
+{
+    for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
+        generate_node(stmt, target);
+    }
+}
+
+void generate_NUMBER(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_INT_CONSTANT;
+    ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
+    op.integer.width = PrimitiveType_width(et->primitive_type);
+    op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive_type);
+    if (op.integer.un_signed) {
+        op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
+    } else {
+        op.integer.int_value = strtol(node->name.ptr, NULL, 10);
+    }
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_NATIVE_FUNCTION(BoundNode *node, void *target)
+{
+}
+
+void generate_PARAMETER(BoundNode *node, void *target)
+{
+}
+
+void generate_PROGRAM(BoundNode *node, void *target)
+{
+    for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
+        generate_node(intrinsic, target);
+    }
+    for (BoundNode *module = node->program.modules; module; module = module->next) {
+        generate_node(module, target);
+    }
+}
+
+void generate_RETURN(BoundNode *node, void *target)
+{
+    if (node->return_stmt.expression) {
+        generate_node(node->return_stmt.expression, target);
+    }
+    IROperation op;
+    op.operation = IR_RETURN;
+    op.bool_value = node->return_stmt.expression != NULL;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_STRING(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_STRING_CONSTANT;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_TYPE(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+}
+
+void generate_TYPE_COMPONENT(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+}
+
+void generate_UNARYEXPRESSION(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+}
+
+void generate_UNBOUND_NODE(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+}
+
+void generate_UNBOUND_TYPE(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+}
+
+void generate_VARIABLE(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_VAR;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_VARIABLE_DECL(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
+    op.operation = IR_DECL_VAR;
+    op.var_decl.name = node->name;
+    op.var_decl.type = node->typespec;
+    ir_function_add_operation(fnc, op);
+    if (node->variable_decl.init_expr) {
+        generate_node(node->variable_decl.init_expr, fnc);
         op.operation = IR_POP_VAR;
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_BOOL: {
-        IROperation op;
-        op.operation = IR_PUSH_BOOL_CONSTANT;
-        op.bool_value = sv_eq_cstr(node->name, "true");
-        ir_function_add_operation(fnc, op);
-        break;
     }
-    case BNT_BREAK: {
-        assert(node->block.statements->intermediate);
-        IROperation op;
-        op.operation = IR_JUMP;
-        op.label = node->block.statements->intermediate->loop.done;
-        ir_function_add_operation(fnc, op);
-        break;
-    }
-    case BNT_CONTINUE: {
-        assert(node->block.statements->intermediate);
-        IROperation op;
-        op.operation = IR_JUMP;
-        op.label = node->block.statements->intermediate->loop.loop;
-        ir_function_add_operation(fnc, op);
-        break;
-    }
-    case BNT_COMPOUND_INITIALIZER: {
-        for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
-            generate_node(arg, fnc);
-        }
-        break;
-    }
-    case BNT_FUNCTION: {
-        IRProgram *program = (IRProgram *) target;
-        if (program->num_functions == program->cap_functions - 1) {
-            IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
-            memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
-            program->functions = new_functions;
-            program->cap_functions *= 2;
-        }
-        if (sv_eq_cstr(node->name, "main")) {
-            program->main = (int) program->num_functions;
-        }
-        fnc = (IRFunction *) &program->functions[program->num_functions++];
-        fnc->kind = FK_SCRIBBLE;
-        fnc->type = node->typespec;
-        fnc->name = node->name;
-        fnc->cap_operations = 256;
-        fnc->operations = allocate_operations(256);
-        for (BoundNode *param = node->function.parameter; param; param = param->next) {
-            ++fnc->num_parameters;
-        }
-        if (fnc->num_parameters) {
-            fnc->parameters = allocate_parameters(fnc->num_parameters);
-            int ix = 0;
-            for (BoundNode *param = node->function.parameter; param; param = param->next) {
-                fnc->parameters[ix].name = param->name;
-                fnc->parameters[ix].type = param->typespec;
-                ++ix;
-                IROperation op;
-                op.operation = IR_DECL_VAR;
-                op.var_decl.name = param->name;
-                op.var_decl.type = param->typespec;
-                ir_function_add_operation(fnc, op);
-                op.operation = IR_POP_VAR;
-                op.sv = param->name;
-                ir_function_add_operation(fnc, op);
-            }
-        }
-        for (BoundNode *stmt = node->function.statements; stmt; stmt = stmt->next) {
-            generate_node(stmt, fnc);
-        }
-    } break;
-    case BNT_INTRINSIC: {
-        IRProgram *program = (IRProgram *) target;
-        if (program->num_functions == program->cap_functions - 1) {
-            IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
-            memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
-            program->functions = new_functions;
-            program->cap_functions *= 2;
-        }
-        IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) &program->functions[program->num_functions++];
-        intrinsic->kind = FK_INTRINSIC;
-        intrinsic->type = node->typespec;
-        intrinsic->name = node->name;
-        intrinsic->intrinsic = node->intrinsic.intrinsic;
-        for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
-            ++intrinsic->num_parameters;
-        }
-        if (intrinsic->num_parameters) {
-            intrinsic->parameters = allocate_parameters(intrinsic->num_parameters);
-            int ix = 0;
-            for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
-                intrinsic->parameters[ix].name = param->name;
-                intrinsic->parameters[ix].type = param->typespec;
-                ++ix;
-            }
-        }
-    } break;
-    case BNT_PROGRAM: {
-        for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
-            generate_node(intrinsic, target);
-        }
-        for (BoundNode *module = node->program.modules; module; module = module->next) {
-            for (BoundNode *stmt = module->block.statements; stmt; stmt = stmt->next) {
-                generate_node(stmt, target);
-            }
-        }
-    } break;
-    case BNT_VARIABLE_DECL: {
-        IROperation op;
-        op.operation = IR_DECL_VAR;
-        op.var_decl.name = node->name;
-        op.var_decl.type = node->typespec;
-        ir_function_add_operation(fnc, op);
-        if (node->variable_decl.init_expr) {
-            generate_node(node->variable_decl.init_expr, fnc);
-            op.operation = IR_POP_VAR;
-            op.sv = node->name;
-            ir_function_add_operation(fnc, op);
-        }
-    } break;
-    case BNT_VARIABLE: {
-        IROperation op;
-        op.operation = IR_PUSH_VAR;
-        op.sv = node->name;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_NUMBER: {
-        IROperation op;
-        op.operation = IR_PUSH_INT_CONSTANT;
-        ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
-        op.integer.width = PrimitiveType_width(et->primitive.type);
-        op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive.type);
-        if (op.integer.un_signed) {
-            op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
-        } else {
-            op.integer.int_value = strtol(node->name.ptr, NULL, 10);
-        }
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_STRING: {
-        IROperation op;
-        op.operation = IR_PUSH_STRING_CONSTANT;
-        op.sv = node->name;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_BINARYEXPRESSION: {
-        IROperation op;
-        generate_node(node->binary_expr.lhs, fnc);
-        generate_node(node->binary_expr.rhs, fnc);
-        op.operation = IR_OPERATOR;
-        op.op = node->binary_expr.operator;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_FUNCTION_CALL: {
-        struct arg_list {
-            BoundNode       *arg;
-            struct arg_list *prev;
-            struct arg_list *next;
-        };
+}
 
-        struct arg_list *last_arg = NULL;
-        for (BoundNode *arg = node->call.argument; arg; arg = arg->next) {
-            struct arg_list *current = allocate(sizeof(struct arg_list));
-            current->arg = arg;
-            current->prev = last_arg;
-            if (last_arg)
-                last_arg->next = current;
-            last_arg = current;
-        }
-        for (struct arg_list *arg = last_arg; arg; arg = arg->prev) {
-            generate_node(arg->arg, fnc);
-        }
-        IROperation op;
-        op.operation = IR_CALL;
-        op.sv = node->name;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_RETURN: {
-        if (node->return_stmt.expression) {
-            generate_node(node->return_stmt.expression, fnc);
-        }
-        IROperation op;
-        op.operation = IR_RETURN;
-        op.bool_value = node->return_stmt.expression != NULL;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_IF: {
-        generate_node(node->if_statement.condition, fnc);
-        IROperation  op;
-        unsigned int else_label = next_label();
-        op.operation = IR_JUMP_F;
-        op.label = else_label;
-        ir_function_add_operation(fnc, op);
-        generate_node(node->if_statement.if_true, fnc);
-        if (node->if_statement.if_false) {
-            unsigned int end_label = next_label();
-            op.operation = IR_JUMP;
-            op.label = end_label;
-            ir_function_add_operation(fnc, op);
-            op.operation = IR_LABEL;
-            op.label = else_label;
-            ir_function_add_operation(fnc, op);
-            generate_node(node->if_statement.if_false, fnc);
-            op.operation = IR_LABEL;
-            op.label = end_label;
-            ir_function_add_operation(fnc, op);
-        } else {
-            op.operation = IR_LABEL;
-            op.label = else_label;
-            ir_function_add_operation(fnc, op);
-        }
-    } break;
-    case BNT_LOOP: {
-        node->intermediate = allocate(sizeof(Intermediate));
-        node->intermediate->loop.loop = next_label();
-        node->intermediate->loop.done = next_label();
-        IROperation  op;
-        op.operation = IR_LABEL;
-        op.label = node->intermediate->loop.loop;
-        ir_function_add_operation(fnc, op);
-        generate_node(node->block.statements, fnc);
-        op.operation = IR_JUMP;
-        op.label = node->intermediate->loop.loop;
-        ir_function_add_operation(fnc, op);
-        op.operation = IR_LABEL;
-        op.label = node->intermediate->loop.done;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_BLOCK: {
-        IROperation op;
-        op.operation = IR_SCOPE_BEGIN;
-        ir_function_add_operation(fnc, op);
-        for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
-            generate_node(stmt, fnc);
-        }
-        op.operation = IR_SCOPE_END;
-        ir_function_add_operation(fnc, op);
-    } break;
-    case BNT_WHILE: {
-        IROperation  op;
-        node->intermediate = allocate(sizeof(Intermediate));
-        node->intermediate->loop.loop = next_label();
-        node->intermediate->loop.done = next_label();
-        op.operation = IR_LABEL;
-        op.label = node->intermediate->loop.loop;
-        ir_function_add_operation(fnc, op);
-        generate_node(node->while_statement.condition, fnc);
-        op.operation = IR_JUMP_F;
-        op.label = node->intermediate->loop.done;
-        ir_function_add_operation(fnc, op);
-        generate_node(node->while_statement.statement, fnc);
-        op.operation = IR_JUMP;
-        op.label = node->intermediate->loop.loop;
-        ir_function_add_operation(fnc, op);
-        op.operation = IR_LABEL;
-        op.label = node->intermediate->loop.done;
-        ir_function_add_operation(fnc, op);
-    } break;
+void generate_WHILE(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
+    node->intermediate = allocate(sizeof(Intermediate));
+    node->intermediate->loop.loop = next_label();
+    node->intermediate->loop.done = next_label();
+    op.operation = IR_LABEL;
+    op.label = node->intermediate->loop.loop;
+    ir_function_add_operation(fnc, op);
+    generate_node(node->while_statement.condition, target);
+    op.operation = IR_JUMP_F;
+    op.label = node->intermediate->loop.done;
+    ir_function_add_operation(fnc, op);
+    generate_node(node->while_statement.statement, target);
+    op.operation = IR_JUMP;
+    op.label = node->intermediate->loop.loop;
+    ir_function_add_operation(fnc, op);
+    op.operation = IR_LABEL;
+    op.label = node->intermediate->loop.done;
+    ir_function_add_operation(fnc, op);
+}
+
+void generate_node(BoundNode *node, void *target)
+{
+    trace("Generating IR for %s node '" SV_SPEC "'", BoundNodeType_name(node->type), SV_ARG(node->name));
+    switch (node->type) {
+#define BOUNDNODETYPE_ENUM(type) \
+    case BNT_##type:             \
+        return generate_##type(node, target);
+        BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
+#undef BOUNDNODETYPE_ENUM
     default:
         fatal("Unexpected bound node type '%s' generating IR", BoundNodeType_name(node->type));
     }
@@ -384,6 +494,9 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
     case IR_JUMP_T:
     case IR_LABEL:
         printf("lbl_%zu", op->label);
+        break;
+    case IR_NATIVE_CALL:
+        printf(SV_SPEC, SV_ARG(op->native.name));
         break;
     case IR_OPERATOR:
         printf("%s", Operator_name(op->op));

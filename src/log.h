@@ -12,8 +12,8 @@
 #define __LOG_H__
 
 extern void log_init(bool trace_on);
-extern void log(char const* msg, ...);
-extern void vlog(char const* msg, va_list args);
+extern void              trace(char const* msg, ...);
+extern void              vtrace(char const* msg, va_list args);
 [[noreturn]] extern void fatal(char const* msg, ...);
 [[noreturn]] extern void vfatal(char const* msg, va_list args);
 

@@ -12,7 +12,7 @@
 #include <allocate.h>
 
 static ExpressionType *type_registry_next_type(TypeKind kind, StringView name);
-static type_id         type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed);
+static type_id         type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
 
 typedef struct {
     size_t          size;
@@ -25,16 +25,16 @@ typedef struct {
 
 static TypeRegistry type_registry = { 0 };
 
-#define PRIMITIVETYPE_ENUM(type, name, width, un_signed) type_id type ## _ID = 0;
-    PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
+#define PRIMITIVETYPE_ENUM(type, name, code) type_id type##_ID = 0;
+PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
 
 char const *PrimitiveType_name(PrimitiveType type)
 {
     switch (type) {
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case PT_##type:                          \
+#define PRIMITIVETYPE_ENUM(type, name, code) \
+    case PT_##type:                                \
         return #name;
         PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
@@ -45,30 +45,27 @@ char const *PrimitiveType_name(PrimitiveType type)
 
 size_t PrimitiveType_width(PrimitiveType type)
 {
-    switch (type) {
-#undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case PT_##type:                          \
-        return w;
-        PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
-    default:
-        UNREACHABLE();
-    }
+    return type & WIDTH_MASK;
+}
+
+PrimitiveType PrimitiveType_get_integer_type(size_t width, bool un_signed)
+{
+    return INTEGER_MASK | width | ((size_t) un_signed << 16);
+}
+
+bool PrimitiveType_is_integer(PrimitiveType type)
+{
+    return type & INTEGER_MASK;
+}
+
+bool PrimitiveType_is_number(PrimitiveType type)
+{
+    return PrimitiveType_is_integer(type) || (type == PT_FLOAT);
 }
 
 bool PrimitiveType_is_unsigned(PrimitiveType type)
 {
-    switch (type) {
-#undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, w, u) \
-    case PT_##type:                          \
-        return u;
-        PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
-    default:
-        UNREACHABLE();
-    }
+    return type & UNSIGNED_MASK;
 }
 
 ExpressionType *type_registry_next_type(TypeKind kind, StringView name)
@@ -84,12 +81,10 @@ ExpressionType *type_registry_next_type(TypeKind kind, StringView name)
     return type;
 }
 
-type_id type_registry_add_primitive(StringView name, PrimitiveType primitive_type, size_t width, bool un_signed)
+type_id type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
 {
     ExpressionType *type = type_registry_next_type(TK_PRIMITIVE, name);
-    type->primitive.type = primitive_type;
-    type->primitive.width = width;
-    type->primitive.un_signed = un_signed;
+    type->primitive_type = primitive_type;
     return type->type_id;
 }
 
@@ -114,7 +109,7 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
 type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (type_registry.types[ix].kind == TK_PRIMITIVE && type_registry.types[ix].primitive.type == type) {
+        if (type_registry.types[ix].kind == TK_PRIMITIVE && type_registry.types[ix].primitive_type == type) {
             return type_registry.types[ix].type_id;
         }
     }
@@ -125,13 +120,13 @@ type_id type_registry_id_of_integer_type(size_t width, bool un_signed)
 {
     switch (width) {
     case 8:
-        return type_registry_id_of_primitive_type((un_signed) ? PT_U8 : PT_I8);
+        return (un_signed) ? U8_ID : I8_ID;
     case 16:
-        return type_registry_id_of_primitive_type((un_signed) ? PT_U16 : PT_I16);
+        return (un_signed) ? U16_ID : I16_ID;
     case 32:
-        return type_registry_id_of_primitive_type((un_signed) ? PT_U32 : PT_I32);
+        return (un_signed) ? U32_ID : I32_ID;
     case 64:
-        return type_registry_id_of_primitive_type((un_signed) ? PT_U64 : PT_I64);
+        return (un_signed) ? U64_ID : I64_ID;
     default:
         fatal("Invalid integer width %d", width);
     }
@@ -247,8 +242,8 @@ void type_registry_init()
     type_registry.components_capacity = 64 * 1024;
     type_registry.components_size = 0;
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(code, name, width, un_signed) \
-    code ## _ID = type_registry_add_primitive(sv_from(#name), PT_ ## code, width, un_signed);
+#define PRIMITIVETYPE_ENUM(type, name, code) \
+    type##_ID = type_registry_add_primitive(sv_from(#name), PT_##type);
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
     type_registry_alias(sv_from("int"), type_registry_id_of_primitive_type(PT_I32));
@@ -261,10 +256,15 @@ void type_registry_init()
     type_registry_alias(sv_from("ulong"), type_registry_id_of_primitive_type(PT_U64));
 }
 
-type_id type_registry_canonical_type(type_id type)
+type_id type_registry_canonical_type_id(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
-    return (et->kind == TK_ALIAS) ? type_registry_canonical_type(et->alias_for_id) : type;
+    return (et->kind == TK_ALIAS) ? type_registry_canonical_type_id(et->alias_for_id) : type;
+}
+
+ExpressionType *type_registry_canonical_type(type_id type)
+{
+    return type_registry_get_type_by_id(type_registry_canonical_type_id(type));
 }
 
 bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
@@ -273,7 +273,7 @@ bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
     assert(et1);
     ExpressionType *et2 = type_registry_get_type_by_id(ts2.type_id);
     assert(et2);
-    return type_registry_canonical_type(ts1.type_id) == type_registry_canonical_type(ts2.type_id);
+    return type_registry_canonical_type_id(ts1.type_id) == type_registry_canonical_type_id(ts2.type_id);
 }
 
 StringView typespec_name(TypeSpec typespec)
@@ -288,4 +288,67 @@ void typespec_print(FILE *f, TypeSpec typespec)
     ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
     assert(et);
     fprintf(f, SV_SPEC "%s", SV_ARG(et->name), (typespec.optional) ? "?" : "");
+}
+
+size_t type_sizeof(ExpressionType *type)
+{
+    switch (type->kind) {
+    case TK_PRIMITIVE:
+        return PrimitiveType_width(type->primitive_type) / 8;
+    case TK_ALIAS:
+        return type_sizeof(type_registry_canonical_type(type->type_id));
+    case TK_ARRAY:
+        return type_sizeof(type_registry_get_type_by_id(type->array.base_type)) * type->array.size;
+    case TK_COMPOSITE: {
+        size_t size = 0;
+        size_t align = type_alignat(type);
+        for (TypeComponent *component = &type->component; component; component = component->next) {
+            if (size % align) {
+                size += size + align - (size % align);
+            }
+            ExpressionType *component_type = type_registry_get_type_by_id(component->type_id);
+            size += type_sizeof(component_type);
+        }
+        return size;
+    }
+    case TK_VARIANT: {
+        size_t size = 0;
+        for (TypeComponent *component = &type->component; component; component = component->next) {
+            ExpressionType *component_type = type_registry_get_type_by_id(component->type_id);
+            size_t          component_size = type_sizeof(component_type);
+            if (component_size > size) {
+                size = component_size;
+            }
+        }
+        return size;
+    }
+    default:
+        UNREACHABLE();
+    }
+}
+
+size_t type_alignat(ExpressionType *type)
+{
+    switch (type->kind) {
+    case TK_PRIMITIVE:
+        return PrimitiveType_width(type->primitive_type) / 8;
+    case TK_ALIAS:
+        return type_alignat(type_registry_canonical_type(type->type_id));
+    case TK_ARRAY:
+        return type_alignat(type_registry_get_type_by_id(type->array.base_type));
+    case TK_COMPOSITE:
+    case TK_VARIANT: {
+        size_t align = 0;
+        for (TypeComponent *component = &type->component; component; component = component->next) {
+            ExpressionType *component_type = type_registry_get_type_by_id(component->type_id);
+            size_t          component_align = type_alignat(component_type);
+            if (component_align > align) {
+                align = component_align;
+            }
+        }
+        return align;
+    }
+    default:
+        UNREACHABLE();
+    }
 }

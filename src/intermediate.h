@@ -20,6 +20,7 @@
     S(JUMP_F)                 \
     S(JUMP_T)                 \
     S(LABEL)                  \
+    S(NATIVE_CALL)            \
     S(OPERATOR)               \
     S(POP_VAR)                \
     S(PUSH_BOOL_CONSTANT)     \
@@ -60,6 +61,10 @@ typedef struct ir_operation {
         StringView sv;
         IRVarDecl  var_decl;
         Operator   op;
+        struct {
+            StringView name;
+            Signature signature;
+        } native;
     };
 } IROperation;
 
