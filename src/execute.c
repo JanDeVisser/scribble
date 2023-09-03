@@ -11,6 +11,7 @@
 #include <allocate.h>
 #include <execute.h>
 #include <native.h>
+#include <options.h>
 
 typedef enum next_instruction_type {
     NIT_LABEL,
@@ -339,7 +340,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         for (size_t ix = 0; ix < op->native.signature.argc; ++ix) {
             args[ix] = datum_stack_pop(&ctx->stack);
             StringView arg_sv = datum_sprint(args[ix]);
-            trace("Parameter %d: '%.*s'", ix+1, SV_ARG(arg_sv));
+            trace("Parameter %d: '%.*s'", ix + 1, SV_ARG(arg_sv));
             sv_free(arg_sv);
         }
         Datum ret;
@@ -487,6 +488,39 @@ Command get_command()
     }
 }
 
+bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp_index)
+{
+    if (ctx->num_breakpoints == MAX_BREAKPOINTS) {
+        fatal("Exhausted breakpoint storage");
+    }
+    Breakpoint *bp = &ctx->breakpoints[ctx->num_breakpoints];
+    bp->index = ctx->index;
+    bp->function = ctx->function;
+    if (sv_not_empty(bp_function)) {
+        bp->function = (IRFunction *) ir_program_function_by_name(ctx->program, bp_function);
+        if (bp->function) {
+            if (bp->function->kind != FK_SCRIBBLE) {
+                printf("Cannot set breakpoint in function '" SV_SPEC "'\n", SV_ARG(bp_function));
+                bp->function = NULL;
+            } else {
+                bp->index = 1;
+                if (sv_not_empty(bp_index)) {
+                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->num_operations) {
+                        printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
+                        bp->function = NULL;
+                    }
+                }
+            }
+        } else {
+            printf("Unknown function '" SV_SPEC "'\n", SV_ARG(bp_function));
+        }
+    }
+    if (bp->function) {
+        ctx->num_breakpoints++;
+    }
+    return bp->function != NULL;
+}
+
 bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
 {
     ir_operation_print(function->operations + ix);
@@ -501,34 +535,9 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
                 }
                 break;
             }
-            if (ctx->num_breakpoints == MAX_BREAKPOINTS) {
-                fatal("Exhausted breakpoint storage");
-            }
-            Breakpoint *bp = &ctx->breakpoints[ctx->num_breakpoints];
-            bp->index = ix;
-            bp->function = function;
-            if (command.num_arguments) {
-                bp->function = (IRFunction *) ir_program_function_by_name(ctx->program, command.arguments[0]);
-                if (bp->function) {
-                    if (bp->function->kind != FK_SCRIBBLE) {
-                        printf("Cannot set breakpoint in function '" SV_SPEC "'\n", SV_ARG(command.arguments[1]));
-                        bp->function = NULL;
-                    } else {
-                        bp->index = 1;
-                        if (command.num_arguments > 1) {
-                            if (!sv_tolong(command.arguments[1], (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= function->num_operations) {
-                                printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(command.arguments[1]));
-                                bp->function = NULL;
-                            }
-                        }
-                    }
-                } else {
-                    printf("Unknown function '" SV_SPEC "'\n", SV_ARG(command.arguments[0]));
-                }
-            }
-            if (bp->function) {
-                ctx->num_breakpoints++;
-            }
+            StringView bp_index = (command.num_arguments > 1) ? command.arguments[1] : sv_null();
+            StringView bp_function = (command.num_arguments > 0) ? command.arguments[0] : sv_null();
+            set_breakpoint(ctx, bp_function, bp_index);
         } break;
         case 'C':
             ctx->execution_mode = EM_CONTINUE;
@@ -795,7 +804,7 @@ FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *int
     return ret;
 }
 
-int execute(IRProgram program, bool debug /*, int argc, char **argv*/)
+int execute(IRProgram program /*, int argc, char **argv*/)
 {
     assert(program.main >= 0);
     Scope root_scope = { 0 };
@@ -803,7 +812,17 @@ int execute(IRProgram program, bool debug /*, int argc, char **argv*/)
     ExecutionContext ctx = { 0 };
     ctx.program = &program;
     ctx.root_scope = &root_scope;
-    ctx.execution_mode = (debug) ? EM_SINGLE_STEP : EM_RUN;
+    ctx.execution_mode = EM_RUN;
+    if (OPT_DEBUG) {
+        ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
+        for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {
+            StringView bp[2];
+            size_t components = sv_split(breakpoint->value, sv_from(":"), 2, bp);
+            StringView bp_index = (components > 1) ? bp[1] : sv_null();
+            StringView bp_function = (components) ? bp[0] : sv_null();
+            set_breakpoint(&ctx, bp_function, bp_index);
+        }
+    }
     execute_function(&ctx, (IRFunction *) (program.functions + program.main));
     Datum d = datum_stack_pop(&ctx.stack);
     if (PrimitiveType_is_integer(d.type)) {

@@ -18,11 +18,6 @@ static Allocator *s_alloc = NULL;
 
 static Allocator * get_allocator()
 {
-    return s_alloc;
-}
-
-static void *allocate(size_t size)
-{
     if (!s_alloc) {
 #ifdef ALLOCATOR_SLAB_SZ
 #ifndef ALLOCATOR_SLABS
@@ -33,31 +28,28 @@ static void *allocate(size_t size)
         s_alloc = allocator_new();
 #endif
     }
-    return allocator_allocate(s_alloc, size);
+    return s_alloc;
+}
+
+static void *allocate(size_t size)
+{
+    return allocator_allocate(get_allocator(), size);
 }
 
 static void *array_allocate(size_t size_of_elem, size_t num_of_elems)
 {
-    if (!s_alloc) {
-        s_alloc = allocator_new();
-    }
-    return allocator_allocate_array(s_alloc, size_of_elem, num_of_elems);
+    return allocator_allocate_array(get_allocator(), size_of_elem, num_of_elems);
 }
 
 static AllocatorState save_allocator()
 {
-    if (!s_alloc) {
-        s_alloc = allocator_new();
-    }
-    return allocator_save(s_alloc);
+    return allocator_save(get_allocator());
 }
 
 static void release_allocator(AllocatorState savepoint)
 {
-    if (!s_alloc) {
-        s_alloc = allocator_new();
-    }
-    allocator_release(s_alloc, savepoint);
+    assert(s_alloc);
+    allocator_release(get_allocator(), savepoint);
 }
 
 #endif /* STATIC_ALLOCATOR */

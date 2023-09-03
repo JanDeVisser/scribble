@@ -9,12 +9,6 @@
 #include <mem.h>
 #include <options.h>
 
-typedef struct _option_list {
-    StringView option;
-    StringView value;
-    struct _option_list *next;
-} OptionList;
-
 static OptionList *s_option_list_head;
 
 void set_option(StringView option, StringView value)
@@ -34,4 +28,19 @@ StringView get_option(StringView option)
         }
     }
     return sv_null();
+}
+
+OptionList *get_option_values(StringView option)
+{
+    OptionList *ret = NULL;
+    for (OptionList *entry = s_option_list_head; entry; entry = entry->next) {
+        if (sv_eq(entry->option, option)) {
+            OptionList *return_entry = allocate_new(OptionList);
+            return_entry->option = option;
+            return_entry->value = entry->value;
+            return_entry->next = ret;
+            ret = return_entry;
+        }
+    }
+    return ret;
 }
