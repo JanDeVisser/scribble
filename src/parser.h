@@ -174,6 +174,6 @@ typedef struct syntax_node {
 extern size_t      next_index();
 extern char       *Operator_name(Operator op);
 extern char const *SyntaxNodeType_name(SyntaxNodeType type);
-extern SyntaxNode *parse(char const *dir_name);
+extern SyntaxNode *parse(char const *dir_or_file);
 
 #endif /* __PARSER_H__ */

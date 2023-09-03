@@ -5,6 +5,7 @@
  */
 
 #include <dirent.h>
+#include <errno.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -759,17 +760,27 @@ SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
     return parse_module(program, sv_from(buffer), sv_from(name_owned));
 }
 
-SyntaxNode *parse(char const *dir_name)
+SyntaxNode *parse(char const *dir_or_file)
 {
     char *cwd = getwd(NULL);
-    trace("CWD: %s dir: %s", cwd, dir_name);
+    trace("CWD: %s dir: %s", cwd, dir_or_file);
     free(cwd);
-    DIR *dir = opendir(dir_name);
-    if (dir == NULL)
-        return NULL;
+    Token          token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
+    SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
 
-    Token          token = { sv_from(dir_name), TK_PROGRAM, TC_NONE };
-    SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_name), token);
+    DIR *dir = opendir(dir_or_file);
+    if (dir == NULL) {
+        if (errno == ENOTDIR) {
+            dir = opendir(".");
+            if (dir == NULL) {
+               fatal("Could not open current directory");
+            }
+            SyntaxNode *module = parse_module_file(program, dirfd(dir), dir_or_file);
+            closedir(dir);
+            return program;
+        }
+    }
+
     struct dirent *dp;
     while ((dp = readdir(dir)) != NULL) {
         if ((dp->d_namlen > 8) && strcmp(dp->d_name + (dp->d_namlen - 9), ".scribble") == 0) {
