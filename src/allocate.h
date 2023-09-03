@@ -16,6 +16,11 @@
 
 static Allocator *s_alloc = NULL;
 
+static Allocator * get_allocator()
+{
+    return s_alloc;
+}
+
 static void *allocate(size_t size)
 {
     if (!s_alloc) {
