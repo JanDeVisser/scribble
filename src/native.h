@@ -11,8 +11,6 @@
 #ifndef __NATIVE_H__
 #define __NATIVE_H__
 
-#define OBL_DIR "OBL_DIR"
-
 #ifdef HAVE_DLFCN_H
 typedef void *lib_handle_t;
 typedef int   resolve_error_t;
@@ -24,11 +22,6 @@ typedef DWORD   resolve_error_t;
 #include <sv.h>
 
 typedef void (*void_t)();
-typedef int (*int0_t)();
-typedef int (*int1_t)(long);
-typedef int (*int2_t)(long, long);
-typedef int (*int3_t)(long, long, long);
-typedef int (*int4_t)(long, long, long, long);
 
 typedef struct function_handle {
     StringView              name;
