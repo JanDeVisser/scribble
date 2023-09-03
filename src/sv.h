@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <mem.h>
+
 typedef struct string_view {
     char const *ptr;
     size_t      length;
@@ -27,6 +29,9 @@ extern StringView sv_from(char const *s);
 extern StringView sv_copy(StringView sv);
 extern StringView sv_copy_chars(char const *ptr, size_t len);
 extern StringView sv_copy_cstr(char const *s);
+extern StringView sv_copy_with_allocator(StringView sv, Allocator *allocator);
+extern StringView sv_copy_chars_with_allocator(char const *ptr, size_t len, Allocator *allocator);
+extern StringView sv_copy_cstr_with_allocator(char const *s, Allocator *allocator);
 extern bool       sv_empty(StringView sv);
 extern bool       sv_not_empty(StringView sv);
 extern size_t     sv_length(StringView sv);
