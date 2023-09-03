@@ -16,10 +16,11 @@ add_executable(
         mutex.c
         native.c
         parser.c
+        options.c
         sv.c
         threadonce.h
         type.c
-        testlib.c)
+)
 
 target_link_libraries(scribble scribblert)
 
