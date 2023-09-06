@@ -13,6 +13,7 @@
 #include <io.h>
 #include <lexer.h>
 #include <log.h>
+#include <options.h>
 #include <parser.h>
 
 #define STATIC_ALLOCATOR
@@ -724,6 +725,7 @@ SyntaxNode *parse_module(SyntaxNode *program, StringView buffer, StringView name
     SyntaxNode *module = syntax_node_make(SNT_MODULE, name, token);
     Lexer       lexer = { 0 };
 
+    printf("Compiling '" SV_SPEC "'\n", SV_ARG(name));
     lexer.skip_whitespace = true;
     lexer_push_source(&lexer, buffer);
     SyntaxNode *last_statement = NULL;
@@ -762,9 +764,11 @@ SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
 
 SyntaxNode *parse(char const *dir_or_file)
 {
-    char *cwd = getwd(NULL);
-    trace("CWD: %s dir: %s", cwd, dir_or_file);
-    free(cwd);
+    if (OPT_TRACE) {
+        char *cwd = getwd(NULL);
+        trace("CWD: %s dir: %s", cwd, dir_or_file);
+        free(cwd);
+    }
     Token          token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
     SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
 
