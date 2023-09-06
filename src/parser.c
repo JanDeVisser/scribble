@@ -338,20 +338,10 @@ SyntaxNode *parse_if(Lexer *lexer)
 {
     Token token;
     lexer_lex(lexer);
-    token = lexer_next(lexer);
-    if (!token_matches(token, TK_SYMBOL, '(')) {
-        fatal(LOC_SPEC "Expected '(' after 'if'", LEXER_LOC_ARG(lexer));
-    }
-    lexer_lex(lexer);
     SyntaxNode *expr = parse_expression(lexer);
     if (!expr) {
         fatal(LOC_SPEC "Expected condition in 'if' statement", LEXER_LOC_ARG(lexer));
     }
-    token = lexer_next(lexer);
-    if (!token_matches(token, TK_SYMBOL, ')')) {
-        fatal(LOC_SPEC "Expected ')' after 'if' condition", LEXER_LOC_ARG(lexer));
-    }
-    lexer_lex(lexer);
     SyntaxNode *if_true = parse_statement(lexer);
     SyntaxNode *if_false = NULL;
     token = lexer_next(lexer);
@@ -382,20 +372,10 @@ SyntaxNode *parse_while(Lexer *lexer)
 {
     Token token;
     lexer_lex(lexer);
-    token = lexer_next(lexer);
-    if (!token_matches(token, TK_SYMBOL, '(')) {
-        fatal(LOC_SPEC "Expected '(' after 'while'", LEXER_LOC_ARG(lexer));
-    }
-    lexer_lex(lexer);
     SyntaxNode *expr = parse_expression(lexer);
     if (!expr) {
         fatal(LOC_SPEC "Expected condition in 'while' statement", LEXER_LOC_ARG(lexer));
     }
-    token = lexer_next(lexer);
-    if (!token_matches(token, TK_SYMBOL, ')')) {
-        fatal(LOC_SPEC "Expected ')' after 'while' condition", LEXER_LOC_ARG(lexer));
-    }
-    lexer_lex(lexer);
     SyntaxNode *stmt = parse_statement(lexer);
     SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_from("while"), token);
     ret->while_statement.condition = expr;
