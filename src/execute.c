@@ -713,6 +713,15 @@ Datum execute_ALLOC(ExecutionContext *ctx)
     return ret;
 }
 
+Datum execute_ENDLN(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    ret.type = PT_I32;
+    ret.u64 = endln();
+    return ret;
+}
+
 Datum execute_CLOSE(ExecutionContext *ctx)
 {
     (void) ctx;
@@ -743,6 +752,16 @@ Datum execute_OPEN(ExecutionContext *ctx)
     ret.type = PT_I32;
     assert(*(name.string.ptr + name.string.length) == 0);
     ret.i32 = open(name.string.ptr, mode.i32);
+    return ret;
+}
+
+Datum execute_PUTI(ExecutionContext *ctx)
+{
+    (void) ctx;
+    Datum ret = { 0 };
+    Datum i = datum_stack_pop(&ctx->stack);
+    ret.type = PT_U32;
+    ret.u64 = putint(i.i32);
     return ret;
 }
 

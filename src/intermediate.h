@@ -63,7 +63,7 @@ typedef struct ir_operation {
         Operator   op;
         struct {
             StringView name;
-            Signature signature;
+            Signature  signature;
         } native;
     };
 } IROperation;

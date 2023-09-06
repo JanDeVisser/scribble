@@ -53,8 +53,10 @@ typedef enum bound_node_type {
 #define INTRINSICS(S) \
     S(ALLOC)          \
     S(CLOSE)          \
+    S(ENDLN)          \
     S(FPUTS)          \
     S(OPEN)           \
+    S(PUTI)           \
     S(PUTLN)          \
     S(READ)           \
     S(WRITE)

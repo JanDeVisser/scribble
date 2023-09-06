@@ -203,19 +203,29 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
     }
     IROperation op;
     BoundNode *func = node->call.function;
-    if (func->function.function_impl->type == BNT_FUNCTION_IMPL) {
+    switch (func->type) {
+    case BNT_FUNCTION:
+        if (func->function.function_impl->type == BNT_FUNCTION_IMPL) {
+            op.operation = IR_CALL;
+            op.sv = node->name;
+        } else {
+            op.operation = IR_NATIVE_CALL;
+            op.native.name = func->function.function_impl->name;
+            op.native.signature.argc = argc;
+            op.native.signature.types = allocate_array(ExpressionType*, argc);
+            int ix = 0;
+            for (BoundNode *param = func->function.parameter; param; param = param->next) {
+                op.native.signature.types[ix++] = type_registry_get_type_by_id(param->typespec.type_id);
+            }
+            op.native.signature.ret_type = type_registry_get_type_by_id(func->typespec.type_id);
+        }
+        break;
+    case BNT_INTRINSIC:
         op.operation = IR_CALL;
         op.sv = node->name;
-    } else {
-        op.operation = IR_NATIVE_CALL;
-        op.native.name = func->function.function_impl->name;
-        op.native.signature.argc = argc;
-        op.native.signature.types = allocate_array(ExpressionType*, argc);
-        int ix = 0;
-        for (BoundNode *param = func->function.parameter; param; param = param->next) {
-            op.native.signature.types[ix++] = type_registry_get_type_by_id(param->typespec.type_id);
-        }
-        op.native.signature.ret_type = type_registry_get_type_by_id(func->typespec.type_id);
+        break;
+    default:
+        UNREACHABLE();
     }
     ir_function_add_operation((IRFunction *) target, op);
 }

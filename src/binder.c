@@ -431,6 +431,8 @@ BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx
     DEFINE_INTRINSIC("close", PT_I32, INT_CLOSE);
     DEFINE_INTRINSIC_PARAM("fh", PT_I32);
 
+    DEFINE_INTRINSIC("endln", PT_U64, INT_ENDLN);
+
     DEFINE_INTRINSIC("fputs", PT_I32, INT_FPUTS);
     DEFINE_INTRINSIC_PARAM("fh", PT_I32);
     DEFINE_INTRINSIC_PARAM("s", PT_STRING);
@@ -438,6 +440,9 @@ BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx
     DEFINE_INTRINSIC("open", PT_I32, INT_OPEN);
     DEFINE_INTRINSIC_PARAM("name", PT_STRING);
     DEFINE_INTRINSIC_PARAM("mode", PT_U32);
+
+    DEFINE_INTRINSIC("puti", PT_I32, INT_PUTI);
+    DEFINE_INTRINSIC_PARAM("i", PT_I32);
 
     DEFINE_INTRINSIC("putln", PT_I32, INT_PUTLN);
     DEFINE_INTRINSIC_PARAM("s", PT_STRING);
