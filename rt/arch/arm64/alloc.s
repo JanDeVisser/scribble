@@ -1,4 +1,4 @@
-.include "syscalls.inc"
+.include "arch/arm64/syscalls.inc"
 .align 4
 
 alloc:

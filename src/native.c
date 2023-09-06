@@ -405,8 +405,6 @@ void_t resolve_function(StringView func_name)
     return resolve_resolve(resolve, lib, func);
 }
 
-int trampoline(void_t func, size_t argc, Datum *values, Datum *ret);
-
 void native_call(StringView name, size_t argc, Datum *values, Datum *ret)
 {
     if (argc > 8) {

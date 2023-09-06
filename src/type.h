@@ -11,6 +11,8 @@
 #ifndef __TYPE_H__
 #define __TYPE_H__
 
+typedef void (*void_t)();
+
 #define TYPEKINDS(S) \
     S(TK_PRIMITIVE)  \
     S(TK_COMPOSITE)  \

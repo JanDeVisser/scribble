@@ -1,5 +1,6 @@
 .align 4
 .global putint
+.global _putint
 
 ; putint - Print integer in base 10.
 ;
@@ -12,6 +13,7 @@ num .req x0 ; Number to print.
 ; Work:
 ;   ----
 
+_putint:
 putint:
     stp     fp,lr,[sp,#-48]!
     mov     fp,sp

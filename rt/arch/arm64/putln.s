@@ -14,6 +14,7 @@ buffer  .req x1     ; Pointer to the string buffer
 ;   x0: Number of characters printed.
 
 ; Work:
+;   x7 - characters printed
 ;   x16 - syscall
 
 _putln:
@@ -22,13 +23,8 @@ putln:
     mov     fp,sp
 
     bl      puts
-    mov     x0,#1
-    adr     x1,__str_newline
-    mov     x2,#1
-    mov     x16,#0x04
-    svc     #0x00
+    mov     x7,x0
+    bl      endln
+    add     x0,x7,x0
     ldp     fp,lr,[sp],#16
     ret
-
-__str_newline:
-    .string "\n"

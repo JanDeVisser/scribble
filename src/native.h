@@ -6,6 +6,7 @@
 
 #define HAVE_DLFCN_H
 
+#include <rt.h>
 #include <type.h>
 
 #ifndef __NATIVE_H__
@@ -20,8 +21,6 @@ typedef DWORD   resolve_error_t;
 #endif /* HAVE_DLFCN_H */
 
 #include <sv.h>
-
-typedef void (*void_t)();
 
 typedef struct function_handle {
     StringView              name;
