@@ -273,7 +273,7 @@ Token lexer_peek(Lexer *lexer)
             size_t ix = 2;
             for (; buffer[ix] && buffer[ix] != '\n'; ++ix)
                 ;
-            return lexer_set_current(lexer, (Token) { { buffer, ix }, TK_COMMENT, TC_END_OF_LINE_COMMENT });
+            return lexer_set_current(lexer, (Token) { { buffer, ix + 1 }, TK_COMMENT, TC_END_OF_LINE_COMMENT });
         }
         case '*': {
             if (!buffer[2]) {
@@ -335,7 +335,7 @@ Token lexer_next(Lexer *lexer)
     Token token;
     while (lexer->sources) {
         for (token = lexer_peek(lexer); token.kind != TK_END_OF_FILE; token = lexer_peek(lexer)) {
-            if (!lexer->skip_whitespace || token.kind != TK_WHITESPACE) {
+            if (!(lexer->skip_whitespace && token.kind == TK_WHITESPACE) && (token.kind != TK_COMMENT)) {
                 return token;
             }
             lexer_lex(lexer);
