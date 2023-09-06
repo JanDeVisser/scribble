@@ -6,7 +6,6 @@
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
-#include <mem.h>
 #include <options.h>
 
 static OptionList *s_option_list_head;

@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <allocate.h>
-#include <mem.h>
 #include <sv.h>
 
 #ifndef __OPTIONS_H__
