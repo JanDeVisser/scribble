@@ -161,4 +161,6 @@ extern Token      lexer_peek(Lexer *lexer);
 extern Token      lexer_next(Lexer *lexer);
 extern Token      lexer_lex(Lexer *lexer);
 
+#define LEXER_LOC_ARG(lexer) LOC_ARG(lexer->sources->loc)
+
 #endif /* __LEXER_H__ */
