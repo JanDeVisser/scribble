@@ -12,6 +12,15 @@
 #ifndef __LEXER_H__
 #define __LEXER_H__
 
+typedef struct _location {
+    StringView file;
+    size_t     line;
+    size_t     column;
+} Location;
+
+#define LOC_SPEC     "%.*s:%d:%d: "
+#define LOC_ARG(loc) loc.file.length, loc.file.ptr, loc.line, loc.column
+
 #define TOKENKINDS(S)   \
     S(TK_UNKNOWN)       \
     S(TK_END_OF_FILE)   \
@@ -115,6 +124,7 @@ typedef struct {
     StringView text;
     TokenKind  kind;
     int        code;
+    Location   loc;
 } Token;
 
 #define TOKEN_SPEC "%s %s [%.*s]:%zu: "
@@ -124,15 +134,16 @@ typedef struct {
                      t.text.ptr,             \
                      t.text.length
 
-typedef struct source_stack {
-    StringView           source;
-    struct source_stack *prev;
-} SourceStackEntry;
+typedef struct _source {
+    Location        loc;
+    StringView      source;
+    struct _source *prev;
+} Source;
 
 typedef struct {
-    bool              skip_whitespace;
-    SourceStackEntry *sources;
-    Token             current;
+    bool    skip_whitespace;
+    Source *sources;
+    Token   current;
 } Lexer;
 
 extern char const *TokenKind_name(TokenKind kind);
@@ -142,9 +153,10 @@ extern char const *TokenCode_name(int code);
 #define token_matches(t, k, c) (token_matches_kind((t), (k)) && (t).code == c)
 
 extern StringView lexer_source(Lexer *lexer);
-extern void       lexer_update_source(Lexer *lexer, StringView new_source);
-extern void       lexer_push_source(Lexer *lexer, StringView source);
+extern Location   lexer_current_location(Lexer *lexer);
+extern void       lexer_push_source(Lexer *lexer, StringView source, StringView name);
 extern void       lexer_pop_source(Lexer *lexer);
+extern void       lexer_advance_source(Lexer *lexer, size_t num);
 extern Token      lexer_peek(Lexer *lexer);
 extern Token      lexer_next(Lexer *lexer);
 extern Token      lexer_lex(Lexer *lexer);

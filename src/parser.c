@@ -727,7 +727,7 @@ SyntaxNode *parse_module(SyntaxNode *program, StringView buffer, StringView name
 
     printf("Compiling '" SV_SPEC "'\n", SV_ARG(name));
     lexer.skip_whitespace = true;
-    lexer_push_source(&lexer, buffer);
+    lexer_push_source(&lexer, buffer, name);
     SyntaxNode *last_statement = NULL;
     do {
         token = lexer_next(&lexer);
@@ -756,10 +756,8 @@ SyntaxNode *parse_module(SyntaxNode *program, StringView buffer, StringView name
 
 SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
 {
-    char *name_owned = (char *) allocate(strlen(file) + 1);
     MUST(Char, char *, buffer, read_file_at(dir_fd, file))
-    strcpy(name_owned, file);
-    return parse_module(program, sv_from(buffer), sv_from(name_owned));
+    return parse_module(program, sv_from(buffer), sv_copy_cstr_with_allocator(file, get_allocator()));
 }
 
 SyntaxNode *parse(char const *dir_or_file)
