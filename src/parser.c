@@ -252,7 +252,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
             return syntax_node_make(SNT_VARIABLE, token.text, token);
         }
     }
-    case TK_NUMBER:
+    case TK_NUMBER: {
         lexer_lex(lexer);
         SyntaxNode *ret = syntax_node_make(SNT_NUMBER, token.text, token);
         ret->number.un_signed = false;
@@ -274,6 +274,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
             }
         }
         return ret;
+    }
     case TK_QUOTED_STRING:
         switch (token.code) {
         case TC_DOUBLE_QUOTED_STRING:
@@ -288,6 +289,21 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
         case KW_FALSE:
             lexer_lex(lexer);
             return syntax_node_make(SNT_BOOL, token.text, token);
+        default:
+            return NULL;
+        }
+    case TK_SYMBOL:
+        switch (token.code) {
+        case '(': {
+            lexer_lex(lexer);
+            SyntaxNode *ret = parse_expression(lexer);
+            token = lexer_next(lexer);
+            if (!token_matches(token, TK_SYMBOL, ')')) {
+                fatal(LOC_SPEC "Expected ')'");
+            }
+            lexer_lex(lexer);
+            return ret;
+        }
         default:
             return NULL;
         }
