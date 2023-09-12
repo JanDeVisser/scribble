@@ -14,9 +14,9 @@
 static ErrorOrTypeID type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
 
 typedef struct {
-    size_t          size;
-    size_t          capacity;
-    ExpressionType *types;
+    size_t           size;
+    size_t           capacity;
+    ExpressionType **types;
 } TypeRegistry;
 
 static TypeRegistry type_registry = { 0 };
@@ -78,8 +78,8 @@ ErrorOrTypeID type_registry_add_primitive(StringView name, PrimitiveType primiti
 ExpressionType *type_registry_get_type_by_name(StringView name)
 {
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (sv_eq(type_registry.types[ix].name, name)) {
-            return &type_registry.types[ix];
+        if (sv_eq(type_registry.types[ix]->name, name)) {
+            return type_registry.types[ix];
         }
     }
     return NULL;
@@ -89,7 +89,7 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
 {
     size_t ix = typeid_ix(id);
     if (ix <= type_registry.size) {
-        return &type_registry.types[ix];
+        return type_registry.types[ix];
     }
     fatal("Invalid type id 0x%04x:0x%04x referenced", id >> 16, id & 0xFFFF);
 }
@@ -97,8 +97,7 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
 type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (size_t ix = 0; ix < 20 && ix < type_registry.size; ++ix) {
-        if (typeid_has_kind(type_registry.types[ix].type_id, TK_PRIMITIVE) &&
-            typeid_primitive_type(type_registry.types[ix].type_id) == type) {
+        if (typeid_has_kind(type_registry.types[ix]->type_id, TK_PRIMITIVE) && typeid_primitive_type(type_registry.types[ix]->type_id) == type) {
             return type;
         }
     }
@@ -123,7 +122,9 @@ type_id type_registry_id_of_integer_type(size_t width, bool un_signed)
 
 int sort_type_ids(type_id const *t1, type_id const *t2)
 {
-    return (*t1 > *t2) ? 1 : ((*t2 > *t1) ? -1 : 0);
+    uint16_t tix1 = typeid_ix(*t1);
+    uint16_t tix2 = typeid_ix(*t2);
+    return (tix1 > tix2) ? 1 : ((tix2 > tix1) ? -1 : 0);
 }
 
 ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
@@ -132,9 +133,17 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
         ERROR(TypeID, TypeError, 0, "Type already exists");
     }
     if (type_registry.capacity <= type_registry.size + 1) {
-        OUT_OF_MEMORY("Could not expand Type Registry");
+        size_t new_cap = (type_registry.capacity) ? type_registry.capacity * 2 : 32;
+        ExpressionType *new_block = allocate_array(ExpressionType, new_cap - type_registry.capacity);
+        ExpressionType **new_index = allocate_array(ExpressionType *, new_cap);
+        memcpy(new_index, type_registry.types, type_registry.capacity * sizeof(ExpressionType *));
+        for (size_t ix = 0; ix < new_cap - type_registry.capacity; ++ix) {
+            new_index[ix + type_registry.capacity] = new_block + ix;
+        }
+        type_registry.types = new_index;
+        type_registry.capacity = new_cap;
     }
-    ExpressionType *type = &type_registry.types[type_registry.size];
+    ExpressionType *type = type_registry.types[type_registry.size];
     type->name = sv_copy_with_allocator(name, get_allocator());
     type->type_id = type_registry.size | (kind << 31);
     ++type_registry.size;
@@ -143,11 +152,11 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
 
 void type_registry_init()
 {
-    type_registry.types = allocate_array(ExpressionType, 8 * 1024);
-    type_registry.capacity = 8 * 1024;
+    type_registry.types = NULL;
+    type_registry.capacity = 0;
     type_registry.size = 0;
 #undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, code)                                                \
+#define PRIMITIVETYPE_ENUM(type, name, code) \
     MUST_TO_VAR(TypeID, type##_ID, type_registry_add_primitive(sv_from(#name), PT_##type));
     PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
@@ -424,12 +433,12 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     }
 
     for (size_t ix = 0; ix < type_registry.size; ++ix) {
-        if (type_registry.types[ix].specialization_of == template_id) {
+        if (type_registry.types[ix]->specialization_of == template_id) {
             bool matches = true;
             for (size_t arg_ix = 0; arg_ix < num; ++arg_ix) {
-                assert(arg_ix < type_registry.types[ix].num_arguments);
+                assert(arg_ix < type_registry.types[ix]->num_arguments);
                 TemplateArgument *arg = type_arguments + arg_ix;
-                TemplateArgument *other_arg = type_registry.types[ix].template_arguments + arg_ix;
+                TemplateArgument *other_arg = type_registry.types[ix]->template_arguments + arg_ix;
                 assert(arg->param_type == other_arg->param_type);
                 assert(sv_eq(arg->name, other_arg->name));
                 switch (arg->param_type) {
@@ -532,8 +541,8 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
     memcpy(types, sorted_types, sizeof(type_id) * num);
     qsort(sorted_types, num, sizeof(type_id), (qsort_fnc_t) sort_type_ids);
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (typeid_kind(type_registry.types[ix].type_id) == TK_VARIANT) {
-            ExpressionType *type = &type_registry.types[ix];
+        if (typeid_kind(type_registry.types[ix]->type_id) == TK_VARIANT) {
+            ExpressionType *type = type_registry.types[ix];
             bool            found = true;
             for (size_t comp_ix = 0; comp_ix < type->components.num_components; ++comp_ix) {
                 if (type->components.components[comp_ix].type_id != sorted_types[comp_ix]) {
@@ -543,7 +552,7 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
             }
             if (found) {
                 release_allocator(alloc_state);
-                RETURN(TypeID, type_registry.types[ix].type_id);
+                RETURN(TypeID, type_registry.types[ix]->type_id);
             }
         }
     }
