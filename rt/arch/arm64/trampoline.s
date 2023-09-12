@@ -13,39 +13,40 @@ marshall_param:
         mov     x29, sp
 
         str     x0,[sp, 16]  ; Save *value
-        ldr     x2,[x0]      ; Load value->type in x2
+        ldr     w2,[x0]      ; Load value->type in w2
 
-        and     x1,x2,#0x0600
-        cmp     x1,xzr
+        lsr     w2,w2,16
+        and     w1,w2,#0x0600
+        cmp     w1,wzr
         b.eq    __type_other ; Type is not an integer. We'll deal with that later
 
-        and     x1,x2,#0xFF  ; Width is type & 0x00FF
+        and     w1,w2,#0xFF  ; Width is type & 0x00FF
 
-        cmp     x1,#8
+        cmp     w1,#8
         b.gt    __type_16
         ldr     b0,[x0,#8]
         b       __marshall_param_done
 
 __type_16:
-        cmp     x1,#16
+        cmp     w1,#16
         b.gt    __type_32
         ldr     h0,[x0,#8]
         b       __marshall_param_done
 
 __type_32:
-        cmp     x1,#32
+        cmp     w1,#32
         b.gt    __type_64
         ldr     w0,[x0,#8]
         b       __marshall_param_done
 
 __type_64:
-        cmp     x1,#64
+        cmp     w1,#64
         b.gt    __type_other
         ldr     x0,[x0,#8]
         b       __marshall_param_done
 
 __type_other:
-        mov     x0, x2 ; xzr
+        mov     x0, xzr
 
 __marshall_param_done:
         mov     sp, x29
@@ -57,33 +58,34 @@ marshall_retval:
         mov     x29, sp
 
         stp     x1,x0,[sp, 16]  ; Save *retval (16), return value (24)
-        ldr     x2,[x1]         ; Load retval->type in x2
+        ldr     w2,[x1]         ; Load retval->type in w2
 
-        and     x3,x2,#0x0600
-        cmp     x3,xzr
+        lsr     w2,w2,16
+        and     w3,w2,#0x0600
+        cmp     w3,wzr
         b.eq    __retval_type_other ; Type is not an integer. We'll deal with that later
 
-        and     x3,x2,#0xFF  ; Width is type & 0x00FF
+        and     w3,w2,#0xFF  ; Width is type & 0x00FF
 
-        cmp     x3,#8
+        cmp     w3,#8
         b.gt    __retval_type_16
         str     b0,[x1,#8]
         b       __marshall_retval_done
 
 __retval_type_16:
-        cmp     x3,#16
+        cmp     w3,#16
         b.gt    __retval_type_32
         str     h0,[x1,#8]
         b       __marshall_retval_done
 
 __retval_type_32:
-        cmp     x3,#32
+        cmp     w3,#32
         b.gt    __retval_type_64
-        str     w0,[x1,#8]
+        str     w0,[x1,#8]``
         b       __marshall_retval_done
 
 __retval_type_64:
-        cmp     x3,#64
+        cmp     w3,#64
         b.gt    __retval_type_other
         str     x0,[x1,#8]
         b       __marshall_retval_done
