@@ -78,10 +78,12 @@ typedef struct operator_mapping {
     S(BREAK)                \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
+    S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
     S(FUNCTION_IMPL)        \
     S(IF)                   \
+    S(LABEL)                \
     S(LOOP)                 \
     S(MODULE)               \
     S(NATIVE_FUNCTION)      \
@@ -150,6 +152,11 @@ typedef struct syntax_node {
             struct syntax_node *if_false;
         } if_statement;
         struct {
+            StringView          variable;
+            struct syntax_node *range;
+            struct syntax_node *statement;
+        } for_statement;
+        struct {
             size_t width;
             bool   un_signed;
         } number;
@@ -175,5 +182,8 @@ extern size_t      next_index();
 extern char       *Operator_name(Operator op);
 extern char const *SyntaxNodeType_name(SyntaxNodeType type);
 extern SyntaxNode *parse(char const *dir_or_file);
+
+#define SN_LOC_ARG(node) LOC_ARG(node->token.loc)
+
 
 #endif /* __PARSER_H__ */

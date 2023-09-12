@@ -18,7 +18,7 @@ typedef struct _location {
     size_t     column;
 } Location;
 
-#define LOC_SPEC     "%.*s:%d:%d: "
+#define LOC_SPEC "%.*s:%d:%d: "
 #define LOC_ARG(loc) loc.file.length, loc.file.ptr, loc.line, loc.column
 
 #define TOKENKINDS(S)   \
@@ -80,35 +80,37 @@ typedef struct {
     S(ELIF, elif, 3)               \
     S(ELSE, else, 4)               \
     S(ERROR, error, 5)             \
-    S(FUNC, func, 6)               \
-    S(IF, if, 7)                   \
-    S(LOOP, loop, 8)               \
-    S(MATCH, match, 9)             \
-    S(RETURN, return, 10)          \
-    S(STRUCT, struct, 11)          \
-    S(VAR, var, 12)                \
-    S(WHILE, while, 13)            \
-    S(TRUE, true, 14)              \
-    S(FALSE, false, 15)            \
-    S(ASSIGN_BITWISE_AND, &=, 16)  \
-    S(ASSIGN_BITWISE_OR, |=, 17)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 18)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 19)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 20) \
-    S(BINARY_DECREMENT, -=, 21)    \
-    S(BINARY_INCREMENT, +=, 22)    \
-    S(BIT_SHIFT_LEFT, <<, 23)      \
-    S(BIT_SHIFT_RIGHT, >>, 24)     \
-    S(EQUALS, ==, 25)              \
-    S(GREATER_EQUALS, >=, 26)      \
-    S(LESS_EQUALS, <=, 27)         \
-    S(LOGICAL_AND, &&, 28)         \
-    S(LOGICAL_OR, ||, 29)          \
-    S(NOT_EQUALS, !=, 30)          \
-    S(RANGE, .., 31)               \
-    S(FUNC_BINDING, ->, 32)        \
-    S(UNARY_DECREMENT, --, 33)     \
-    S(UNARY_INCREMENT, ++, 34)
+    S(FOR, for, 6)                 \
+    S(FUNC, func, 7)               \
+    S(IF, if, 8)                   \
+    S(IN, if, 9)                   \
+    S(LOOP, loop, 10)               \
+    S(MATCH, match, 11)             \
+    S(RETURN, return, 12)          \
+    S(STRUCT, struct, 13)          \
+    S(VAR, var, 14)                \
+    S(WHILE, while, 15)            \
+    S(TRUE, true, 16)              \
+    S(FALSE, false, 17)            \
+    S(ASSIGN_BITWISE_AND, &=, 18)  \
+    S(ASSIGN_BITWISE_OR, |=, 19)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 20)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 21)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 22) \
+    S(BINARY_DECREMENT, -=, 23)    \
+    S(BINARY_INCREMENT, +=, 24)    \
+    S(BIT_SHIFT_LEFT, <<, 25)      \
+    S(BIT_SHIFT_RIGHT, >>, 26)     \
+    S(EQUALS, ==, 27)              \
+    S(GREATER_EQUALS, >=, 28)      \
+    S(LESS_EQUALS, <=, 29)         \
+    S(LOGICAL_AND, &&, 30)         \
+    S(LOGICAL_OR, ||, 31)          \
+    S(NOT_EQUALS, !=, 32)          \
+    S(RANGE, .., 33)               \
+    S(FUNC_BINDING, ->, 34)        \
+    S(UNARY_DECREMENT, --, 35)     \
+    S(UNARY_INCREMENT, ++, 36)
 
 typedef enum {
 #undef KEYWORD_ENUM
@@ -160,6 +162,7 @@ extern void       lexer_advance_source(Lexer *lexer, size_t num);
 extern Token      lexer_peek(Lexer *lexer);
 extern Token      lexer_next(Lexer *lexer);
 extern Token      lexer_lex(Lexer *lexer);
+extern Token      lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...);
 
 #define LEXER_LOC_ARG(lexer) LOC_ARG(lexer->sources->loc)
 

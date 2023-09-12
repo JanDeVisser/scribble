@@ -20,6 +20,7 @@ typedef struct string_view {
 } StringView;
 
 typedef struct string_builder {
+    Allocator *allocator;
     StringView view;
 } StringBuilder;
 
@@ -55,6 +56,7 @@ extern StringView sv_vprintf(char const *fmt, va_list args);
 #define SV_ARG(sv) (int) sv.length, sv.ptr
 
 extern StringBuilder sb_create();
+extern StringBuilder sb_create_with_allocator(Allocator *allocator);
 extern StringBuilder sb_copy_chars(char const *ptr, size_t len);
 extern StringBuilder sb_copy_cstr(char const *s);
 extern StringBuilder sb_copy_sv(StringView sv);

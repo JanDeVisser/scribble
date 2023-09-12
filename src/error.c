@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "error.h"
+#include <error.h>
 
 char const* ErrorCode_name(ErrorCategory cat)
 {

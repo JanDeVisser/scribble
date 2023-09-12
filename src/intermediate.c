@@ -118,7 +118,7 @@ void generate_BREAK(BoundNode *node, void *target)
     assert(node->block.statements->intermediate);
     IROperation op;
     op.operation = IR_JUMP;
-    op.label = node->block.statements->intermediate->loop.done;
+    op.label = node->controlled_statement->intermediate->loop.done;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -134,8 +134,13 @@ void generate_CONTINUE(BoundNode *node, void *target)
     assert(node->block.statements->intermediate);
     IROperation op;
     op.operation = IR_JUMP;
-    op.label = node->block.statements->intermediate->loop.loop;
+    op.label = node->controlled_statement->intermediate->loop.loop;
     ir_function_add_operation((IRFunction *) target, op);
+}
+
+void generate_FOR(BoundNode *node, void *target)
+{
+    NYI("generate_FOR");
 }
 
 void generate_FUNCTION(BoundNode *node, void *target)

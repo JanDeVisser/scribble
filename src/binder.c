@@ -153,10 +153,16 @@ BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
     return NULL;
 }
 
-bool resolve_expression_type(Operator, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
+bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
 {
-    // Temporary: just assume that operators act on 2 objects of the same
-    // type and return an object of that type.
+    if (op == OP_RANGE) {
+        if (lhs.type_id != rhs.type_id) {
+            return false;
+        }
+        MUST_TO_VAR(TypeID, ret->type_id, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = lhs.type_id } }));
+        ret->optional = false;
+        return true;
+    }
     bool retval = lhs.type_id == rhs.type_id;
     if (retval) {
         *ret = lhs;
@@ -241,18 +247,18 @@ BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 
 BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *breakable = parent;
-    while (breakable) {
-        if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
+    BoundNode *controllable = parent;
+    while (controllable) {
+        if ((controllable->type == BNT_LOOP || controllable->type == BNT_WHILE) && sv_eq(controllable->name, stmt->name)) {
             break;
         }
-        breakable = breakable->parent;
+        controllable = controllable->parent;
     }
-    if (!breakable) {
-        fatal("'break' must be in a 'while' or 'loop' block");
+    if (!controllable) {
+        fatal(LOC_SPEC "No 'while' or 'loop' block found with label '" SV_SPEC "'", LOC_ARG(stmt->token.loc), SV_ARG(stmt->name));
     }
-    BoundNode *ret = bound_node_make(BNT_BREAK, parent);
-    ret->block.statements = breakable;
+    BoundNode *ret = bound_node_make((stmt->type == SNT_BREAK) ? BNT_BREAK : BNT_CONTINUE, parent);
+    ret->controlled_statement = controllable;
     return ret;
 }
 
@@ -266,18 +272,22 @@ BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindCo
 
 BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *breakable = parent;
-    while (breakable) {
-        if (breakable->type == BNT_LOOP || breakable->type == BNT_WHILE) {
-            break;
-        }
-        breakable = breakable->parent;
+    return bind_BREAK(parent, stmt, ctx);
+}
+
+BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_FOR, parent);
+    ret->name = stmt->name;
+    ret->for_statement.variable = stmt->for_statement.variable;
+    ret->for_statement.range = bind_node(ret, stmt->for_statement.range, ctx);
+    type_id range_type_id = ret->for_statement.range->typespec.type_id;
+    ExpressionType *range_type = type_registry_get_type_by_id(range_type_id);
+    if (range_type->specialization_of != RANGE_ID) {
+        fatal(LOC_SPEC "Range expression must have `range' type", SN_LOC_ARG(stmt->for_statement.range));
     }
-    if (!breakable) {
-        fatal("'continue' must be in a 'while' or 'loop' block");
-    }
-    BoundNode *ret = bound_node_make(BNT_CONTINUE, parent);
-    ret->block.statements = breakable;
+    ret->typespec.type_id = range_type->template_arguments[0].type;
+    ret->for_statement.statement = bind_node(ret, stmt->for_statement.statement, ctx);
     return ret;
 }
 
@@ -292,7 +302,11 @@ BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         return bound_node_make_unbound(parent, stmt, ctx);
     }
     if (return_type.type_id != VOID_ID && error_type.type_id != VOID_ID) {
-        return_type.type_id = type_registry_get_variant2(return_type.type_id, error_type.type_id);
+        ErrorOrTypeID variant_id_maybe = type_registry_get_variant2(return_type.type_id, error_type.type_id);
+        if (ErrorOrTypeID_is_error(variant_id_maybe)) {
+            fatal(LOC_SPEC "Could not create variant return type", SN_LOC_ARG(stmt));
+        }
+        return_type.type_id = variant_id_maybe.value;
     }
 
     int        unbound_cnt = ctx->unbound;
@@ -340,9 +354,19 @@ BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+BoundNode *bind_LABEL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    SyntaxNode *breakable = stmt->next;
+    if (breakable->type == SNT_LOOP || breakable->type == SNT_WHILE) {
+        breakable->name = stmt->name;
+    }
+    return NULL;
+}
+
 BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_LOOP, parent);
+    ret->name = stmt->name;
     ret->block.statements = bind_node(ret, stmt->block.statements, ctx);
     return ret;
 }
@@ -490,15 +514,24 @@ BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
         num++;
     }
-    size_t     *types = allocate_array(size_t, num);
-    StringView *names = allocate_array(StringView, num);
+    TypeComponent *type_components = alloca(num * sizeof(TypeComponent));
+    size_t        *types = allocate_array(size_t, num);
+    StringView    *names = allocate_array(StringView, num);
     num = 0;
     for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
-        types[num] = component->typespec.type_id;
-        names[num] = component->name;
+        type_components[num].kind = CK_TYPE;
+        type_components[num].name = component->name;
+        type_components[num].type_id = component->typespec.type_id;
         num++;
     }
-    type_registry_make_struct(stmt->name, num, names, types);
+    ErrorOrTypeID struct_id_maybe = type_registry_make_type(stmt->name, TK_COMPOSITE);
+    if (ErrorOrTypeID_is_error(struct_id_maybe)) {
+        fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
+    }
+    struct_id_maybe = type_set_struct_components(struct_id_maybe.value, num, type_components);
+    if (ErrorOrTypeID_is_error(struct_id_maybe)) {
+        fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
+    }
     return NULL;
 }
 
@@ -565,19 +598,19 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
                 fatal("Variable type with compound initializer cannot be inferred");
             }
             ExpressionType *et = type_registry_get_type_by_id(var_type.type_id);
-            if (et->kind != TK_COMPOSITE) {
-                fatal("Cannot initialize variables with non-compound types using a compound initializer");
+            assert(et);
+            if (type_kind(et) != TK_COMPOSITE) {
+                fatal(LOC_SPEC "Cannot initialize variables with non-compound types using a compound initializer", LOC_ARG(stmt->token.loc));
             }
-            TypeComponent *type_component = &et->component;
-            BoundNode     *arg = expr->compound_initializer.argument;
-            while (type_component) {
+            BoundNode *arg = expr->compound_initializer.argument;
+            for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                TypeComponent *type_component = &et->components.components[ix];
                 if (!arg) {
                     fatal("No initializer argument values for " SV_SPEC "." SV_SPEC, SV_ARG(et->name), SV_ARG(type_component->name));
                 }
                 if (!typespec_assignment_compatible((TypeSpec) { type_component->type_id, false }, arg->typespec)) {
                     fatal("Declaration type element and initializer argument value types are different");
                 }
-                type_component = type_component->next;
                 arg = arg->next;
             }
             if (arg) {
@@ -597,6 +630,7 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
 BoundNode *bind_WHILE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_WHILE, parent);
+    ret->name = stmt->name;
     ret->while_statement.condition = bind_node(ret, stmt->while_statement.condition, ctx);
     ret->while_statement.statement = bind_node(ret, stmt->while_statement.statement, ctx);
     return ret;

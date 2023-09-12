@@ -12,7 +12,7 @@
 #define BLOCKSIZES(S) S(32) S(64) S(128) S(256) S(512) S(1024) S(2048) S(4096) S(8192) S(16384)
 
 #undef BLOCKSIZE
-#define BLOCKSIZE(size) char *fl_##size = NULL;
+#define BLOCKSIZE(size) static char *fl_##size = NULL;
 BLOCKSIZES(BLOCKSIZE)
 #undef BLOCKSIZE
 
@@ -326,34 +326,40 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     return ret;
 }
 
-char *sb_reallocate(char *old_buf, size_t *capacity, size_t new_len)
+static void sb_reallocate(StringBuilder *sb, size_t new_len)
 {
     char  *ret = NULL;
-    size_t new_cap = (*capacity) ? *capacity : 32;
+    size_t new_cap = (sb->view.capacity) ? sb->view.capacity : 32;
     while (new_cap < new_len)
         new_cap *= 2;
-    if (new_cap == *capacity) {
-        return old_buf;
+    if (new_cap <= sb->view.capacity) {
+        return;
     }
-    ret = allocate_for_length(new_len, capacity, NULL);
-    if (old_buf) {
-        memcpy(ret, old_buf, *capacity);
-        free_buffer(old_buf, *capacity);
+    ret = allocate_for_length(new_len, &sb->view.capacity, sb->allocator);
+    if (sb->view.ptr) {
+        memcpy(ret, sb->view.ptr, sb->view.capacity);
+        free_buffer((char*) sb->view.ptr, sb->view.capacity);
     }
-    *capacity = new_cap;
-    return ret;
+    sb->view.capacity = new_cap;
+    sb->view.ptr = ret;
 }
 
 StringBuilder sb_create()
 {
+    return sb_create_with_allocator(get_allocator());
+}
+
+StringBuilder sb_create_with_allocator(Allocator *allocator)
+{
     StringBuilder sb = { 0 };
+    sb.allocator = allocator;
     return sb;
 }
 
 StringBuilder sb_copy_chars(char const *ptr, size_t len)
 {
-    StringBuilder sb = { 0 };
-    sb.view.ptr = allocate_for_length(len + 1, &sb.view.capacity, NULL);
+    StringBuilder sb = sb_create();
+    sb.view.ptr = allocate_for_length(len + 1, &sb.view.capacity, sb.allocator);
     if (len > 0) {
         memcpy((char *) sb.view.ptr, ptr, len);
         sb.view.length = len;
@@ -373,7 +379,7 @@ StringBuilder sb_copy_cstr(char const *s)
 
 void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
 {
-    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->view.capacity, sb->view.length + len + 1);
+    sb_reallocate(sb, sb->view.length + len + 1);
     memcpy((char *) sb->view.ptr + sb->view.length, ptr, len);
     sb->view.length += len;
 }
@@ -393,7 +399,7 @@ void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
     va_list args2;
     va_copy(args2, args);
     size_t len = vsnprintf(NULL, 0, fmt, args);
-    sb->view.ptr = sb_reallocate((char *) sb->view.ptr, &sb->view.capacity, sb->view.length + len + 1);
+    sb_reallocate(sb, sb->view.length + len + 1);
     vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args2);
     sb->view.length += len;
 }

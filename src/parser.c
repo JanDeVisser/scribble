@@ -60,11 +60,8 @@ SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token)
 
 void parse_arguments(Lexer *lexer, SyntaxNode *node, char start, char end)
 {
-    Token token = lexer_lex(lexer);
-    if (!token_matches(token, TK_SYMBOL, start)) {
-        fatal(LOC_SPEC "Expected '(' in call to '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(node->name));
-    }
-    token = lexer_next(lexer);
+    lexer_expect(lexer, TK_SYMBOL, start, "Expected '%c'", start);
+    Token token = lexer_next(lexer);
     if (token_matches(token, TK_SYMBOL, end)) {
         lexer_lex(lexer);
         return;
@@ -83,7 +80,7 @@ void parse_arguments(Lexer *lexer, SyntaxNode *node, char start, char end)
             return;
         }
         if (!token_matches(token, TK_SYMBOL, ',')) {
-            fatal(LOC_SPEC, "Expected ',' between arguments of function '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(node->name));
+            fatal(LOC_SPEC, "Expected ','", LEXER_LOC_ARG(lexer));
         }
     }
 }
@@ -130,13 +127,9 @@ OperatorMapping operator_for_token(Token token)
     return s_operator_mapping[0];
 }
 
-void skip_semicolon(Lexer *lexer, SyntaxNode *stmt)
+void skip_semicolon(Lexer *lexer)
 {
-    Token token = lexer_next(lexer);
-    if (!token_matches(token, TK_SYMBOL, ';')) {
-        fatal(LOC_SPEC "Expected ';' after statement, got " SV_SPEC, LEXER_LOC_ARG(lexer), SV_ARG(token.text));
-    }
-    lexer_lex(lexer);
+    lexer_expect(lexer, TK_SYMBOL, ';', "Expected ';' after statement");
 }
 
 StringView cleanup_string(StringView str)
@@ -297,11 +290,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
         case '(': {
             lexer_lex(lexer);
             SyntaxNode *ret = parse_expression(lexer);
-            token = lexer_next(lexer);
-            if (!token_matches(token, TK_SYMBOL, ')')) {
-                fatal(LOC_SPEC "Expected ')'");
-            }
-            lexer_lex(lexer);
+            lexer_expect(lexer, TK_SYMBOL, ')', "Expected ')'");
             return ret;
         }
         default:
@@ -346,7 +335,7 @@ SyntaxNode *parse_variable_declaration(Lexer *lexer, bool is_const)
     ret->variable_decl.var_type = type;
     ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = is_const;
-    skip_semicolon(lexer, ret);
+    skip_semicolon(lexer);
     return ret;
 }
 
@@ -372,28 +361,49 @@ SyntaxNode *parse_if(Lexer *lexer)
     return ret;
 }
 
+SyntaxNode *parse_for(Lexer *lexer)
+{
+    Token token = lexer_lex(lexer);
+    Token variable = lexer_expect(lexer, TK_IDENTIFIER, TC_IDENTIFIER, "Expected variable in 'for' statement");
+    lexer_expect(lexer, TK_KEYWORD, (TokenCode) KW_IN, "Expected 'in' keyword in 'for' statement");
+    SyntaxNode *range = parse_expression(lexer);
+    if (!range) {
+        fatal(LOC_SPEC "Expected range expression in 'for' statement", LEXER_LOC_ARG(lexer));
+    }
+    SyntaxNode *stmt = parse_statement(lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_FOR, sv_from("$for"), token);
+    ret->for_statement.variable = variable.text;
+    ret->for_statement.range = range;
+    ret->for_statement.statement = stmt;
+    return ret;
+}
+
 SyntaxNode *parse_return(Lexer *lexer)
 {
     Token token;
     lexer_lex(lexer);
     token = lexer_next(lexer);
-    SyntaxNode *expr = parse_expression(lexer);
+    SyntaxNode *expr = NULL;
+    if (token_matches(token, TK_SYMBOL, ';')) {
+        lexer_lex(lexer);
+    } else {
+        expr = parse_expression(lexer);
+        skip_semicolon(lexer);
+    }
     SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_from("return"), token);
     ret->return_stmt.expression = expr;
-    skip_semicolon(lexer, ret);
     return ret;
 }
 
 SyntaxNode *parse_while(Lexer *lexer)
 {
-    Token token;
-    lexer_lex(lexer);
+    Token token = lexer_lex(lexer);
     SyntaxNode *expr = parse_expression(lexer);
     if (!expr) {
         fatal(LOC_SPEC "Expected condition in 'while' statement", LEXER_LOC_ARG(lexer));
     }
     SyntaxNode *stmt = parse_statement(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_from("while"), token);
+    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_from("$while"), token);
     ret->while_statement.condition = expr;
     ret->while_statement.statement = stmt;
     return ret;
@@ -403,7 +413,7 @@ SyntaxNode *parse_loop(Lexer *lexer)
 {
     Token       token = lexer_lex(lexer);
     SyntaxNode *stmt = parse_statement(lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_LOOP, sv_from("loop"), token);
+    SyntaxNode *ret = syntax_node_make(SNT_LOOP, sv_from("$loop"), token);
     ret->block.statements = stmt;
     return ret;
 }
@@ -430,7 +440,7 @@ SyntaxNode *parse_block(Lexer *lexer)
     }
 }
 
-SyntaxNode *parse_assignment_or_call(Lexer *lexer)
+SyntaxNode *parse_identifier(Lexer *lexer)
 {
     Token       token = lexer_lex(lexer);
     StringView  name = token.text;
@@ -456,14 +466,19 @@ SyntaxNode *parse_assignment_or_call(Lexer *lexer)
             ret = syntax_node_make(SNT_FUNCTION_CALL, name, token);
             parse_arguments(lexer, ret, '(', ')');
         } break;
+        case ':': {
+            ret = syntax_node_make(SNT_LABEL, name, token);
+            lexer_lex(lexer);
+            return ret;
+        } break;
         default:
-            fatal(LOC_SPEC "Expected '=' or '(' after identifier '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(name));
+            fatal(LOC_SPEC "Expected '=', '(', or ':' after identifier '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(name));
         }
         break;
     default:
-        fatal(LOC_SPEC "Expected '=' or '(' after identifier '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(name));
+        fatal(LOC_SPEC "Expected '=', '(', or ':' after identifier '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(name));
     }
-    skip_semicolon(lexer, ret);
+    skip_semicolon(lexer);
     return ret;
 }
 
@@ -483,20 +498,20 @@ SyntaxNode *parse_statement(Lexer *lexer)
     case TK_KEYWORD: {
         switch (token.code) {
         case KW_BREAK:
-            lexer_lex(lexer);
-            ret = syntax_node_make(SNT_BREAK, token.text, token);
-            skip_semicolon(lexer, ret);
-            break;
+        case KW_CONTINUE: {
+            Token stmt_token = lexer_lex(lexer);
+            token = lexer_expect(lexer, TK_IDENTIFIER, TC_IDENTIFIER, "Expected label name");
+            ret = syntax_node_make((stmt_token.code == KW_BREAK) ? SNT_BREAK : SNT_CONTINUE, token.text, stmt_token);
+            skip_semicolon(lexer);
+        } break;
         case KW_CONST:
             ret = parse_variable_declaration(lexer, true);
             break;
-        case KW_CONTINUE:
-            lexer_lex(lexer);
-            ret = syntax_node_make(SNT_CONTINUE, token.text, token);
-            skip_semicolon(lexer, ret);
-            break;
         case KW_IF:
             ret = parse_if(lexer);
+            break;
+        case KW_FOR:
+            ret = parse_for(lexer);
             break;
         case KW_LOOP:
             ret = parse_loop(lexer);
@@ -516,7 +531,7 @@ SyntaxNode *parse_statement(Lexer *lexer)
         break;
     }
     case TK_IDENTIFIER:
-        ret = parse_assignment_or_call(lexer);
+        ret = parse_identifier(lexer);
         break;
     default:
         fatal(LOC_SPEC "Unexpected token '" SV_SPEC "'", LEXER_LOC_ARG(lexer), SV_ARG(token.text));
@@ -609,10 +624,11 @@ void parse_return_types(Lexer *lexer, SyntaxNode *func)
 SyntaxNode *parse_function_decl(Lexer *lexer)
 {
     lexer_lex(lexer);
-    Token token = lexer_lex(lexer);
+    Token token = lexer_next(lexer);
     if (token.kind != TK_IDENTIFIER) {
         fatal(LOC_SPEC "Expected function name", LEXER_LOC_ARG(lexer));
     }
+    lexer_lex(lexer);
     SyntaxNode *func = syntax_node_make(SNT_FUNCTION, token.text, token);
     parse_parameters(lexer, func);
     parse_return_types(lexer, func);
@@ -773,7 +789,7 @@ SyntaxNode *parse(char const *dir_or_file)
             if (dir == NULL) {
                fatal("Could not open current directory");
             }
-            SyntaxNode *module = parse_module_file(program, dirfd(dir), dir_or_file);
+            parse_module_file(program, dirfd(dir), dir_or_file);
             closedir(dir);
             return program;
         }
@@ -782,7 +798,7 @@ SyntaxNode *parse(char const *dir_or_file)
     struct dirent *dp;
     while ((dp = readdir(dir)) != NULL) {
         if ((dp->d_namlen > 8) && strcmp(dp->d_name + (dp->d_namlen - 9), ".scribble") == 0) {
-            SyntaxNode *module = parse_module_file(program, dirfd(dir), dp->d_name);
+            parse_module_file(program, dirfd(dir), dp->d_name);
         }
     }
     closedir(dir);

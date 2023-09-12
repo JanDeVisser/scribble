@@ -10,7 +10,7 @@
 #ifndef __DATUM_H__
 #define __DATUM_H__
 
-#define DATUMTYPES(S)             \
+#define DATUM_PRIMITIVETYPES(S)         \
     S(VOID, void_value, int)      \
     S(ERROR, error, char const *) \
     S(U8, u8, uint8_t)            \
@@ -27,20 +27,39 @@
     S(FLOAT, float_value, double)
 
 typedef struct datum {
-    PrimitiveType type;
+    type_id type;
     union {
-#undef DATUMTYPE
-#define DATUMTYPE(dt, n, ct) ct n;
-        DATUMTYPES(DATUMTYPE)
-#undef DATUMTYPE
+#undef PRIMITIVETYPE
+#define PRIMITIVETYPE(dt, n, ct) ct n;
+        DATUM_PRIMITIVETYPES(PRIMITIVETYPE)
+#undef PRIMITIVETYPE
+        struct datum *components;
+        struct {
+            type_id       component_type;
+            size_t        size;
+            struct datum *components;
+        } array;
+        struct {
+            type_id       holds_alternative;
+            struct datum *value;
+        } variant;
     };
 } Datum;
 
-Datum         datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
-unsigned long datum_unsigned_integer_value(Datum d);
-long          datum_signed_integer_value(Datum d);
-Datum         datum_apply(Datum d1, Operator op, Datum d2);
-void          datum_print(Datum d);
-StringView    datum_sprint(Datum d);
+extern Datum         datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
+extern unsigned long datum_unsigned_integer_value(Datum d);
+extern long          datum_signed_integer_value(Datum d);
+extern Datum         datum_copy(Datum d);
+extern Datum         datum_apply(Datum d1, Operator op, Datum d2);
+extern void          datum_print(Datum d);
+extern StringView    datum_sprint(Datum d);
+extern void          datum_free(Datum d);
+
+#define datum_kind(d) typeid_kind((d).type)
+#define datum_is_primitive(d) typeid_has_kind((d).type, TK_PRIMITIVE)
+#define datum_is_composite(d) (datum_kind((d)) == TK_COMPOSITE)
+#define datum_is_array(d) (datum_kind((d)) == TK_ARRAY)
+#define datum_is_variant(d) (datum_kind((d)) == TK_VARIANT)
+#define datum_is_integer(d) (datum_is_primitive(d) && PrimitiveType_is_integer((d).type))
 
 #endif /* __DATUM_H__ */

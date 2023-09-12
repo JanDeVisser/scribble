@@ -19,6 +19,7 @@
     S(BREAK)                \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
+    S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
     S(FUNCTION_IMPL)        \
@@ -84,6 +85,7 @@ typedef struct bound_node {
         struct {
             struct bound_node *statements;
         } block;
+        struct bound_node *controlled_statement;
         struct {
             struct bound_node *parameter;
             struct bound_node *function_impl;
@@ -115,6 +117,11 @@ typedef struct bound_node {
             struct bound_node *if_true;
             struct bound_node *if_false;
         } if_statement;
+        struct {
+            StringView         variable;
+            struct bound_node *range;
+            struct bound_node *statement;
+        } for_statement;
         struct {
             struct bound_node *expression;
         } return_stmt;

@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 #include <datum.h>
 
 #undef ENUM_BINARY_OPERATOR
@@ -25,9 +27,62 @@ static OperatorFunctions s_functions[] = {
 #undef ENUM_BINARY_OPERATOR
 };
 
+#define BLOCKSIZES(S) S(1) S(2) S(4) S(8) S(16) S(32) S(64) S(128) S(256) S(512) S(1024)
+
+#undef BLOCKSIZE
+#define BLOCKSIZE(size) static void *fl_##size = NULL;
+BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+
+Datum *allocate_datums(size_t num)
+{
+    Datum *ret = NULL;
+    size_t cap = 1;
+    while (cap < num)
+        cap *= 2;
+    assert(cap <= 1024);
+    switch (cap) {
+#define BLOCKSIZE(size)                         \
+    case size:                                  \
+        if (fl_##size) {                        \
+            ret = fl_##size;                    \
+            fl_##size = *((char **) fl_##size); \
+        }                                       \
+        break;
+        BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+    default:
+        break;
+    }
+    if (!ret) {
+        ret = allocate_array(Datum, cap);
+    }
+    return ret;
+}
+
+void free_datums(Datum *datums, size_t num)
+{
+    size_t cap = 1;
+    while (cap < num)
+        cap *= 2;
+    assert(cap <= 1024);
+    switch (cap) {
+#undef BLOCKSIZE
+#define BLOCKSIZE(size)                  \
+    case size:                           \
+        *((char **) datums) = fl_##size; \
+        fl_##size = datums;              \
+        break;
+        BLOCKSIZES(BLOCKSIZE)
+#undef BLOCKSIZE
+    default:
+        break;
+    }
+}
+
 unsigned long datum_unsigned_integer_value(Datum d)
 {
-    assert(PrimitiveType_is_integer(d.type));
+    assert(datum_is_integer(d));
     switch (d.type) {
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
@@ -39,9 +94,6 @@ unsigned long datum_unsigned_integer_value(Datum d)
         return (unsigned long) d.bool_value;
     case PT_POINTER:
         return (unsigned long) d.pointer;
-    case PT_STRING:
-        assert(d.string.ptr[d.string.length] == 0);
-        return (unsigned long) d.string.ptr;
     default:
         UNREACHABLE();
     }
@@ -49,7 +101,7 @@ unsigned long datum_unsigned_integer_value(Datum d)
 
 long datum_signed_integer_value(Datum d)
 {
-    assert(PrimitiveType_is_integer(d.type));
+    assert(datum_is_integer(d));
     switch (d.type) {
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
@@ -61,9 +113,21 @@ long datum_signed_integer_value(Datum d)
         return (long) d.bool_value;
     case PT_POINTER:
         return (long) d.pointer;
-    case PT_STRING:
-        assert(d.string.ptr[d.string.length] == 0);
-        return (long) d.string.ptr;
+    default:
+        UNREACHABLE();
+    }
+}
+
+Datum datum_copy(Datum d)
+{
+    assert(datum_is_primitive(d));
+    Datum ret = { 0 };
+    ret.type = d.type;
+    switch (d.type) {
+#undef PRIMITIVETYPE
+#define PRIMITIVETYPE(dt, n, ct) ret.n = d.n;
+        DATUM_PRIMITIVETYPES(PRIMITIVETYPE)
+#undef PRIMITIVETYPE
     default:
         UNREACHABLE();
     }
@@ -79,9 +143,19 @@ Datum datum_MEMBER_ACCESS(Datum, Datum)
     NYI("datum_MEMBER_ACCESS");
 }
 
-Datum datum_RANGE(Datum, Datum)
+Datum datum_RANGE(Datum d1, Datum d2)
 {
-    NYI("datum_RANGE");
+    assert(d1.type == d2.type);
+    assert(datum_is_integer(d1));
+    assert(datum_GREATER_EQUALS(d1, d2).bool_value);
+    Datum ret = { 0 };
+    MUST_TO_VAR(TypeID, ret.type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1.type } }));
+    assert(typeid_has_kind(ret.type, TK_COMPOSITE));
+    Datum *fields = allocate_datums(2);
+    fields[0] = datum_copy(d1);
+    fields[1] = datum_copy(d2);
+    ret.components = fields;
+    return ret;
 }
 
 Datum datum_SUBSCRIPT(Datum, Datum)
@@ -97,6 +171,7 @@ Datum datum_CALL(Datum, Datum)
 Datum datum_ADD(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
+    assert(datum_is_primitive(d1));
     Datum ret = { 0 };
     ret.type = d1.type;
     switch (d1.type) {
@@ -116,6 +191,7 @@ Datum datum_ADD(Datum d1, Datum d2)
 Datum datum_SUBTRACT(Datum d1, Datum d2)
 {
     assert(d1.type == d2.type);
+    assert(datum_is_primitive(d1));
     Datum ret = { 0 };
     ret.type = d1.type;
     switch (d1.type) {
@@ -373,7 +449,7 @@ Datum datum_LOGICAL_OR(Datum d1, Datum d2)
 {
     assert(d1.type == PT_BOOL && d2.type == PT_BOOL);
     Datum ret = { 0 };
-    ret.type = PT_BOOL;
+    ret.type = ret.type = PT_BOOL;
     ret.bool_value = d1.bool_value || d2.bool_value;
     return ret;
 }
@@ -514,4 +590,28 @@ Datum datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uin
         }
     }
     return d;
+}
+
+void datum_free(Datum d)
+{
+    ExpressionType *type = type_registry_get_type_by_id(d.type);
+    switch (datum_kind(d)) {
+    case TK_COMPOSITE: {
+        for (size_t ix = 0; ix < type->components.num_components; ++ix) {
+            datum_free(d.components[ix]);
+        }
+        free_datums(d.components, type->components.num_components);
+    } break;
+    case TK_ARRAY: {
+        for (size_t ix = 0; ix < d.array.size; ++ix) {
+            datum_free(d.array.components[ix]);
+        }
+        free_datums(d.array.components, d.array.size);
+    } break;
+    case TK_VARIANT: {
+        datum_free(*d.variant.value);
+    } break;
+    default:
+        break;
+    }
 }

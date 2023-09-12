@@ -358,3 +358,15 @@ Token lexer_lex(Lexer *lexer)
     lexer->current.code = TC_NONE;
     return ret;
 }
+
+Token lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const* msg, ...)
+{
+    Token ret = lexer_next(lexer);
+    if (!token_matches(ret, kind, code)) {
+        va_list args;
+        va_start(args, msg);
+        StringView formatted = sv_vprintf(msg, args);
+        fatal(LOC_SPEC "%.*s", LEXER_LOC_ARG(lexer), SV_ARG(formatted));
+    }
+    return lexer_lex(lexer);
+}

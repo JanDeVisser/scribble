@@ -13,9 +13,10 @@
 
 #define ERRORCATEGORIES(S) \
     S(NoError, 0)          \
-    S(IOError, 1)          \
-    S(OutOfMemory, 2)      \
-    S(DLError, 3)
+    S(DLError, 1)          \
+    S(IOError, 2)          \
+    S(OutOfMemory, 3)      \
+    S(TypeError, 4)
 
 typedef enum {
 #undef ERRORCATEGORY_ENUM
@@ -77,24 +78,46 @@ extern char const *Error_to_string(Error error);
 #define RETURN(name, expr) return ErrorOr##name##_return((expr))
 #define ERROR(name, cat, code, msg) return ErrorOr##name##_error(cat, code, msg)
 
-#define MUST(name, typ, var, expr)                     \
-    typ var;                                           \
-    {                                                  \
-        ErrorOr##name var##_maybe = (expr);            \
-        if (ErrorOr##name##_is_error(var##_maybe)) {   \
-            fatal(Error_to_string(var##_maybe.error)); \
-        }                                              \
-        var = var##_maybe.value;                       \
+#define MUST_TO_VAR(name, var, expr)                    \
+    {                                                   \
+        ErrorOr##name name##_maybe = (expr);            \
+        if (ErrorOr##name##_is_error(name##_maybe)) {   \
+            fatal(Error_to_string(name##_maybe.error)); \
+        }                                               \
+        var = name##_maybe.value;                       \
     }
 
-#define TRY(name, typ, var, expr)                    \
-    typ var;                                         \
-    {                                                \
-        ErrorOr##name var##_maybe = (expr);          \
-        if (ErrorOr##name##_is_error(var##_maybe)) { \
-            return var##_maybe;                      \
-        }                                            \
-        var = var##_maybe.value;                     \
+#define MUST(name, typ, var, expr) \
+    typ var;                       \
+    MUST_TO_VAR(name, var, expr)
+
+#define MUST_VOID(name, expr)                           \
+    {                                                   \
+        ErrorOr##name name##_maybe = (expr);            \
+        if (ErrorOr##name##_is_error(name##_maybe)) {   \
+            fatal(Error_to_string(name##_maybe.error)); \
+        }                                               \
+    }
+
+#define TRY_TO_VAR(name, var, expr)                   \
+    {                                                 \
+        ErrorOr##name name##_maybe = (expr);          \
+        if (ErrorOr##name##_is_error(name##_maybe)) { \
+            return name##_maybe;                      \
+        }                                             \
+        var = name##_maybe.value;                     \
+    }
+
+#define TRY(name, typ, var, expr) \
+    typ var;                      \
+    TRY_TO_VAR(name, var, expr)
+
+#define TRY_VOID(name, expr)                          \
+    {                                                 \
+        ErrorOr##name name##_maybe = (expr);          \
+        if (ErrorOr##name##_is_error(name##_maybe)) { \
+            return name##_maybe;                      \
+        }                                             \
     }
 
 #define TRY_TO(name, to_name, typ, var, expr)             \

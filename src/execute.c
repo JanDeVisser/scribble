@@ -154,8 +154,8 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            ExpressionType *et = type_registry_get_type_by_id(type_registry_canonical_type_id(v->type));
-            switch (et->kind) {
+            ExpressionType *et = type_registry_get_type_by_id(typeid_canonical_type_id(v->type));
+            switch (type_kind(et)) {
             case TK_PRIMITIVE: {
                 Datum d = datum_stack_pop(stack);
                 if (d.type == PT_ERROR) {
@@ -164,17 +164,9 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 v->value = d;
             } break;
             case TK_COMPOSITE: {
-                TypeComponent *type_component = &et->component;
-                v->composite.num_components = 0;
-                v->composite.components = NULL;
-                while (type_component) {
-                    ExpressionType *t = type_registry_get_type_by_id(type_registry_canonical_type_id(type_component->type_id));
-                    assert(t->kind == TK_PRIMITIVE);
-                    ++v->composite.num_components;
-                    type_component = type_component->next;
-                }
+                v->composite.num_components = et->components.num_components;
                 v->composite.components = allocate_array(Datum, v->composite.num_components);
-                type_component = &et->component;
+                ;
                 for (long ix = (long) v->composite.num_components - 1; ix >= 0; --ix) {
                     // TODO check that types match
                     Datum d = datum_stack_pop(stack);
@@ -185,7 +177,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
                 }
             } break;
             default:
-                NYI("type '" SV_SPEC "' kind '%d' in scope_push_variable ", SV_ARG(et->name), et->kind);
+                NYI("type '" SV_SPEC "' kind '%X' in scope_push_variable ", SV_ARG(et->name), type_kind(et));
             }
             return NULL;
         }
@@ -201,19 +193,17 @@ char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack
         VarList *v = scope_variable(s, name);
         if (v) {
             ExpressionType *et = type_registry_get_type_by_id(v->type);
-            switch (et->kind) {
+            switch (type_kind(et)) {
             case TK_PRIMITIVE:
                 datum_stack_push(stack, v->value);
                 break;
             case TK_COMPOSITE: {
-                TypeComponent *type_component = &et->component;
-                size_t         ix = 0;
-                while (type_component) {
+                for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                    TypeComponent  *type_component = &et->components.components[ix];
                     ExpressionType *t = type_registry_get_type_by_id(type_component->type_id);
-                    assert(t->kind == TK_PRIMITIVE);
+                    assert(type_kind(t));
                     assert(ix < v->composite.num_components);
-                    datum_stack_push(stack, v->composite.components[ix++]);
-                    type_component = type_component->next;
+                    datum_stack_push(stack, v->composite.components[ix]);
                 }
             } break;
             default:
@@ -239,7 +229,7 @@ void scope_dump_variables(Scope *scope)
         for (VarList *var = s->var_list; var; var = var->next) {
             ExpressionType *et = type_registry_get_type_by_id(var->type);
             assert(et);
-            switch (et->kind) {
+            switch (type_kind(et)) {
             case TK_PRIMITIVE: {
                 printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), PrimitiveType_name(var->value.type));
                 datum_print(var->value);
@@ -247,12 +237,10 @@ void scope_dump_variables(Scope *scope)
             } break;
             case TK_COMPOSITE: {
                 printf("%5.5s" SV_SPEC "  %10.10s " SV_SPEC "\n", "", SV_ARG(var->name), "struct", SV_ARG(et->name));
-                TypeComponent *component = &et->component;
-                size_t         ix = 0;
-                while (component) {
+                for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                    TypeComponent *component = &et->components.components[ix];
                     printf("%7.7s" SV_SPEC "  %10.10s  ", "", SV_ARG(component->name), PrimitiveType_name(var->composite.components[ix].type));
-                    datum_print(var->composite.components[ix++]);
-                    component = component->next;
+                    datum_print(var->composite.components[ix]);
                     printf("\n");
                 }
             } break;
@@ -344,7 +332,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             sv_free(arg_sv);
         }
         Datum ret;
-        ret.type = type_registry_canonical_type(op->native.signature.ret_type->type_id)->primitive_type;
+        ret.type = typeid_canonical_type(op->native.signature.ret_type->type_id)->primitive_type;
         native_call(op->native.name, op->native.signature.argc, args, &ret);
         StringView ret_sv = datum_sprint(ret);
         trace("Native call of '%.*s' returned %.*s (%s)", SV_ARG(op->native.name), SV_ARG(ret_sv), PrimitiveType_name(ret.type));
@@ -836,7 +824,7 @@ int execute(IRProgram program /*, int argc, char **argv*/)
         ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
         for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {
             StringView bp[2];
-            size_t components = sv_split(breakpoint->value, sv_from(":"), 2, bp);
+            size_t     components = sv_split(breakpoint->value, sv_from(":"), 2, bp);
             StringView bp_index = (components > 1) ? bp[1] : sv_null();
             StringView bp_function = (components) ? bp[0] : sv_null();
             set_breakpoint(&ctx, bp_function, bp_index);

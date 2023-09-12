@@ -1,0 +1,1 @@
+install(DIRECTORY scribble DESTINATION test MESSAGE_NEVER)
