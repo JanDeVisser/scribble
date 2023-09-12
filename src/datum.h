@@ -10,7 +10,7 @@
 #ifndef __DATUM_H__
 #define __DATUM_H__
 
-#define DATUM_PRIMITIVETYPES(S)         \
+#define DATUM_PRIMITIVETYPES(S)   \
     S(VOID, void_value, int)      \
     S(ERROR, error, char const *) \
     S(U8, u8, uint8_t)            \
@@ -46,20 +46,44 @@ typedef struct datum {
     };
 } Datum;
 
-extern Datum         datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
-extern unsigned long datum_unsigned_integer_value(Datum d);
-extern long          datum_signed_integer_value(Datum d);
-extern Datum         datum_copy(Datum d);
-extern Datum         datum_apply(Datum d1, Operator op, Datum d2);
-extern void          datum_print(Datum d);
-extern StringView    datum_sprint(Datum d);
-extern void          datum_free(Datum d);
+extern Datum        *datum_allocate(type_id type);
+extern Datum        *datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
+extern unsigned long datum_unsigned_integer_value(Datum *d);
+extern long          datum_signed_integer_value(Datum *d);
+extern Datum        *datum_copy(Datum *dest, Datum *src);
+extern Datum        *datum_apply(Datum *d1, Operator op, Datum *d2);
+extern void          datum_print(Datum *d);
+extern StringView    datum_sprint(Datum *d);
+extern void          datum_free(Datum *d);
 
-#define datum_kind(d) typeid_kind((d).type)
-#define datum_is_primitive(d) typeid_has_kind((d).type, TK_PRIMITIVE)
-#define datum_is_composite(d) (datum_kind((d)) == TK_COMPOSITE)
-#define datum_is_array(d) (datum_kind((d)) == TK_ARRAY)
-#define datum_is_variant(d) (datum_kind((d)) == TK_VARIANT)
-#define datum_is_integer(d) (datum_is_primitive(d) && PrimitiveType_is_integer((d).type))
+static inline TypeKind datum_kind(Datum *d)
+{
+    return typeid_kind(d->type);
+}
+
+static inline bool datum_is_primitive(Datum *d)
+{
+    return typeid_has_kind(d->type, TK_PRIMITIVE);
+}
+
+static inline bool datum_is_composite(Datum *d)
+{
+    return typeid_has_kind(d->type, TK_COMPOSITE);
+}
+
+static inline bool datum_is_array(Datum *d)
+{
+    return typeid_has_kind(d->type, TK_ARRAY);
+}
+
+static inline bool datum_is_variant(Datum *d)
+{
+    return typeid_has_kind(d->type, TK_VARIANT);
+}
+
+static inline bool datum_is_integer(Datum *d)
+{
+    return (datum_is_primitive(d)) && PrimitiveType_is_integer(typeid_primitive_type(d->type));
+}
 
 #endif /* __DATUM_H__ */

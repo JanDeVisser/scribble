@@ -47,6 +47,6 @@ void_t     resolve_resolve(Resolve *, StringView, StringView);
 bool       resolve_library(StringView);
 void_t     resolve_function(StringView);
 
-void native_call(StringView name, size_t argc, Datum *values, Datum *ret);
+void native_call(StringView name, size_t argc, Datum **values, Datum *ret);
 
 #endif /* __NATIVE_H__ */

@@ -405,7 +405,7 @@ void_t resolve_function(StringView func_name)
     return resolve_resolve(resolve, lib, func);
 }
 
-void native_call(StringView name, size_t argc, Datum *values, Datum *ret)
+void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
 {
     if (argc > 8) {
         fatal("Can't do native calls with more than 8 parameters");

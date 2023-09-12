@@ -30,8 +30,8 @@ typedef struct next_instruction_pointer {
     };
 } NextInstructionPointer;
 
-Datum                  datum_stack_pop(DatumStack *stack);
-void                   datum_stack_push(DatumStack *stack, Datum datum);
+Datum                 *datum_stack_pop(DatumStack *stack);
+void                   datum_stack_push(DatumStack *stack, Datum *datum);
 void                   datum_stack_dump(DatumStack *stack);
 CallStackEntry         call_stack_pop(CallStack *stack);
 void                   call_stack_push(CallStack *stack, IRFunction *function, size_t index);
@@ -46,19 +46,18 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
 FunctionReturn         execute_function(ExecutionContext *ctx, IRFunction *function);
 
 #undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) static Datum execute_##i(ExecutionContext *ctx);
+#define INTRINSIC_ENUM(i) static Datum *execute_##i(ExecutionContext *ctx);
 INTRINSICS(INTRINSIC_ENUM)
 #undef INTRINSIC_ENUM
 
-Datum datum_stack_pop(DatumStack *stack)
+Datum *datum_stack_pop(DatumStack *stack)
 {
     if (!stack->top) {
-        Datum error = { 0 };
-        error.type = PT_ERROR;
-        error.error = "Stack underflow";
+        Datum *error = datum_allocate(ERROR_ID);
+        error->error = "Stack underflow";
         return error;
     }
-    Datum ret = stack->top->datum;
+    Datum *ret = stack->top->datum;
     stack->top = stack->top->prev;
     if (!stack->top) {
         stack->bottom = NULL;
@@ -66,7 +65,7 @@ Datum datum_stack_pop(DatumStack *stack)
     return ret;
 }
 
-void datum_stack_push(DatumStack *stack, Datum datum)
+void datum_stack_push(DatumStack *stack, Datum *datum)
 {
     DatumStackEntry *entry = allocate(sizeof(DatumStackEntry));
     entry->datum = datum;
@@ -154,31 +153,14 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            ExpressionType *et = type_registry_get_type_by_id(typeid_canonical_type_id(v->type));
-            switch (type_kind(et)) {
-            case TK_PRIMITIVE: {
-                Datum d = datum_stack_pop(stack);
-                if (d.type == PT_ERROR) {
-                    return d.error;
-                }
-                v->value = d;
-            } break;
-            case TK_COMPOSITE: {
-                v->composite.num_components = et->components.num_components;
-                v->composite.components = allocate_array(Datum, v->composite.num_components);
-                ;
-                for (long ix = (long) v->composite.num_components - 1; ix >= 0; --ix) {
-                    // TODO check that types match
-                    Datum d = datum_stack_pop(stack);
-                    if (d.type == PT_ERROR) {
-                        return d.error;
-                    }
-                    v->composite.components[ix] = d;
-                }
-            } break;
-            default:
-                NYI("type '" SV_SPEC "' kind '%X' in scope_push_variable ", SV_ARG(et->name), type_kind(et));
+            Datum *d = datum_stack_pop(stack);
+            if (d->type == ERROR_ID) {
+                return d->error;
             }
+            if (v->value) {
+                datum_free(v->value);
+            }
+            v->value = d;
             return NULL;
         }
         s = s->enclosing;
@@ -192,23 +174,9 @@ char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            ExpressionType *et = type_registry_get_type_by_id(v->type);
-            switch (type_kind(et)) {
-            case TK_PRIMITIVE:
-                datum_stack_push(stack, v->value);
-                break;
-            case TK_COMPOSITE: {
-                for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-                    TypeComponent  *type_component = &et->components.components[ix];
-                    ExpressionType *t = type_registry_get_type_by_id(type_component->type_id);
-                    assert(type_kind(t));
-                    assert(ix < v->composite.num_components);
-                    datum_stack_push(stack, v->composite.components[ix]);
-                }
-            } break;
-            default:
-                NYI("type kind in scope_push_variable");
-            }
+            Datum *copy = datum_allocate(v->value->type);
+            datum_copy(copy, v->value);
+            datum_stack_push(stack, copy);
             return NULL;
         }
         s = s->enclosing;
@@ -229,24 +197,10 @@ void scope_dump_variables(Scope *scope)
         for (VarList *var = s->var_list; var; var = var->next) {
             ExpressionType *et = type_registry_get_type_by_id(var->type);
             assert(et);
-            switch (type_kind(et)) {
-            case TK_PRIMITIVE: {
-                printf("%5.5s" SV_SPEC "  %10.10s  ", "", SV_ARG(var->name), PrimitiveType_name(var->value.type));
-                datum_print(var->value);
-                printf("\n");
-            } break;
-            case TK_COMPOSITE: {
-                printf("%5.5s" SV_SPEC "  %10.10s " SV_SPEC "\n", "", SV_ARG(var->name), "struct", SV_ARG(et->name));
-                for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-                    TypeComponent *component = &et->components.components[ix];
-                    printf("%7.7s" SV_SPEC "  %10.10s  ", "", SV_ARG(component->name), PrimitiveType_name(var->composite.components[ix].type));
-                    datum_print(var->composite.components[ix]);
-                    printf("\n");
-                }
-            } break;
-            default:
-                UNREACHABLE();
-            }
+            // FIXME Alignment of table
+            printf("%5.5s" SV_SPEC "  %10.10s  " SV_SPEC, "", SV_ARG(var->name), "", SV_ARG(et->name));
+            datum_print(var->value);
+            printf("\n");
         }
     }
 }
@@ -298,51 +252,51 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         return next;
     }
     case IR_JUMP_F: {
-        Datum cond = datum_stack_pop(&ctx->stack);
-        assert(cond.type == PT_BOOL);
-        if (!cond.bool_value) {
+        Datum *cond = datum_stack_pop(&ctx->stack);
+        assert(cond->type == BOOL_ID);
+        if (!cond->bool_value) {
             next.type = NIT_LABEL;
             next.pointer = op->label;
+            datum_free(cond);
             return next;
         }
+        datum_free(cond);
     } break;
     case IR_JUMP_T: {
-        Datum cond = datum_stack_pop(&ctx->stack);
-        if (cond.type == PT_ERROR) {
+        Datum *cond = datum_stack_pop(&ctx->stack);
+        if (cond->type == ERROR_ID) {
             next.type = NIT_EXCEPTION;
-            next.exception = cond.error;
+            next.exception = cond->error;
+            datum_free(cond);
             return next;
         }
-        assert(cond.type == PT_BOOL);
-        if (cond.bool_value) {
+        assert(cond->type == BOOL_ID);
+        if (cond->bool_value) {
             next.type = NIT_LABEL;
             next.pointer = op->label;
+            datum_free(cond);
             return next;
         }
+        datum_free(cond);
     } break;
     case IR_LABEL:
         break;
     case IR_NATIVE_CALL: {
-        Datum *args = allocate_array(Datum, op->native.signature.argc);
+        Datum **args = allocate_array(Datum *, op->native.signature.argc);
         trace("Preparing native call of '%.*s'", SV_ARG(op->native.name));
         for (size_t ix = 0; ix < op->native.signature.argc; ++ix) {
             args[ix] = datum_stack_pop(&ctx->stack);
-            StringView arg_sv = datum_sprint(args[ix]);
-            trace("Parameter %d: '%.*s'", ix + 1, SV_ARG(arg_sv));
-            sv_free(arg_sv);
         }
-        Datum ret;
-        ret.type = typeid_canonical_type(op->native.signature.ret_type->type_id)->primitive_type;
-        native_call(op->native.name, op->native.signature.argc, args, &ret);
-        StringView ret_sv = datum_sprint(ret);
-        trace("Native call of '%.*s' returned %.*s (%s)", SV_ARG(op->native.name), SV_ARG(ret_sv), PrimitiveType_name(ret.type));
-        sv_free(ret_sv);
+        Datum *ret = datum_allocate(typeid_canonical_type_id(op->native.signature.ret_type->type_id));
+        native_call(op->native.name, op->native.signature.argc, args, ret);
         datum_stack_push(&ctx->stack, ret);
     } break;
     case IR_OPERATOR: {
-        Datum d2 = datum_stack_pop(&ctx->stack);
-        Datum d1 = datum_stack_pop(&ctx->stack);
+        Datum *d2 = datum_stack_pop(&ctx->stack);
+        Datum *d1 = datum_stack_pop(&ctx->stack);
         datum_stack_push(&ctx->stack, datum_apply(d1, op->op, d2));
+        datum_free(d1);
+        datum_free(d2);
     } break;
     case IR_POP_VAR: {
         char const *err = scope_pop_variable(ctx->scope, op->sv, &ctx->stack);
@@ -353,19 +307,17 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         }
     } break;
     case IR_PUSH_BOOL_CONSTANT: {
-        Datum d = { 0 };
-        d.type = PT_BOOL;
-        d.bool_value = op->bool_value;
+        Datum *d = datum_allocate(BOOL_ID);
+        d->bool_value = op->bool_value;
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_INT_CONSTANT: {
-        Datum d = datum_make_integer(op->integer.width, op->integer.un_signed, op->integer.int_value, op->integer.int_value);
+        Datum *d = datum_make_integer(op->integer.width, op->integer.un_signed, op->integer.int_value, op->integer.int_value);
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_STRING_CONSTANT: {
-        Datum d = { 0 };
-        d.type = PT_STRING;
-        d.string = op->sv;
+        Datum *d = datum_allocate(STRING_ID);
+        d->string = op->sv;
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_VAR: {
@@ -685,108 +637,126 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     }
     FunctionReturn ret = { 0 };
     ret.type = FRT_NORMAL;
-    Datum ret_val = { 0 };
-    ret.return_value = ret_val;
+    ret.return_value = NULL;
     ctx->scope = current;
     return ret;
 }
 
-Datum execute_ALLOC(ExecutionContext *ctx)
+Datum *execute_ALLOC(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum size = datum_stack_pop(&ctx->stack);
-    ret.type = PT_POINTER;
-    ret.pointer = allocate(datum_unsigned_integer_value(size));
+    Datum *ret = datum_allocate(POINTER_ID);
+    Datum *size = datum_stack_pop(&ctx->stack);
+    ret->pointer = allocate(datum_unsigned_integer_value(size));
+    datum_free(size);
     return ret;
 }
 
-Datum execute_ENDLN(ExecutionContext *ctx)
+Datum *execute_ENDLN(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    ret.type = PT_I32;
-    ret.u64 = endln();
+    Datum *ret = datum_allocate(U64_ID);
+    ret->u64 = endln();
     return ret;
 }
 
-Datum execute_CLOSE(ExecutionContext *ctx)
+Datum *execute_CLOSE(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum fh = datum_stack_pop(&ctx->stack);
-    ret.type = PT_I32;
-    ret.i32 = close((int) datum_signed_integer_value(fh));
+    Datum *fh = datum_stack_pop(&ctx->stack);
+    Datum *ret = datum_allocate(I32_ID);
+    ret->i32 = close((int) datum_signed_integer_value(fh));
+    datum_free(fh);
     return ret;
 }
 
-Datum execute_FPUTS(ExecutionContext *ctx)
+Datum *execute_FPUTS(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum fh = datum_stack_pop(&ctx->stack);
-    Datum s = datum_stack_pop(&ctx->stack);
-    ret.type = PT_U32;
-    ret.u32 = write((int) datum_signed_integer_value(fh), s.string.ptr, s.string.length);
+    Datum *fh = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(fh));
+    Datum *s = datum_stack_pop(&ctx->stack);
+    assert(s->type == STRING_ID);
+    Datum *ret = datum_allocate(U32_ID);
+    ret->u32 = write((int) datum_signed_integer_value(fh), s->string.ptr, s->string.length);
+    datum_free(s);
+    datum_free(fh);
     return ret;
 }
 
-Datum execute_OPEN(ExecutionContext *ctx)
+Datum *execute_OPEN(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum name = datum_stack_pop(&ctx->stack);
-    Datum mode = datum_stack_pop(&ctx->stack);
-    ret.type = PT_I32;
-    assert(*(name.string.ptr + name.string.length) == 0);
-    ret.i32 = open(name.string.ptr, mode.i32);
+    Datum *name = datum_stack_pop(&ctx->stack);
+    assert(name->type == STRING_ID);
+    Datum *mode = datum_stack_pop(&ctx->stack);
+    assert(mode->type == I32_ID);
+    Datum *ret = datum_allocate(I32_ID);
+    char *file_name = alloca(name->string.length) + 1;
+    file_name[name->string.length] = 0;
+    memcpy(file_name, name->string.ptr, name->string.length);
+    ret->i32 = open(file_name, mode->i32);
+    datum_free(mode);
+    datum_free(name);
     return ret;
 }
 
-Datum execute_PUTI(ExecutionContext *ctx)
+Datum *execute_PUTI(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum i = datum_stack_pop(&ctx->stack);
-    ret.type = PT_U32;
-    ret.u64 = putint(i.i32);
+    Datum *i = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(i));
+    Datum *ret = datum_allocate(U64_ID);
+    ret->u64 = putint(datum_signed_integer_value(i));
+    datum_free(i);
     return ret;
 }
 
-Datum execute_PUTLN(ExecutionContext *ctx)
+Datum *execute_PUTLN(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum s = datum_stack_pop(&ctx->stack);
-    ret.type = PT_U32;
-    ret.u32 = write(1, s.string.ptr, s.string.length);
-    if (ret.u32 == s.string.length) {
-        ret.u32 += write(1, "\n", 1);
+    Datum *s = datum_stack_pop(&ctx->stack);
+    assert(s->type == STRING_ID);
+    Datum *ret = datum_allocate(U32_ID);
+    ret->u32 = write(1, s->string.ptr, s->string.length);
+    if (ret->u32 == s->string.length) {
+        ret->u32 += write(1, "\n", 1);
     }
+    datum_free(s);
     return ret;
 }
 
-Datum execute_READ(ExecutionContext *ctx)
+Datum *execute_READ(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum fh = datum_stack_pop(&ctx->stack);
-    Datum buffer = datum_stack_pop(&ctx->stack);
-    Datum bytes = datum_stack_pop(&ctx->stack);
-    ret.type = PT_I64;
-    ret.i64 = read((int) datum_signed_integer_value(fh), buffer.pointer, datum_unsigned_integer_value(fh));
+    Datum *fh = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(fh));
+    Datum *buffer = datum_stack_pop(&ctx->stack);
+    assert(buffer->type == POINTER_ID);
+    Datum *bytes = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(bytes));
+    Datum *ret = datum_allocate(I64_ID);
+    ret->i64 = read((int) datum_signed_integer_value(fh), buffer->pointer, datum_unsigned_integer_value(fh));
+    datum_free(bytes);
+    datum_free(buffer);
+    datum_free(fh);
     return ret;
 }
 
-Datum execute_WRITE(ExecutionContext *ctx)
+Datum *execute_WRITE(ExecutionContext *ctx)
 {
     (void) ctx;
-    Datum ret = { 0 };
-    Datum fh = datum_stack_pop(&ctx->stack);
-    Datum buffer = datum_stack_pop(&ctx->stack);
-    Datum bytes = datum_stack_pop(&ctx->stack);
-    ret.type = PT_I64;
-    ret.i64 = write((int) datum_signed_integer_value(fh), buffer.pointer, datum_unsigned_integer_value(fh));
+    Datum *fh = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(fh));
+    Datum *buffer = datum_stack_pop(&ctx->stack);
+    assert(buffer->type == POINTER_ID);
+    Datum *bytes = datum_stack_pop(&ctx->stack);
+    assert(datum_is_integer(bytes));
+    Datum *ret = datum_allocate(I64_ID);
+    ret->i64 = write((int) datum_signed_integer_value(fh), buffer->pointer, datum_unsigned_integer_value(fh));
+    datum_free(bytes);
+    datum_free(buffer);
+    datum_free(fh);
     return ret;
 }
 
@@ -794,7 +764,7 @@ FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *int
 {
     FunctionReturn ret = { 0 };
     ret.type = FRT_NORMAL;
-    Datum ret_val = { 0 };
+    Datum *ret_val = NULL;
 
     switch (intrinsic->intrinsic) {
 #undef INTRINSIC_ENUM
@@ -831,8 +801,8 @@ int execute(IRProgram program /*, int argc, char **argv*/)
         }
     }
     execute_function(&ctx, (IRFunction *) (program.functions + program.main));
-    Datum d = datum_stack_pop(&ctx.stack);
-    if (PrimitiveType_is_integer(d.type)) {
+    Datum *d = datum_stack_pop(&ctx.stack);
+    if (datum_is_integer(d)) {
         return (int) datum_signed_integer_value(d);
     }
     return 0;

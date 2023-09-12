@@ -72,7 +72,7 @@ ErrorOrTypeID type_registry_add_primitive(StringView name, PrimitiveType primiti
     assert(type);
     type->type_id |= primitive_type << 16;
     type->primitive_type = primitive_type;
-    RETURN(TypeID, id);
+    RETURN(TypeID, type->type_id);
 }
 
 ExpressionType *type_registry_get_type_by_name(StringView name)

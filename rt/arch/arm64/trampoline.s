@@ -100,63 +100,56 @@ _trampoline:
         stp     x29, x30, [sp, -48]!
         mov     x29, sp
         stp     x1,x0,[sp, 32]  ; Save argc (32), function pointer (40)
-        stp     x3,x2,[sp, 16]  ; Save *ret (16), *values (24)
-        mov     x12, x2         ; Get *values
+        stp     x3,x2,[sp, 16]  ; Save *ret (16), **values (24)
+        mov     x12, x2         ; Get **values
         mov     x14, x1         ; Get argc
 
-        ldr     x12, [sp, 24]   ; *values in x12
+        ldr     x12, [sp, 24]   ; **values in x12
         cmp     x14, #1
         b.lt    __trampoline_call
-        mov     x0, x12
+        ldr     x0, [x12], 8    ; *values[0] in x0, x12 now points to *values[1]
         bl      marshall_param
 
         cmp     x14, #2
         b.lt    __trampoline_call
         str     x0,[sp,-16]!
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #3
         b.lt    __load_x1
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #4
         b.lt    __load_x2
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #5
         b.lt    __load_x3
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #6
         b.lt    __load_x4
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #7
         b.lt    __load_x5
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         str     x0, [sp], 16
 
         cmp     x14, #8
         b.lt    __load_x6
-        add     x12,x12,#16
-        mov     x0, x12
+        ldr     x0, [x12], 8
         bl      marshall_param
         mov     x7, x0
 

@@ -18,13 +18,7 @@ typedef struct var_list {
     StringView       name;
     type_id          type;
     struct var_list *next;
-    union {
-        Datum value;
-        struct {
-            size_t num_components;
-            Datum *components;
-        } composite;
-    };
+    Datum           *value;
 } VarList;
 
 typedef struct scope {
@@ -37,7 +31,7 @@ typedef struct scope {
 } Scope;
 
 typedef struct datum_stack_entry {
-    Datum                     datum;
+    Datum                    *datum;
     struct datum_stack_entry *prev;
 } DatumStackEntry;
 
@@ -94,9 +88,9 @@ typedef enum function_return_type {
 typedef struct function_return {
     FunctionReturnType type;
     union {
-        Datum return_value;
-        Datum exception;
-        int   exit_code;
+        Datum *return_value;
+        Datum *exception;
+        int    exit_code;
     };
 } FunctionReturn;
 
