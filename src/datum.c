@@ -27,6 +27,8 @@ static OperatorFunctions s_functions[] = {
 #undef ENUM_BINARY_OPERATOR
 };
 
+static void datum_free_contents(Datum *d);
+
 #define BLOCKSIZES(S) S(1) S(2) S(4) S(8) S(16) S(32) S(64) S(128) S(256) S(512) S(1024)
 
 #undef BLOCKSIZE
@@ -40,7 +42,6 @@ Datum *allocate_datums(size_t num)
     size_t cap = 1;
     while (cap < num)
         cap *= 2;
-    assert(cap <= 1024);
     switch (cap) {
 #define BLOCKSIZE(size)                         \
     case size:                                  \
@@ -58,6 +59,40 @@ Datum *allocate_datums(size_t num)
         ret = allocate_array(Datum, cap);
     }
     return ret;
+}
+
+void datum_initialize(Datum *d)
+{
+    ExpressionType *et = type_registry_get_type_by_id(d->type);
+    ErrorOrSize size_maybe = type_sizeof(et);
+    if (ErrorOrSize_is_error(size_maybe)) {
+        fatal("Cannot initialize datum of type '" SV_SPEC "': %s", SV_ARG(et->name), Error_to_string(size_maybe.error));
+    }
+    switch (typeid_kind(d->type)) {
+    case TK_PRIMITIVE:
+        break;
+    case TK_COMPOSITE: {
+        d->composite.num_components = et->components.num_components;
+        d->composite.components = allocate_datums(d->composite.num_components);
+        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
+            d->composite.components[ix].type = et->components.components[ix].type_id;
+            datum_initialize(d->composite.components + ix);
+        }
+    } break;
+    case TK_ARRAY: {
+        d->array.size = et->array.size;
+        d->array.components = allocate_datums(d->array.size);
+        for (size_t ix = 0; ix < d->array.size; ++ix) {
+            d->array.components[ix].type = et->array.base_type.type_id;
+            datum_initialize(d->array.components + ix);
+        }
+    } break;
+    case TK_VARIANT:
+        d->variant = datum_allocate(et->components.components[0].type_id);
+        break;
+    default:
+        UNREACHABLE();
+    }
 }
 
 Datum *datum_allocate(type_id type)
@@ -127,6 +162,7 @@ long datum_signed_integer_value(Datum *d)
 
 Datum *datum_copy(Datum *dest, Datum *src)
 {
+    datum_free_contents(dest);
     dest->type = src->type;
     switch (datum_kind(src)) {
     case TK_PRIMITIVE: {
@@ -183,14 +219,11 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     Datum *geq = datum_GREATER_EQUALS(d1, d2);
     assert(geq->bool_value);
     datum_free(geq);
-    Datum *ret = datum_allocate(VOID_ID);
-    MUST_TO_VAR(TypeID, ret->type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }));
-    assert(typeid_has_kind(ret->type, TK_COMPOSITE));
-    Datum *fields = allocate_datums(2);
-    datum_copy(&fields[0], d1);
-    datum_copy(&fields[1], d2);
-    ret->composite.num_components = 2;
-    ret->composite.components = fields;
+    MUST(TypeID, type_id, type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }))
+    assert(typeid_has_kind(type, TK_COMPOSITE));
+    Datum *ret = datum_allocate(type);
+    datum_copy(ret->composite.components, d1);
+    datum_copy(ret->composite.components + 1, d2);
     return ret;
 }
 
@@ -648,7 +681,7 @@ Datum *datum_make_integer(size_t width, bool un_signed, int64_t signed_value, ui
     return d;
 }
 
-void datum_free(Datum *d)
+void datum_free_contents(Datum *d)
 {
     switch (datum_kind(d)) {
     case TK_COMPOSITE: {
@@ -669,4 +702,10 @@ void datum_free(Datum *d)
     default:
         break;
     }
+}
+
+void datum_free(Datum *d)
+{
+    datum_free_contents(d);
+    free_datums(d, 1);
 }
