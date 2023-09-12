@@ -142,12 +142,24 @@ Datum *datum_copy(Datum *dest, Datum *src)
             UNREACHABLE();
         }
     } break;
-    case TK_COMPOSITE:
-        NYI("datum_copy(TK_COMPOSITE)");
-    case TK_ARRAY:
-        NYI("datum_copy(TK_ARRAY)");
+    case TK_COMPOSITE: {
+        dest->composite.num_components = src->composite.num_components;
+        dest->composite.components = allocate_datums(src->composite.num_components);
+        for (size_t ix = 0; ix < dest->composite.num_components; ++ix) {
+            datum_copy(dest->composite.components + ix, src->composite.components + ix);
+        }
+    } break;
+    case TK_ARRAY: {
+        dest->array.size = src->array.size;
+        dest->array.components = allocate_datums(src->array.size);
+        for (size_t ix = 0; ix < dest->array.size; ++ix) {
+            datum_copy(dest->array.components + ix, src->array.components + ix);
+        }
+    } break;
     case TK_VARIANT:
-        NYI("datum_copy(TK_VARIANT)");
+        dest->variant = datum_allocate(dest->variant->type);
+        datum_copy(dest->variant, src->variant);
+        break;
     default:
         UNREACHABLE();
     }
@@ -177,7 +189,8 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     Datum *fields = allocate_datums(2);
     datum_copy(&fields[0], d1);
     datum_copy(&fields[1], d2);
-    ret->components = fields;
+    ret->composite.num_components = 2;
+    ret->composite.components = fields;
     return ret;
 }
 
@@ -550,13 +563,13 @@ StringView datum_sprint(Datum *d)
         sb_append_cstr(&sb, "{");
         char const     *comma = "";
         ExpressionType *et = type_registry_get_type_by_id(d->type);
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
             sb_append_cstr(&sb, comma);
             comma = ",";
             sb_append_cstr(&sb, " ");
             sb_append_sv(&sb, et->components.components[ix].name);
             sb_append_cstr(&sb, ": ");
-            sb_append_sv(&sb, datum_sprint(d->components + ix));
+            sb_append_sv(&sb, datum_sprint(d->composite.components + ix));
         }
         sb_append_cstr(&sb, " }");
     } break;
@@ -572,10 +585,10 @@ StringView datum_sprint(Datum *d)
         sb_append_cstr(&sb, " ]");
     } break;
     case TK_VARIANT: {
-        ExpressionType *et = type_registry_get_type_by_id(d->variant.holds_alternative);
+        ExpressionType *et = type_registry_get_type_by_id(d->variant->type);
         sb_append_sv(&sb, et->name);
         sb_append_cstr(&sb, ":");
-        sb_append_sv(&sb, datum_sprint(d->variant.value));
+        sb_append_sv(&sb, datum_sprint(d->variant));
     } break;
     default:
         UNREACHABLE();
@@ -637,13 +650,12 @@ Datum *datum_make_integer(size_t width, bool un_signed, int64_t signed_value, ui
 
 void datum_free(Datum *d)
 {
-    ExpressionType *type = type_registry_get_type_by_id(d->type);
     switch (datum_kind(d)) {
     case TK_COMPOSITE: {
-        for (size_t ix = 0; ix < type->components.num_components; ++ix) {
-            datum_free(d->components + ix);
+        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
+            datum_free(d->composite.components + ix);
         }
-        free_datums(d->components, type->components.num_components);
+        free_datums(d->composite.components, d->composite.num_components);
     } break;
     case TK_ARRAY: {
         for (size_t ix = 0; ix < d->array.size; ++ix) {
@@ -652,7 +664,7 @@ void datum_free(Datum *d)
         free_datums(d->array.components, d->array.size);
     } break;
     case TK_VARIANT: {
-        datum_free(d->variant.value);
+        datum_free(d->variant);
     } break;
     default:
         break;

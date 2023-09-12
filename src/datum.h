@@ -33,16 +33,15 @@ typedef struct datum {
 #define PRIMITIVETYPE(dt, n, ct) ct n;
         DATUM_PRIMITIVETYPES(PRIMITIVETYPE)
 #undef PRIMITIVETYPE
-        struct datum *components;
         struct {
-            type_id       component_type;
+            size_t        num_components;
+            struct datum *components;
+        } composite;
+        struct {
             size_t        size;
             struct datum *components;
         } array;
-        struct {
-            type_id       holds_alternative;
-            struct datum *value;
-        } variant;
+        struct datum *variant;
     };
 } Datum;
 
