@@ -1,0 +1,5 @@
+func foo(bar: i32) : i32 -> "libtestlib:foo";
+
+func main() {
+    return foo(12);
+}
