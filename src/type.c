@@ -483,9 +483,25 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     sb_printf(&name, SV_SPEC "<", SV_ARG(template_type->name));
     char *comma = "";
     for (size_t ix = 0; ix < num; ++ix) {
+        TemplateArgument *arg = type_arguments + ix;
         sb_append_cstr(&name, comma);
         comma = ",";
-        sb_append_sv(&name, type_arguments[ix].name);
+        sb_append_sv(&name, arg->name);
+        sb_append_cstr(&name, "=");
+        switch (arg->param_type) {
+        case TPT_TYPE: {
+            ExpressionType *t = type_registry_get_type_by_id(arg->type);
+            sb_append_sv(&name, t->name);
+        } break;
+        case TPT_NUMBER: {
+            sb_printf(&name, "%ld", arg->int_value);
+        } break;
+        case TPT_STRING: {
+            sb_append_sv(&name, arg->string_value);
+        } break;
+        default:
+            UNREACHABLE();
+        }
     }
     sb_append_cstr(&name, ">");
 
