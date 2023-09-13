@@ -463,7 +463,7 @@ Command get_command()
         case '\n':
             if (cmd == 0) {
                 printf("*> ");
-            } else if (strchr("BCLNOQSTVX", cmd) == NULL) {
+            } else if (strchr("BCHLNOQRSTVX", cmd) == NULL) {
                 printf("Unrecognized command '%c'\n", cmd);
                 cmd = 0;
                 printf("*> ");
@@ -554,6 +554,30 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
     return bp->function != NULL;
 }
 
+void debugger_help()
+{
+    printf("\nScribble debugger commands\n\n"
+           "   b [function [index]] - Sets a breakpoint at the given index of the given\n"
+           "                          function, or at the start of the function if no index\n"
+           "                          was specified. If no function is specified either, a \n"
+           "                          breakpoint is set at the current function and index,\n"
+           "   bp                   - Lists all breakpoints.\n"
+           "   c                    - (Re)start the program, allowing it to run to the next\n"
+           "                          breakpoint or the end of the program.\n"
+           "   h                    - Shows this text.\n"
+           "   l [function]         - Lists the given function or the current function if no\n"
+           "                          function is specified.\n"
+           "   n                    - Step into.\n"
+           "   o                    - Step over.\n"
+           "   q                    - Quits the program and the debugger.\n"
+           "   r                    - Toggles operation tracing.\n"
+           "   s                    - Lists the current data stack.\n"
+           "   t                    - Lists the current call stack.\n"
+           "   v                    - Lists all variables, starting in the current scope\n"
+           "                          walking up to the global scope.\n"
+           "   x                    - Step out.\n\n");
+}
+
 bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
 {
     ir_operation_print(function->operations + ix);
@@ -575,6 +599,9 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
         case 'C':
             ctx->execution_mode = EM_CONTINUE;
             return true;
+        case 'H':
+            debugger_help();
+            break;
         case 'L': {
             IRAbstractFunction *fnc = (IRAbstractFunction *) function;
             if (command.num_arguments) {
@@ -606,6 +633,10 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             return true;
         case 'Q':
             return false;
+        case 'R':
+            ctx->trace = !ctx->trace;
+            printf("Tracing is %s\n", (ctx->trace) ? "ON" : "OFF");
+            break;
         case 'S':
             datum_stack_dump(&ctx->stack);
             break;
@@ -661,6 +692,9 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 return ret;
             }
         }
+        if (ctx->trace) {
+            ir_operation_print(function->operations + ix);
+        }
         switch (function->operations[ix].operation) {
         case IR_SCOPE_BEGIN: {
             Scope *new_scope = allocate(sizeof(Scope));
@@ -670,9 +704,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         } break;
         case IR_SCOPE_END: {
             ctx->scope = ctx->scope->enclosing;
-            if (ctx->scope == func_scope.enclosing) {
-                fatal("Scope stack underflow");
-            }
+            assert_msg(ctx->scope != func_scope.enclosing, "Scope stack underflow");
             ix += 1;
         } break;
         default: {
@@ -883,6 +915,7 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     ctx.program = &program;
     ctx.root_scope = &root_scope;
     ctx.execution_mode = EM_RUN;
+    ctx.trace = false;
     if (OPT_DEBUG) {
         ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
         for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {

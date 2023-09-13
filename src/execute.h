@@ -77,6 +77,7 @@ typedef struct execution_context {
     ExecutionMode execution_mode;
     size_t        num_breakpoints;
     Breakpoint    breakpoints[MAX_BREAKPOINTS];
+    bool          trace;
 } ExecutionContext;
 
 typedef enum function_return_type {
