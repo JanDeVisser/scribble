@@ -83,9 +83,9 @@ typedef struct {
     S(FOR, for, 6)                 \
     S(FUNC, func, 7)               \
     S(IF, if, 8)                   \
-    S(IN, if, 9)                   \
-    S(LOOP, loop, 10)               \
-    S(MATCH, match, 11)             \
+    S(IN, in, 9)                   \
+    S(LOOP, loop, 10)              \
+    S(MATCH, match, 11)            \
     S(RETURN, return, 12)          \
     S(STRUCT, struct, 13)          \
     S(VAR, var, 14)                \

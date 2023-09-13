@@ -64,7 +64,7 @@ Datum *allocate_datums(size_t num)
 void datum_initialize(Datum *d)
 {
     ExpressionType *et = type_registry_get_type_by_id(d->type);
-    ErrorOrSize size_maybe = type_sizeof(et);
+    ErrorOrSize     size_maybe = type_sizeof(et);
     if (ErrorOrSize_is_error(size_maybe)) {
         fatal("Cannot initialize datum of type '" SV_SPEC "': %s", SV_ARG(et->name), Error_to_string(size_maybe.error));
     }
@@ -98,7 +98,8 @@ void datum_initialize(Datum *d)
 Datum *datum_allocate(type_id type)
 {
     Datum *ret = allocate_datums(1);
-    ret->type = type;
+    ret->type = typeid_canonical_type_id(type);
+    datum_initialize(ret);
     return ret;
 }
 
@@ -216,7 +217,7 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_integer(d1));
-    Datum *geq = datum_GREATER_EQUALS(d1, d2);
+    Datum *geq = datum_LESS_EQUALS(d1, d2);
     assert(geq->bool_value);
     datum_free(geq);
     MUST(TypeID, type_id, type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }))
@@ -591,7 +592,7 @@ StringView datum_sprint(Datum *d)
         default:
             UNREACHABLE();
         }
-    }
+    } break;
     case TK_COMPOSITE: {
         sb_append_cstr(&sb, "{");
         char const     *comma = "";

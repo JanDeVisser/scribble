@@ -125,6 +125,11 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
         }
         break;
     }
+    case BNT_FOR: {
+        if (type == BNT_VARIABLE_DECL && node->for_statement.variable && sv_eq(node->for_statement.variable->name, name)) {
+            return node->for_statement.variable;
+        }
+    } break;
     case BNT_PROGRAM: {
         if (type == BNT_FUNCTION) {
             for (BoundNode *n = node->program.intrinsics; n; n = n->next) {
@@ -279,7 +284,6 @@ BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_FOR, parent);
     ret->name = stmt->name;
-    ret->for_statement.variable = stmt->for_statement.variable;
     ret->for_statement.range = bind_node(ret, stmt->for_statement.range, ctx);
     type_id range_type_id = ret->for_statement.range->typespec.type_id;
     ExpressionType *range_type = type_registry_get_type_by_id(range_type_id);
@@ -287,6 +291,12 @@ BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         fatal(LOC_SPEC "Range expression must have `range' type", SN_LOC_ARG(stmt->for_statement.range));
     }
     ret->typespec.type_id = range_type->template_arguments[0].type;
+
+    ret->for_statement.variable = bound_node_make(BNT_VARIABLE_DECL, ret);
+    ret->for_statement.variable->name = stmt->for_statement.variable;
+    ret->for_statement.variable->typespec.type_id = ret->typespec.type_id;
+    ret->for_statement.variable->variable_decl.init_expr = NULL;
+
     ret->for_statement.statement = bind_node(ret, stmt->for_statement.statement, ctx);
     return ret;
 }

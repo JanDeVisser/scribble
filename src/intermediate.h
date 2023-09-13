@@ -23,10 +23,12 @@
     S(NATIVE_CALL)            \
     S(OPERATOR)               \
     S(POP_VAR)                \
+    S(POP_VAR_COMPONENT)      \
     S(PUSH_BOOL_CONSTANT)     \
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \
+    S(PUSH_VAR_COMPONENT)     \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \
     S(SCOPE_END)
@@ -65,6 +67,10 @@ typedef struct ir_operation {
             StringView name;
             Signature  signature;
         } native;
+        struct {
+            StringView name;
+            size_t     component;
+        } var_component;
     };
 } IROperation;
 

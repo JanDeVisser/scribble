@@ -118,7 +118,7 @@ typedef struct bound_node {
             struct bound_node *if_false;
         } if_statement;
         struct {
-            StringView         variable;
+            struct bound_node *variable;
             struct bound_node *range;
             struct bound_node *statement;
         } for_statement;

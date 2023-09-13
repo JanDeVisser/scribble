@@ -197,6 +197,10 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(stmt), NULL, f);
         }
     } break;
+    case SNT_FOR: {
+        graph_node_forward(node, abstract(sn->for_statement.range), "range", f);
+        graph_node_forward(node, abstract(sn->for_statement.statement), "statement", f);
+    } break;
     case SNT_FUNCTION: {
         size_t p;
         if (sn->function.parameter) {
@@ -270,6 +274,10 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(stmt), NULL, f);
         }
         break;
+    case BNT_FOR: {
+        graph_node_forward(node, abstract(bn->for_statement.range), "range", f);
+        graph_node_forward(node, abstract(bn->for_statement.statement), "statement", f);
+    } break;
     case BNT_FUNCTION: {
         if (bn->function.parameter) {
             GraphNode *parameters = graph_node_create_virtual(node, sv_from("parameters"), f);

@@ -168,6 +168,46 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
     return "Cannot assign undeclared variable";
 }
 
+char const *scope_pop_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
+{
+    Scope *s = scope;
+    while (s) {
+        VarList *v = scope_variable(s, name);
+        if (v) {
+            Datum *d = datum_stack_pop(stack);
+            if (d->type == ERROR_ID) {
+                return d->error;
+            }
+            Datum *component;
+            switch (datum_kind(v->value)) {
+            case TK_PRIMITIVE:
+            case TK_VARIANT:
+                return "Attempted pop of component of non-compound datum";
+            case TK_COMPOSITE:
+                if (index >= v->value->composite.num_components) {
+                    return "Attempted pop of out-of-range component index";
+                }
+                component = v->value->composite.components + index;
+                break;
+            case TK_ARRAY:
+                if (index >= v->value->array.size) {
+                    return "Attempted pop of out-of-range component index";
+                }
+                component = v->value->array.components + index;
+                break;
+            default:
+                UNREACHABLE();
+            }
+            assert(component);
+            datum_copy(component, d);
+            datum_free(d);
+            return NULL;
+        }
+        s = s->enclosing;
+    }
+    return "Cannot assign undeclared variable";
+}
+
 char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack)
 {
     Scope *s = scope;
@@ -182,6 +222,43 @@ char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack
         s = s->enclosing;
     }
     return "Cannot get value of undeclared variable";
+}
+
+const char *scope_push_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
+{
+    Scope *s = scope;
+    while (s) {
+        VarList *v = scope_variable(s, name);
+        if (v) {
+            Datum *component;
+            switch (datum_kind(v->value)) {
+            case TK_PRIMITIVE:
+            case TK_VARIANT:
+                return "Attempted push of component of non-compound datum";
+            case TK_COMPOSITE:
+                if (index >= v->value->composite.num_components) {
+                    return "Attempted push of out-of-range component index";
+                }
+                component = v->value->composite.components + index;
+                break;
+            case TK_ARRAY:
+                if (index >= v->value->array.size) {
+                    return "Attempted push of out-of-range component index";
+                }
+                component = v->value->array.components + index;
+                break;
+            default:
+                UNREACHABLE();
+            }
+            assert(component);
+            Datum *copy = datum_allocate(component->type);
+            datum_copy(copy, component);
+            datum_stack_push(stack, copy);
+            return NULL;
+        }
+        s = s->enclosing;
+    }
+    return "Cannot get value of component of undeclared variable";
 }
 
 void scope_dump_variables(Scope *scope)
@@ -306,6 +383,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             return next;
         }
     } break;
+    case IR_POP_VAR_COMPONENT: {
+        char const *err = scope_pop_variable_component(ctx->scope, op->var_component.name, op->var_component.component, &ctx->stack);
+        if (err) {
+            next.type = NIT_EXCEPTION;
+            next.exception = err;
+            return next;
+        }
+    } break;
     case IR_PUSH_BOOL_CONSTANT: {
         Datum *d = datum_allocate(BOOL_ID);
         d->bool_value = op->bool_value;
@@ -322,6 +407,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_PUSH_VAR: {
         char const *err = scope_push_variable(ctx->scope, op->sv, &ctx->stack);
+        if (err) {
+            next.type = NIT_EXCEPTION;
+            next.exception = err;
+            return next;
+        }
+    } break;
+    case IR_PUSH_VAR_COMPONENT: {
+        char const *err = scope_push_variable_component(ctx->scope, op->var_component.name, op->var_component.component, &ctx->stack);
         if (err) {
             next.type = NIT_EXCEPTION;
             next.exception = err;
