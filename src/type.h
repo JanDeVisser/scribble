@@ -221,7 +221,7 @@ extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t n
 
 static inline TypeKind typeid_kind(type_id type)
 {
-    return (TypeKind) (type >> 31);
+    return (TypeKind) (type >> 28);
 }
 
 static inline bool typeid_has_kind(type_id type, TypeKind kind)

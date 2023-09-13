@@ -145,7 +145,7 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
     }
     ExpressionType *type = type_registry.types[type_registry.size];
     type->name = sv_copy_with_allocator(name, get_allocator());
-    type->type_id = type_registry.size | (kind << 31);
+    type->type_id = type_registry.size | (kind << 28);
     ++type_registry.size;
     RETURN(TypeID, type->type_id);
 }
