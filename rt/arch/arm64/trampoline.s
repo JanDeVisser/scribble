@@ -81,7 +81,7 @@ __retval_type_16:
 __retval_type_32:
         cmp     w3,#32
         b.gt    __retval_type_64
-        str     w0,[x1,#8]``
+        str     w0,[x1,#8]
         b       __marshall_retval_done
 
 __retval_type_64:
