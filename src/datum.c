@@ -27,12 +27,10 @@ static OperatorFunctions s_functions[] = {
 #undef ENUM_BINARY_OPERATOR
 };
 
-static void datum_free_contents(Datum *d);
-
-#define BLOCKSIZES(S) S(1) S(2) S(4) S(8) S(16) S(32) S(64) S(128) S(256) S(512) S(1024)
+#define BLOCKSIZES(S) S(1) S(2) S(4) S(8) S(16) S(32) S(64) S(128) S(256) S(515) S(1024)
 
 #undef BLOCKSIZE
-#define BLOCKSIZE(size) static void *fl_##size = NULL;
+#define BLOCKSIZE(size) static Datum *fl_##size = NULL;
 BLOCKSIZES(BLOCKSIZE)
 #undef BLOCKSIZE
 
@@ -47,7 +45,7 @@ Datum *allocate_datums(size_t num)
     case size:                                  \
         if (fl_##size) {                        \
             ret = fl_##size;                    \
-            fl_##size = *((char **) fl_##size); \
+            fl_##size = *((Datum **) fl_##size); \
         }                                       \
         break;
         BLOCKSIZES(BLOCKSIZE)
@@ -111,10 +109,10 @@ void free_datums(Datum *datums, size_t num)
     assert(cap <= 1024);
     switch (cap) {
 #undef BLOCKSIZE
-#define BLOCKSIZE(size)                  \
-    case size:                           \
-        *((char **) datums) = fl_##size; \
-        fl_##size = datums;              \
+#define BLOCKSIZE(size)                   \
+    case size:                            \
+        *((Datum **) datums) = fl_##size; \
+        fl_##size = datums;               \
         break;
         BLOCKSIZES(BLOCKSIZE)
 #undef BLOCKSIZE

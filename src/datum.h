@@ -53,6 +53,7 @@ extern Datum        *datum_copy(Datum *dest, Datum *src);
 extern Datum        *datum_apply(Datum *d1, Operator op, Datum *d2);
 extern void          datum_print(Datum *d);
 extern StringView    datum_sprint(Datum *d);
+extern void          datum_free_contents(Datum *d);
 extern void          datum_free(Datum *d);
 
 static inline TypeKind datum_kind(Datum *d)
