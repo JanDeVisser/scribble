@@ -474,7 +474,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
             }
             if (matches) {
                 release_allocator(alloc_state);
-                RETURN(TypeID, ix);
+                RETURN(TypeID, type_registry.types[ix]->type_id);
             }
         }
     }
@@ -529,8 +529,9 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
                 *type_comp = *template_comp;
                 break;
             case CK_TEMPLATE_PARAM: {
-                TemplateArgument *arg = type_get_argument(type, template_comp->name);
+                TemplateArgument *arg = type_get_argument(type, template_comp->param);
                 if (arg) {
+                    type_comp->name = template_comp->name;
                     type_comp->kind = CK_TYPE;
                     type_comp->type_id = arg->type;
                 } else {
