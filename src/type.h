@@ -191,6 +191,7 @@ extern type_id RANGE_ID;
 ErrorOr(TypeID, type_id);
 ErrorOr(Size, size_t);
 
+extern char const        *TypeKind_name(TypeKind kind);
 extern char const        *PrimitiveType_name(PrimitiveType type);
 extern size_t             PrimitiveType_width(PrimitiveType type);
 extern PrimitiveType      PrimitiveType_get_integer_type(size_t width, bool un_signed);

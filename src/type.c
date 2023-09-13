@@ -26,6 +26,20 @@ PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
 type_id RANGE_ID = 0;
 
+char const *TypeKind_name(TypeKind kind)
+{
+    switch (kind) {
+#undef TYPEKINDS_ENUM
+#define TYPEKINDS_ENUM(type, value) \
+    case TK_##type:                          \
+        return #type;
+        TYPEKINDS(TYPEKINDS_ENUM)
+#undef TYPEKINDS_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
 char const *PrimitiveType_name(PrimitiveType type)
 {
     switch (type) {
