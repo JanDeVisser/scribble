@@ -102,6 +102,7 @@ BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindCont
 BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name)
 {
     switch (node->type) {
+    case BNT_BLOCK:
     case BNT_MODULE: {
         for (BoundNode *n = node->block.statements; n; n = n->next) {
             if (n->type == type && sv_eq(n->name, name)) {
