@@ -3,4 +3,4 @@
 cmake-*/
 build
 .idea
-not_yet_working
+test/not_yet_working
