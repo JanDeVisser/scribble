@@ -1,3 +1,6 @@
 *.dot
 *.dot.svg
 cmake-*/
+build
+.idea
+not_yet_working
