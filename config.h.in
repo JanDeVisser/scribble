@@ -1,0 +1,17 @@
+/*
+ * Copyright (c) 2023, Jan de Visser <jan@finiandarcy.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#ifndef __CONFIG_H__
+#define __CONFIG_H__
+
+#define SCRIBBLE_NAME                          "@scribble_NAME@"
+#define SCRIBBLE_VERSION_MAJOR                 "@scribble_VERSION_MAJOR@"
+#define SCRIBBLE_VERSION_MINOR                 "@scribble_VERSION_MINOR@"
+#define SCRIBBLE_VERSION                       "@scribble_VERSION_MAJOR@.@scribble_VERSION_MINOR@"
+#define SCRIBBLE_DIR                           "@scribble_DIR@"
+#define SCRIBBLE_DATADIR                       "@scribble_DATADIR@"
+
+#endif /* __CONFIG_H__ */
