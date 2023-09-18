@@ -1073,7 +1073,7 @@ int execute(IRProgram program /*, int argc, char **argv*/)
             ctx.execution_mode = EM_SINGLE_STEP;
         }
         execute_function(&ctx, (IRFunction *) (program.functions + program.$static));
-        ctx.execution_mode = EM_CONTINUE;
+        ctx.execution_mode = EM_RUN;
     }
     if (OPT_DEBUG) {
         ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
