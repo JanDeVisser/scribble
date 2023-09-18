@@ -539,6 +539,11 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         d->bool_value = op->bool_value;
         datum_stack_push(&ctx->stack, d);
     } break;
+    case IR_PUSH_FLOAT_CONSTANT: {
+        Datum *d = datum_allocate(FLOAT_ID);
+        d->float_value = op->double_value;
+        datum_stack_push(&ctx->stack, d);
+    } break;
     case IR_PUSH_INT_CONSTANT: {
         Datum *d = datum_make_integer(op->integer.width, op->integer.un_signed, op->integer.int_value, op->integer.int_value);
         datum_stack_push(&ctx->stack, d);

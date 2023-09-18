@@ -37,7 +37,7 @@ struct_declaration      ::= 'struct' '{' struct_component struct_components '}'
 struct_components       ::= struct_component struct_components
                           | 
                           ;
-struct_component        ::= identifier ':' typespec ','
+struct_component        ::= identifier ':' typespec ';'
                           ;
 native_declaration      ::= function_declaration '->' quoted_string
                           ;
@@ -116,7 +116,7 @@ factor                  ::= '(' expression ')'
                           | primary
                           ;
 primary                 ::= function_call
-                          | number
+                          | integer
                           | identifier
                           | quoted_string
                           ;

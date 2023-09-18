@@ -16,6 +16,9 @@ marshall_param:
         ldr     w2,[x0]      ; Load value->type in w2
 
         lsr     w2,w2,16
+        cmp     w2,#0004     ; Type is float
+        b.eq    __type_float
+
         and     w1,w2,#0x0600
         cmp     w1,wzr
         b.eq    __type_other ; Type is not an integer. We'll deal with that later
@@ -45,6 +48,10 @@ __type_64:
         ldr     x0,[x0,#8]
         b       __marshall_param_done
 
+__type_float:
+        ldr     d0,[x0,#8]
+        b       __marshall_param_done
+
 __type_other:
         mov     x0, xzr
 
@@ -61,6 +68,9 @@ marshall_retval:
         ldr     w2,[x1]         ; Load retval->type in w2
 
         lsr     w2,w2,16
+        cmp     w2,#0004     ; Type is float
+        b.eq    __retval_type_float
+
         and     w3,w2,#0x0600
         cmp     w3,wzr
         b.eq    __retval_type_other ; Type is not an integer. We'll deal with that later
@@ -88,6 +98,10 @@ __retval_type_64:
         cmp     w3,#64
         b.gt    __retval_type_other
         str     x0,[x1,#8]
+        b       __marshall_retval_done
+
+__retval_type_float:
+        str     d0,[x1,#8]
         b       __marshall_retval_done
 
 __retval_type_other:

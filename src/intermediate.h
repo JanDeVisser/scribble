@@ -30,6 +30,7 @@
     S(POP_VAR)                \
     S(POP_VAR_COMPONENT)      \
     S(PUSH_BOOL_CONSTANT)     \
+    S(PUSH_FLOAT_CONSTANT)    \
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \

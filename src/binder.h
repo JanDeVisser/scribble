@@ -20,16 +20,17 @@
     S(BREAK)                \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
+    S(DECIMAL)              \
     S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
     S(FUNCTION_IMPL)        \
     S(NAME)                 \
     S(IF)                   \
+    S(INTEGER)              \
     S(INTRINSIC)            \
     S(LOOP)                 \
     S(MODULE)               \
-    S(NUMBER)               \
     S(NATIVE_FUNCTION)      \
     S(PARAMETER)            \
     S(PROGRAM)              \
@@ -107,7 +108,7 @@ typedef struct bound_node {
         } binary_expr;
         struct {
             type_id base_type;
-            size_t size;
+            size_t  size;
         } array_def;
         struct {
             struct bound_node *expression;

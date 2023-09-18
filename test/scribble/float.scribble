@@ -1,0 +1,6 @@
+func asin(x: float): float -> "asin";
+
+func main() : int {
+  const pi: float = 2.0*asin(1.0);
+  return 0;
+}

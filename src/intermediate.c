@@ -163,6 +163,14 @@ void generate_CONTINUE(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+void generate_DECIMAL(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_FLOAT_CONSTANT;
+    op.double_value = strtod(node->name.ptr, NULL);
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
 void generate_FOR(BoundNode *node, void *target)
 {
     IRFunction *fnc = (IRFunction *) target;
@@ -358,6 +366,21 @@ void generate_IF(BoundNode *node, void *target)
     }
 }
 
+void generate_INTEGER(BoundNode *node, void *target)
+{
+    IROperation op;
+    op.operation = IR_PUSH_INT_CONSTANT;
+    ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
+    op.integer.width = PrimitiveType_width(et->primitive_type);
+    op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive_type);
+    if (op.integer.un_signed) {
+        op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
+    } else {
+        op.integer.int_value = strtol(node->name.ptr, NULL, 10);
+    }
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
 void generate_INTRINSIC(BoundNode *node, void *target)
 {
     IRProgram *program = (IRProgram *) target;
@@ -415,21 +438,6 @@ void generate_MODULE(BoundNode *node, void *target)
 void generate_NAME(BoundNode *node, void *target)
 {
     UNREACHABLE();
-}
-
-void generate_NUMBER(BoundNode *node, void *target)
-{
-    IROperation op;
-    op.operation = IR_PUSH_INT_CONSTANT;
-    ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
-    op.integer.width = PrimitiveType_width(et->primitive_type);
-    op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive_type);
-    if (op.integer.un_signed) {
-        op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
-    } else {
-        op.integer.int_value = strtol(node->name.ptr, NULL, 10);
-    }
-    ir_function_add_operation((IRFunction *) target, op);
 }
 
 void generate_NATIVE_FUNCTION(BoundNode *node, void *target)
@@ -652,6 +660,9 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         break;
     case IR_PUSH_BOOL_CONSTANT:
         printf("%s", (op->bool_value) ? "true" : "false");
+        break;
+    case IR_PUSH_FLOAT_CONSTANT:
+        printf("%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
         if (op->integer.un_signed) {

@@ -277,6 +277,14 @@ BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return bind_BREAK(parent, stmt, ctx);
 }
 
+BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_DECIMAL, parent);
+    ret->name = stmt->name;
+    ret->typespec = (TypeSpec) { FLOAT_ID, false };
+    return ret;
+}
+
 BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_FOR, parent);
@@ -361,6 +369,14 @@ BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
+    ret->name = stmt->token.text;
+    ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.width, stmt->integer.un_signed), false };
+    return ret;
+}
+
 BoundNode *bind_LABEL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     SyntaxNode *breakable = stmt->next;
@@ -406,24 +422,6 @@ BoundNode *bind_NATIVE_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext
 {
     BoundNode *ret = bound_node_make(BNT_NATIVE_FUNCTION, parent);
     ret->name = stmt->name;
-    return ret;
-}
-
-BoundNode *bind_NUMBER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{
-    BoundNode *ret = bound_node_make(BNT_NUMBER, parent);
-    ret->name = stmt->token.text;
-    switch (stmt->token.code) {
-    case TC_INTEGER:
-        ret->typespec.type_id = type_registry_id_of_integer_type(stmt->number.width, stmt->number.un_signed);
-        break;
-    case TC_DECIMAL:
-        ret->typespec.type_id = type_registry_id_of_primitive_type(PT_FLOAT);
-        break;
-    default:
-        fatal("Invalid token code '%s' for number", PrimitiveType_name(stmt->token.code));
-    }
-    ret->typespec.optional = false;
     return ret;
 }
 

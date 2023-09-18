@@ -78,17 +78,18 @@ typedef struct operator_mapping {
     S(BREAK)                \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
+    S(DECIMAL)              \
     S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
     S(FUNCTION_IMPL)        \
     S(IF)                   \
+    S(INTEGER)              \
     S(LABEL)                \
     S(LOOP)                 \
     S(MODULE)               \
     S(NAME)                 \
     S(NATIVE_FUNCTION)      \
-    S(NUMBER)               \
     S(PARAMETER)            \
     S(PROGRAM)              \
     S(RETURN)               \
@@ -163,7 +164,7 @@ typedef struct syntax_node {
         struct {
             size_t width;
             bool   un_signed;
-        } number;
+        } integer;
         struct {
             struct syntax_node *expression;
         } return_stmt;

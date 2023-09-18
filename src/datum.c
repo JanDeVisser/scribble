@@ -552,7 +552,7 @@ Datum *datum_apply(Datum *d1, Operator op, Datum *d2)
 void datum_print(Datum *d)
 {
     StringView sv = datum_sprint(d);
-    printf("%.*s", SV_ARG(sv));
+    printf(SV_SPEC_LALIGN ": %.*s", SV_ARG_LALIGN(sv, 12), SV_ARG(type_registry_get_type_by_id(d->type)->name));
     sv_free(sv);
 }
 
