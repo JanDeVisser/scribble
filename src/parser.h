@@ -86,6 +86,7 @@ typedef struct operator_mapping {
     S(LABEL)                \
     S(LOOP)                 \
     S(MODULE)               \
+    S(NAME)                 \
     S(NATIVE_FUNCTION)      \
     S(NUMBER)               \
     S(PARAMETER)            \
@@ -157,6 +158,9 @@ typedef struct syntax_node {
             struct syntax_node *statement;
         } for_statement;
         struct {
+            struct syntax_node *names;
+        } variable;
+        struct {
             size_t width;
             bool   un_signed;
         } number;
@@ -184,6 +188,5 @@ extern char const *SyntaxNodeType_name(SyntaxNodeType type);
 extern SyntaxNode *parse(char const *dir_or_file);
 
 #define SN_LOC_ARG(node) LOC_ARG(node->token.loc)
-
 
 #endif /* __PARSER_H__ */

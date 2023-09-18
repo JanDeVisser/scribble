@@ -242,7 +242,21 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
             parse_arguments(lexer, call, '(', ')');
             return call;
         } else {
-            return syntax_node_make(SNT_VARIABLE, token.text, token);
+            StringBuilder sb = sb_create_with_allocator(get_allocator());
+            SyntaxNode *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+            SyntaxNode **name_part = &var->variable.names;
+            while (true) {
+                *name_part = syntax_node_make(SNT_NAME, token.text, token);
+                sb_append_sv(&sb, token.text);
+                name_part = &(*name_part)->next;
+                if (!lexer_next_matches(lexer, TK_SYMBOL, '.')) {
+                    var->name = sb.view;
+                    return var;
+                }
+                lexer_lex(lexer);
+                sb_append_cstr(&sb, ".");
+                token = lexer_expect(lexer, TK_IDENTIFIER, TC_IDENTIFIER, "Expected identifier after '.'");
+            };
         }
     }
     case TK_NUMBER: {

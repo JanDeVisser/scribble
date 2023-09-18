@@ -25,13 +25,15 @@ static TypeRegistry type_registry = { 0 };
 PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
 type_id RANGE_ID = 0;
+type_id FIRST_CUSTOM_IX = 0;
+type_id NEXT_CUSTOM_IX = 0;
 
 char const *TypeKind_name(TypeKind kind)
 {
     switch (kind) {
 #undef TYPEKINDS_ENUM
 #define TYPEKINDS_ENUM(type, value) \
-    case TK_##type:                          \
+    case TK_##type:                 \
         return #type;
         TYPEKINDS(TYPEKINDS_ENUM)
 #undef TYPEKINDS_ENUM
@@ -108,6 +110,14 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
     fatal("Invalid type id 0x%04x:0x%04x referenced", id >> 16, id & 0xFFFF);
 }
 
+ExpressionType *type_registry_get_type_by_index(size_t ix)
+{
+    if (ix <= type_registry.size) {
+        return type_registry.types[ix];
+    }
+    fatal("Invalid type index %d referenced", ix);
+}
+
 type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (size_t ix = 0; ix < 20 && ix < type_registry.size; ++ix) {
@@ -147,8 +157,8 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
         ERROR(TypeID, TypeError, 0, "Type already exists");
     }
     if (type_registry.capacity <= type_registry.size + 1) {
-        size_t new_cap = (type_registry.capacity) ? type_registry.capacity * 2 : 32;
-        ExpressionType *new_block = allocate_array(ExpressionType, new_cap - type_registry.capacity);
+        size_t           new_cap = (type_registry.capacity) ? type_registry.capacity * 2 : 32;
+        ExpressionType  *new_block = allocate_array(ExpressionType, new_cap - type_registry.capacity);
         ExpressionType **new_index = allocate_array(ExpressionType *, new_cap);
         memcpy(new_index, type_registry.types, type_registry.capacity * sizeof(ExpressionType *));
         for (size_t ix = 0; ix < new_cap - type_registry.capacity; ++ix) {
@@ -160,7 +170,7 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
     ExpressionType *type = type_registry.types[type_registry.size];
     type->name = sv_copy_with_allocator(name, get_allocator());
     type->type_id = type_registry.size | (kind << 28);
-    ++type_registry.size;
+    NEXT_CUSTOM_IX = ++type_registry.size;
     RETURN(TypeID, type->type_id);
 }
 
@@ -191,6 +201,8 @@ void type_registry_init()
             (TypeComponent[]) {
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("min"), .param = sv_from("T") },
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("max"), .param = sv_from("T") } }))
+    FIRST_CUSTOM_IX = type_registry.size;
+    NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
 }
 
 type_id typeid_canonical_type_id(type_id type)
@@ -224,7 +236,36 @@ void typespec_print(FILE *f, TypeSpec typespec)
 {
     ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
     assert(et);
-    fprintf(f, SV_SPEC "%s", SV_ARG(et->name), (typespec.optional) ? "?" : "");
+    fprintf(f, SV_SPEC "%s [0x%08x]", SV_ARG(et->name), (typespec.optional) ? "?" : "", typespec.type_id);
+}
+
+bool type_is_concrete(ExpressionType *type)
+{
+    return typeid_is_concrete(type->type_id);
+}
+
+bool typeid_is_concrete(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    if (typeid_has_kind(type, TK_PRIMITIVE) || et->specialization_of == 0)
+        return true;
+    switch (type_kind(et)) {
+    case TK_ALIAS:
+        return typeid_is_concrete(typeid_canonical_type_id(type));
+    case TK_ARRAY:
+        return et->array.base_type.kind == CK_TYPE;
+    case TK_COMPOSITE:
+    case TK_VARIANT: {
+        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+            if (et->components.components[ix].kind != CK_TYPE) {
+                return false;
+            }
+        }
+        return false;
+    }
+    default:
+        UNREACHABLE();
+    }
 }
 
 ErrorOrSize type_sizeof(ExpressionType *type)
@@ -401,6 +442,17 @@ TemplateParameter *type_get_parameter(ExpressionType *type, StringView param)
     for (size_t ix = 0; ix < type->num_parameters; ++ix) {
         if (sv_eq(type->template_parameters[ix].name, param)) {
             return &type->template_parameters[ix];
+        }
+    }
+    return NULL;
+}
+
+TypeComponent *type_get_component(ExpressionType *type, StringView component)
+{
+    assert(type);
+    for (size_t ix = 0; ix < type->components.num_components; ++ix) {
+        if (sv_eq(type->components.components[ix].name, component)) {
+            return &type->components.components[ix];
         }
     }
     return NULL;
@@ -632,5 +684,15 @@ ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->alias_for_id = aliased;
+    RETURN(TypeID, new_id);
+}
+
+ErrorOrTypeID type_registry_array(StringView name, type_id base_type, size_t size)
+{
+    TRY(TypeID, type_id, new_id, type_registry_make_type(name, TK_ARRAY))
+    ExpressionType *type = type_registry_get_type_by_id(new_id);
+    assert(type);
+    type->array.base_type.type_id = base_type;
+    type->array.size = size;
     RETURN(TypeID, new_id);
 }

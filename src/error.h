@@ -131,5 +131,6 @@ extern char const *Error_to_string(Error error);
     }
 
 ErrorOr(Char, char *);
+ErrorOr(UInt64, uint64_t);
 
 #endif /* __ERROR_H__ */

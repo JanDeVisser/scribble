@@ -16,11 +16,16 @@
 #define IR_OPERATION_TYPES(S) \
     S(CALL)                   \
     S(DECL_VAR)               \
+    S(DEFINE_AGGREGATE)       \
+    S(DEFINE_ALIAS)           \
+    S(DEFINE_ARRAY)           \
+    S(DEFINE_VARIANT)         \
     S(JUMP)                   \
     S(JUMP_F)                 \
     S(JUMP_T)                 \
     S(LABEL)                  \
     S(NATIVE_CALL)            \
+    S(NEW_DATUM)              \
     S(OPERATOR)               \
     S(POP_VAR)                \
     S(POP_VAR_COMPONENT)      \
@@ -124,6 +129,7 @@ typedef struct ir_intrinsic_function {
 typedef struct ir_program {
     StringView          name;
     int                 main;
+    int                 $static;
     size_t              cap_functions;
     size_t              num_functions;
     IRAbstractFunction *functions;

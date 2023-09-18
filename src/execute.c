@@ -31,6 +31,8 @@ typedef struct next_instruction_pointer {
 } NextInstructionPointer;
 
 Datum                 *datum_stack_pop(DatumStack *stack);
+uint64_t               datum_stack_pop_u64(DatumStack *stack);
+StringView             datum_stack_pop_sv(DatumStack *stack);
 void                   datum_stack_push(DatumStack *stack, Datum *datum);
 void                   datum_stack_dump(DatumStack *stack);
 CallStackEntry         call_stack_pop(CallStack *stack);
@@ -62,6 +64,24 @@ Datum *datum_stack_pop(DatumStack *stack)
     if (!stack->top) {
         stack->bottom = NULL;
     }
+    return ret;
+}
+
+uint64_t datum_stack_pop_u64(DatumStack *stack)
+{
+    Datum *d = datum_stack_pop(stack);
+    assert(d->type == U64_ID);
+    uint64_t ret = d->u64;
+    datum_free(d);
+    return ret;
+}
+
+StringView datum_stack_pop_sv(DatumStack *stack)
+{
+    Datum *d = datum_stack_pop(stack);
+    assert(d->type == STRING_ID);
+    StringView ret = d->string;
+    datum_free(d);
     return ret;
 }
 
@@ -224,7 +244,7 @@ char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack
     return "Cannot get value of undeclared variable";
 }
 
-const char *scope_push_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
+char const *scope_push_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
 {
     Scope *s = scope;
     while (s) {
@@ -274,8 +294,7 @@ void scope_dump_variables(Scope *scope)
         for (VarList *var = s->var_list; var; var = var->next) {
             ExpressionType *et = type_registry_get_type_by_id(var->type);
             assert(et);
-            // FIXME Alignment of table
-            printf("%5.5s" SV_SPEC "  %10.10s  " SV_SPEC, "", SV_ARG(var->name), "", SV_ARG(et->name));
+            printf(SV_SPEC_LALIGN " " SV_SPEC_LALIGN " ", SV_ARG_LALIGN(var->name, 20), SV_ARG_LALIGN(et->name, 20));
             datum_print(var->value);
             printf("\n");
         }
@@ -323,6 +342,105 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             next.exception = err;
         }
     } break;
+    case IR_DEFINE_ALIAS: {
+        Datum *alias_of = datum_stack_pop(&ctx->stack);
+        assert(alias_of->type == U64_ID);
+        type_id         alias_for_id = datum_unsigned_integer_value(alias_of);
+        ExpressionType *et = type_registry_get_type_by_name(op->sv);
+        if (et) {
+            if (type_kind(et) != TK_ALIAS) {
+                fatal("Attempting to define '" SV_SPEC "' as an alias but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            }
+            if (et->alias_for_id != alias_for_id) {
+                fatal("Attempting to define '" SV_SPEC "' as an alias for '" SV_SPEC "' but it's already an alias for '" SV_SPEC "'",
+                    SV_ARG(op->sv), SV_ARG(typeid_name(alias_for_id)), SV_ARG(et->name));
+            }
+        } else {
+            MUST_VOID(TypeID, type_registry_alias(op->sv, alias_for_id));
+        }
+    } break;
+    case IR_DEFINE_AGGREGATE: {
+        size_t          num_components = datum_stack_pop_u64(&ctx->stack);
+        ExpressionType *et = type_registry_get_type_by_name(op->sv);
+        if (et) {
+            if (type_kind(et) != TK_COMPOSITE) {
+                fatal("Attempting to define '" SV_SPEC "' as an aggregate but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            }
+            if (et->components.num_components != num_components) {
+                fatal("Attempting to define '" SV_SPEC "' as an aggregate with %d components but it's already an aggregate with %d components",
+                    SV_ARG(op->sv), num_components, et->components.num_components);
+            }
+        }
+        TypeComponent *components = alloca(num_components * sizeof(TypeComponent));
+        for (size_t ix = 0; ix < num_components; ++ix) {
+            type_id    comp_type = datum_stack_pop_u64(&ctx->stack);
+            StringView comp_name = datum_stack_pop_sv(&ctx->stack);
+            if (et) {
+                if (!sv_eq(et->components.components[ix].name, comp_name)) {
+                    fatal("Attempting to define '" SV_SPEC "' as component %d of aggregate '" SV_SPEC "' but the component is already defined with name '%.*s'",
+                        SV_ARG(comp_name), ix, SV_ARG(et->components.components[ix].name));
+                }
+                if (et->components.components[ix].type_id != comp_type) {
+                    fatal("Attempting to define '" SV_SPEC "' as component with type '%.*s' of aggregate '" SV_SPEC "' but the component is already defined with type '%.*s'",
+                        SV_ARG(comp_name), SV_ARG(typeid_name(comp_type)), SV_ARG(typeid_name(et->components.components[ix].type_id)));
+                }
+            }
+            components[ix].kind = CK_TYPE;
+            components[ix].name = comp_name;
+            components[ix].type_id = comp_type;
+        }
+        if (!et) {
+            MUST(TypeID, type_id, new_id, type_registry_make_type(op->sv, TK_COMPOSITE));
+            MUST_VOID(TypeID, type_set_struct_components(new_id, num_components, components));
+        }
+    } break;
+    case IR_DEFINE_ARRAY: {
+        size_t          size = datum_stack_pop_u64(&ctx->stack);
+        type_id         type = datum_stack_pop_u64(&ctx->stack);
+        ExpressionType *et = type_registry_get_type_by_name(op->sv);
+        if (et) {
+            if (type_kind(et) != TK_ARRAY) {
+                fatal("Attempting to define '" SV_SPEC "' as an array but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            }
+            if (et->array.base_type.type_id != type) {
+                fatal("Attempting to define '" SV_SPEC "' as an array of '" SV_SPEC "' but it's already an array of '" SV_SPEC "'",
+                    SV_ARG(op->sv), SV_ARG(typeid_name(type)), typeid_name(et->array.base_type.type_id));
+            }
+            if (et->array.size != size) {
+                fatal("Attempting to define '" SV_SPEC "' as an array of '" SV_SPEC "' with %d elements but it's already an array of %d elements",
+                    SV_ARG(op->sv), size, et->array.size);
+            }
+        } else {
+            MUST_VOID(TypeID, type_registry_array(op->sv, type, size));
+        }
+    } break;
+    case IR_DEFINE_VARIANT: {
+        size_t          num_variants = datum_stack_pop_u64(&ctx->stack);
+        ExpressionType *et = type_registry_get_type_by_name(op->sv);
+        if (et) {
+            if (type_kind(et) != TK_VARIANT) {
+                fatal("Attempting to define '" SV_SPEC "' as a variant but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            }
+            if (et->components.num_components != num_variants) {
+                fatal("Attempting to define '" SV_SPEC "' as a variant with %d variants but it's already a variant with %d variants",
+                    SV_ARG(op->sv), num_variants, et->components.num_components);
+            }
+        }
+        type_id *options = alloca(num_variants * sizeof(type_id));
+        for (size_t ix = 0; ix < num_variants; ++ix) {
+            type_id    opt_type = datum_stack_pop_u64(&ctx->stack);
+            if (et) {
+                if (et->components.components[ix].type_id != opt_type) {
+                    fatal("Attempting to define '" SV_SPEC "' as option %d of variant '" SV_SPEC "' but the variant is already defined with type '%.*s'",
+                        typeid_name(opt_type), ix, typeid_name(et->components.components[ix].type_id));
+                }
+            }
+            options[ix] = opt_type;
+        }
+        if (!et) {
+            MUST_VOID(TypeID, type_registry_get_variant(num_variants, options));
+        }
+    } break;
     case IR_JUMP: {
         next.type = NIT_LABEL;
         next.pointer = op->label;
@@ -358,6 +476,31 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_LABEL:
         break;
+    case IR_NEW_DATUM: {
+        type_id tid = typeid_canonical_type_id(op->integer.unsigned_value);
+        assert(typeid_kind(tid) == TK_COMPOSITE || typeid_kind(tid) == TK_ARRAY);
+        ExpressionType *et = type_registry_get_type_by_id(tid);
+        Datum          *new_datum = datum_allocate(tid);
+        switch (typeid_kind(tid)) {
+        case TK_COMPOSITE: {
+            for (int ix = (int) et->components.num_components - 1; ix >= 0; --ix) {
+                Datum *d = datum_stack_pop(&ctx->stack);
+                datum_copy(new_datum->composite.components + ix, d);
+                datum_free(d);
+            }
+        } break;
+        case TK_ARRAY: {
+            for (int ix = (int) et->array.size - 1; ix >= 0; --ix) {
+                Datum *d = datum_stack_pop(&ctx->stack);
+                datum_copy(new_datum->array.components + ix, d);
+                datum_free(d);
+            }
+        } break;
+        default:
+            UNREACHABLE();
+        };
+        datum_stack_push(&ctx->stack, new_datum);
+    } break;
     case IR_NATIVE_CALL: {
         Datum **args = allocate_array(Datum *, op->native.signature.argc);
         trace("Preparing native call of '%.*s'", SV_ARG(op->native.name));
@@ -817,7 +960,7 @@ Datum *execute_OPEN(ExecutionContext *ctx)
     Datum *mode = datum_stack_pop(&ctx->stack);
     assert(mode->type == I32_ID);
     Datum *ret = datum_allocate(I32_ID);
-    char *file_name = alloca(name->string.length) + 1;
+    char  *file_name = alloca(name->string.length) + 1;
     file_name[name->string.length] = 0;
     memcpy(file_name, name->string.ptr, name->string.length);
     ret->i32 = open(file_name, mode->i32);
@@ -917,7 +1060,6 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     ctx.execution_mode = EM_RUN;
     ctx.trace = false;
     if (OPT_DEBUG) {
-        ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
         for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {
             StringView bp[2];
             size_t     components = sv_split(breakpoint->value, sv_from(":"), 2, bp);
@@ -925,6 +1067,16 @@ int execute(IRProgram program /*, int argc, char **argv*/)
             StringView bp_function = (components) ? bp[0] : sv_null();
             set_breakpoint(&ctx, bp_function, bp_index);
         }
+    }
+    if (program.$static >= 0) {
+        if (OPT_STATIC && OPT_DEBUG) {
+            ctx.execution_mode = EM_SINGLE_STEP;
+        }
+        execute_function(&ctx, (IRFunction *) (program.functions + program.$static));
+        ctx.execution_mode = EM_CONTINUE;
+    }
+    if (OPT_DEBUG) {
+        ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
     }
     execute_function(&ctx, (IRFunction *) (program.functions + program.main));
     Datum *d = datum_stack_pop(&ctx.stack);

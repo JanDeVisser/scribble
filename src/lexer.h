@@ -163,6 +163,7 @@ extern Token      lexer_peek(Lexer *lexer);
 extern Token      lexer_next(Lexer *lexer);
 extern Token      lexer_lex(Lexer *lexer);
 extern Token      lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...);
+extern bool       lexer_next_matches(Lexer *lexer, TokenKind kind, TokenCode code);
 
 #define LEXER_LOC_ARG(lexer) LOC_ARG(lexer->sources->loc)
 

@@ -15,7 +15,7 @@
 typedef void (*void_t)();
 typedef int (*qsort_fnc_t)(void const *, void const *);
 
-#define TYPEKINDS(S)         \
+#define TYPEKINDS(S)   \
     S(PRIMITIVE, 0x00) \
     S(COMPOSITE, 0x01) \
     S(VARIANT, 0x02)   \
@@ -121,7 +121,6 @@ typedef enum {
         PT_COUNT
 } PrimitiveType;
 
-
 typedef uint32_t               type_id;
 typedef struct expression_type ExpressionType;
 
@@ -187,6 +186,8 @@ typedef struct signature {
 PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
 #undef PRIMITIVETYPE_ENUM
 extern type_id RANGE_ID;
+extern type_id FIRST_CUSTOM_IX;
+extern type_id NEXT_CUSTOM_IX;
 
 ErrorOr(TypeID, type_id);
 ErrorOr(Size, size_t);
@@ -200,11 +201,13 @@ extern bool               PrimitiveType_is_number(PrimitiveType type);
 extern bool               PrimitiveType_is_unsigned(PrimitiveType type);
 extern ExpressionType    *type_registry_get_type_by_name(StringView name);
 extern ExpressionType    *type_registry_get_type_by_id(type_id id);
+extern ExpressionType    *type_registry_get_type_by_index(size_t ix);
 extern type_id            type_registry_id_of_primitive_type(PrimitiveType type);
 extern type_id            type_registry_id_of_integer_type(size_t width, bool un_signed);
 extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
 extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
 extern ErrorOrTypeID      type_registry_alias(StringView name, type_id aliased);
+extern ErrorOrTypeID      type_registry_array(StringView name, type_id base_type, size_t size);
 extern ErrorOrTypeID      type_registry_make_type(StringView name, TypeKind kind);
 extern type_id            typeid_canonical_type_id(type_id type);
 extern ExpressionType    *typeid_canonical_type(type_id type);
@@ -212,10 +215,13 @@ extern void               type_registry_init();
 extern bool               typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
 extern StringView         typespec_name(TypeSpec typespec);
 extern void               typespec_print(FILE *f, TypeSpec typespec);
+extern bool               type_is_concrete(ExpressionType *type);
+extern bool               typeid_is_concrete(type_id type);
 extern ErrorOrSize        type_sizeof(ExpressionType *type);
 extern ErrorOrSize        type_alignat(ExpressionType *type);
 extern TemplateParameter *type_get_parameter(ExpressionType *type, StringView param);
 extern TemplateArgument  *type_get_argument(ExpressionType *type, StringView arg);
+extern TypeComponent     *type_get_component(ExpressionType *type, StringView component);
 extern ErrorOrTypeID      type_set_struct_components(type_id struct_id, size_t num, TypeComponent *components);
 extern ErrorOrTypeID      type_set_template_parameters(type_id template_id, size_t num, TemplateParameter *parameters);
 extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t num, TemplateArgument *arguments);
@@ -223,6 +229,11 @@ extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t n
 static inline TypeKind typeid_kind(type_id type)
 {
     return (TypeKind) (type >> 28);
+}
+
+static inline StringView typeid_name(type_id type)
+{
+    return type_registry_get_type_by_id(type)->name;
 }
 
 static inline bool typeid_has_kind(type_id type, TypeKind kind)

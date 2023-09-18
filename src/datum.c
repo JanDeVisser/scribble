@@ -63,7 +63,7 @@ void datum_initialize(Datum *d)
 {
     ExpressionType *et = type_registry_get_type_by_id(d->type);
     ErrorOrSize     size_maybe = type_sizeof(et);
-    if (ErrorOrSize_is_error(size_maybe)) {
+    if (!type_is_concrete(et)) {
         fatal("Cannot initialize datum of type '" SV_SPEC "': %s", SV_ARG(et->name), Error_to_string(size_maybe.error));
     }
     switch (typeid_kind(d->type)) {
@@ -73,7 +73,7 @@ void datum_initialize(Datum *d)
         d->composite.num_components = et->components.num_components;
         d->composite.components = allocate_datums(d->composite.num_components);
         for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
-            d->composite.components[ix].type = et->components.components[ix].type_id;
+            d->composite.components[ix].type = typeid_canonical_type_id(et->components.components[ix].type_id);
             datum_initialize(d->composite.components + ix);
         }
     } break;

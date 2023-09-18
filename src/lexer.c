@@ -370,3 +370,9 @@ Token lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const* msg
     }
     return lexer_lex(lexer);
 }
+
+bool lexer_next_matches(Lexer *lexer, TokenKind kind, TokenCode code)
+{
+    Token next = lexer_next(lexer);
+    return token_matches(next, kind, code);
+}

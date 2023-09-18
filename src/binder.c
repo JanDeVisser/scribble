@@ -11,11 +11,6 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
-typedef struct node_list {
-    BoundNode        *node;
-    struct node_list *next;
-} BoundNodeList;
-
 typedef struct bind_context {
     struct bind_context *parent;
     int                  unbound;
@@ -85,6 +80,7 @@ BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent)
     node->type = type;
     node->parent = parent;
     node->next = NULL;
+    node->prev = NULL;
     node->index = next_index();
     return node;
 }
@@ -286,7 +282,7 @@ BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     BoundNode *ret = bound_node_make(BNT_FOR, parent);
     ret->name = stmt->name;
     ret->for_statement.range = bind_node(ret, stmt->for_statement.range, ctx);
-    type_id range_type_id = ret->for_statement.range->typespec.type_id;
+    type_id         range_type_id = ret->for_statement.range->typespec.type_id;
     ExpressionType *range_type = type_registry_get_type_by_id(range_type_id);
     if (range_type->specialization_of != RANGE_ID) {
         fatal(LOC_SPEC "Range expression must have `range' type", SN_LOC_ARG(stmt->for_statement.range));
@@ -401,6 +397,11 @@ BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+BoundNode *bind_NAME(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    UNREACHABLE();
+}
+
 BoundNode *bind_NATIVE_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_NATIVE_FUNCTION, parent);
@@ -439,60 +440,99 @@ BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-#define DEFINE_INTRINSIC(n, ret_type, intrinsic_code)                           \
-    intrinsic = bound_node_make(BNT_INTRINSIC, ret);                            \
-    intrinsic->next = ret->program.intrinsics;                                  \
-    ret->program.intrinsics = intrinsic;                                        \
-    intrinsic->name = sv_from(n);                                               \
-    intrinsic->typespec.type_id = type_registry_id_of_primitive_type(ret_type); \
-    intrinsic->typespec.optional = false;                                       \
-    intrinsic->intrinsic.intrinsic = intrinsic_code;
+typedef struct intrinsic_param {
+    char const   *name;
+    PrimitiveType type;
+} IntrinsicParam;
 
-#define DEFINE_INTRINSIC_PARAM(n, type)                                 \
-    param = bound_node_make(BNT_PARAMETER, intrinsic);                  \
-    param->next = intrinsic->intrinsic.parameter;                       \
-    intrinsic->intrinsic.parameter = param;                             \
-    param->name = sv_from(n);                                           \
-    param->typespec.type_id = type_registry_id_of_primitive_type(type); \
-    param->typespec.optional = false
+void program_define_intrinsic(BoundNode *program, char const *name, PrimitiveType ret_type,
+    Intrinsic intrinsic_code, IntrinsicParam params[])
+{
+    BoundNode *intrinsic;
+    intrinsic = bound_node_make(BNT_INTRINSIC, program);
+    intrinsic->next = program->program.intrinsics;
+    program->program.intrinsics = intrinsic;
+    intrinsic->name = sv_from(name);
+    intrinsic->typespec.type_id = type_registry_id_of_primitive_type(ret_type);
+    intrinsic->typespec.optional = false;
+    intrinsic->intrinsic.intrinsic = intrinsic_code;
+    for (size_t ix = 0; params[ix].name; ++ix) {
+        BoundNode *param = bound_node_make(BNT_PARAMETER, intrinsic);
+        param->next = intrinsic->intrinsic.parameter;
+        if (intrinsic->intrinsic.parameter) {
+            intrinsic->intrinsic.parameter->prev = param;
+        }
+        intrinsic->intrinsic.parameter = param;
+        param->name = sv_from(params[ix].name);
+        param->typespec.type_id = type_registry_id_of_primitive_type(params[ix].type);
+        param->typespec.optional = false;
+    }
+}
+
+void program_define_intrinsics(BoundNode *program)
+{
+    program_define_intrinsic(program, "close", PT_I32, INT_CLOSE, (IntrinsicParam[]) { { "fh", PT_I32 }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "endln", PT_U64, INT_ENDLN, (IntrinsicParam[]) { { NULL, PT_VOID } });
+    program_define_intrinsic(program, "fputs", PT_I32, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "s", PT_STRING }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "open", PT_I32, INT_OPEN, (IntrinsicParam[]) { { "name", PT_STRING }, { "mode", PT_U32 }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "puti", PT_I32, INT_PUTI, (IntrinsicParam[]) { { "i", PT_I32 }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "putln", PT_I32, INT_PUTLN, (IntrinsicParam[]) { { "s", PT_STRING }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "read", PT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "buffer", PT_POINTER }, { "bytes", PT_U64 }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "write", PT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "buffer", PT_POINTER }, { "bytes", PT_U64 }, { NULL, PT_VOID } });
+}
+
+void program_collect_types(BoundNode *program)
+{
+    BoundNode **last_type = &program->program.types;
+    for (size_t ix = FIRST_CUSTOM_IX; ix < NEXT_CUSTOM_IX; ++ix) {
+        BoundNode      *type_node = NULL;
+        ExpressionType *et = type_registry_get_type_by_index(ix);
+        switch (type_kind(et)) {
+        case TK_ALIAS: {
+            type_node = bound_node_make(BNT_TYPE, program);
+            type_node->name = et->name;
+            type_node->typespec = (TypeSpec) { et->alias_for_id, false };
+        } break;
+        case TK_ARRAY: {
+            type_node = bound_node_make(BNT_ARRAY, program);
+            type_node->name = et->name;
+            type_node->array_def.base_type = et->array.base_type.type_id;
+            type_node->array_def.size = et->array.size;
+        } break;
+        case TK_COMPOSITE:
+        case TK_VARIANT: {
+            type_node = bound_node_make((type_kind(et) == TK_COMPOSITE) ? BNT_STRUCT : BNT_VARIANT, program);
+            type_node->name = et->name;
+            BoundNode **dst = &type_node->compound_def.components;
+            BoundNode  *last = NULL;
+            for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                *dst = bound_node_make(BNT_TYPE_COMPONENT, type_node);
+                (*dst)->name = et->components.components[ix].name;
+                (*dst)->typespec = (TypeSpec) { et->components.components[ix].type_id, false };
+                (*dst)->prev = last;
+                last = *dst;
+                dst = &last->next;
+            }
+        } break;
+        default:
+            fatal("Type %.*s has undefined kind %d", SV_ARG(et->name), type_kind(et));
+        }
+        type_node->prev = *last_type;
+        if (*last_type) {
+            (*last_type)->next = type_node;
+        }
+        *last_type = type_node;
+    }
+}
 
 BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
-    BoundNode *intrinsic;
-    BoundNode *param;
     ret->name = program->name;
 
-    DEFINE_INTRINSIC("close", PT_I32, INT_CLOSE);
-    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
-
-    DEFINE_INTRINSIC("endln", PT_U64, INT_ENDLN);
-
-    DEFINE_INTRINSIC("fputs", PT_I32, INT_FPUTS);
-    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
-    DEFINE_INTRINSIC_PARAM("s", PT_STRING);
-
-    DEFINE_INTRINSIC("open", PT_I32, INT_OPEN);
-    DEFINE_INTRINSIC_PARAM("name", PT_STRING);
-    DEFINE_INTRINSIC_PARAM("mode", PT_U32);
-
-    DEFINE_INTRINSIC("puti", PT_I32, INT_PUTI);
-    DEFINE_INTRINSIC_PARAM("i", PT_I32);
-
-    DEFINE_INTRINSIC("putln", PT_I32, INT_PUTLN);
-    DEFINE_INTRINSIC_PARAM("s", PT_STRING);
-
-    DEFINE_INTRINSIC("read", PT_I64, INT_FPUTS);
-    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
-    DEFINE_INTRINSIC_PARAM("buffer", PT_POINTER);
-    DEFINE_INTRINSIC_PARAM("bytes", PT_U64);
-
-    DEFINE_INTRINSIC("write", PT_I64, INT_FPUTS);
-    DEFINE_INTRINSIC_PARAM("fh", PT_I32);
-    DEFINE_INTRINSIC_PARAM("buffer", PT_POINTER);
-    DEFINE_INTRINSIC_PARAM("bytes", PT_U64);
-
+    program_define_intrinsics(ret);
     bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
+    program_collect_types(ret);
     return ret;
 }
 
@@ -516,20 +556,18 @@ BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 
 BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *type_node = bound_node_make(BNT_UNBOUND_TYPE, parent);
+    BoundNode *type_node = bound_node_make(BNT_STRUCT, parent);
     type_node->name = stmt->name;
-    if (bind_nodes(type_node, stmt->struct_def.components, &type_node->struct_def.components, ctx) != 0) {
-        return type_node;
+    if (bind_nodes(type_node, stmt->struct_def.components, &type_node->compound_def.components, ctx) != 0) {
+        return bound_node_make_unbound(parent, stmt, ctx);
     }
     int num = 0;
-    for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
+    for (BoundNode *component = type_node->compound_def.components; component; component = component->next) {
         num++;
     }
     TypeComponent *type_components = alloca(num * sizeof(TypeComponent));
-    size_t        *types = allocate_array(size_t, num);
-    StringView    *names = allocate_array(StringView, num);
     num = 0;
-    for (BoundNode *component = type_node->struct_def.components; component; component = component->next) {
+    for (BoundNode *component = type_node->compound_def.components; component; component = component->next) {
         type_components[num].kind = CK_TYPE;
         type_components[num].name = component->name;
         type_components[num].type_id = component->typespec.type_id;
@@ -570,15 +608,38 @@ BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext
 
 BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
+    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->variable.names->name);
     if (!decl) {
         fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
     BoundNode *ret = bound_node_make(BNT_VARIABLE, parent);
-    ret->typespec = decl->typespec;
     ret->variable.decl = decl;
     ret->name = stmt->name;
+
+    BoundNode     **name_part = &ret->variable.names;
+    ExpressionType *et = type_registry_get_type_by_id(decl->typespec.type_id);
+    SyntaxNode     *name_stmt;
+    for (name_stmt = stmt->variable.names; name_stmt->next != NULL; name_stmt = name_stmt->next) {
+        if (type_kind(et) != TK_COMPOSITE) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        }
+        if (!type_is_concrete(et)) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        }
+        *name_part = bound_node_make(BNT_NAME, parent);
+        (*name_part)->name = name_stmt->name;
+        ret->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
+        TypeComponent *comp = type_get_component(et, name_stmt->next->name);
+        if (comp == NULL) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name), SV_ARG(name_stmt->name));
+        }
+        et = type_registry_get_type_by_id(comp->type_id);
+        name_part = &(*name_part)->next;
+    }
+    *name_part = bound_node_make(BNT_NAME, parent);
+    (*name_part)->name = name_stmt->name;
+    ret->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
     return ret;
 }
 
@@ -613,6 +674,7 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
             if (type_kind(et) != TK_COMPOSITE) {
                 fatal(LOC_SPEC "Cannot initialize variables with non-compound types using a compound initializer", LOC_ARG(stmt->token.loc));
             }
+            expr->typespec = var_type;
             BoundNode *arg = expr->compound_initializer.argument;
             for (size_t ix = 0; ix < et->components.num_components; ++ix) {
                 TypeComponent *type_component = &et->components.components[ix];
@@ -687,6 +749,7 @@ int bind_nodes(BoundNode *parent, SyntaxNode *first, BoundNode **first_dst, Bind
             *first_dst = bound_node;
         } else {
             last_node->next = bound_node;
+            bound_node->prev = last_node;
         }
         last_node = bound_node;
     }
@@ -703,6 +766,7 @@ void rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx)
         if (bound_node->type == BNT_UNBOUND_NODE) {
             bound_node = bound_node_make_unbound(parent, bound_node->unbound_node, NULL);
         }
+        bound_node->prev = (*stmt)->prev;
         bound_node->next = (*stmt)->next;
         *stmt = bound_node;
     }

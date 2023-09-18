@@ -12,6 +12,7 @@
 #define __BINDER_H__
 
 #define BOUNDNODETYPES(S)   \
+    S(ARRAY)                \
     S(ASSIGNMENT)           \
     S(BINARYEXPRESSION)     \
     S(BLOCK)                \
@@ -23,6 +24,7 @@
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
     S(FUNCTION_IMPL)        \
+    S(NAME)                 \
     S(IF)                   \
     S(INTRINSIC)            \
     S(LOOP)                 \
@@ -33,6 +35,7 @@
     S(PROGRAM)              \
     S(RETURN)               \
     S(STRING)               \
+    S(STRUCT)               \
     S(TYPE)                 \
     S(TYPE_COMPONENT)       \
     S(UNARYEXPRESSION)      \
@@ -40,6 +43,7 @@
     S(UNBOUND_TYPE)         \
     S(VARIABLE)             \
     S(VARIABLE_DECL)        \
+    S(VARIANT)              \
     S(WHILE)
 
 typedef enum bound_node_type {
@@ -73,12 +77,14 @@ typedef struct bound_node {
     BoundNodeType        type;
     StringView           name;
     struct bound_node   *next;
+    struct bound_node   *prev;
     size_t               index;
     struct bound_node   *parent;
     TypeSpec             typespec;
     struct intermediate *intermediate;
     union {
         struct {
+            struct bound_node *types;
             struct bound_node *intrinsics;
             struct bound_node *modules;
         } program;
@@ -100,8 +106,9 @@ typedef struct bound_node {
             Operator operator;
         } binary_expr;
         struct {
-            struct bound_node *decl;
-        } variable;
+            type_id base_type;
+            size_t size;
+        } array_def;
         struct {
             struct bound_node *expression;
         } assignment;
@@ -127,7 +134,14 @@ typedef struct bound_node {
         } return_stmt;
         struct {
             struct bound_node *components;
-        } struct_def;
+        } compound_def;
+        struct {
+            type_id alias_of;
+        } type_alias;
+        struct {
+            struct bound_node *decl;
+            struct bound_node *names;
+        } variable;
         struct {
             struct bound_node *init_expr;
         } variable_decl;

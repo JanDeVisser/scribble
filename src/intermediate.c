@@ -73,6 +73,27 @@ void ir_function_add_operation(IRFunction *fnc, IROperation op)
     fnc->operations[fnc->num_operations++] = op;
 }
 
+void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
+{
+    IROperation op;
+    op.operation = IR_PUSH_INT_CONSTANT;
+    op.integer.width = 64;
+    op.integer.un_signed = true;
+    op.integer.unsigned_value = value;
+    ir_function_add_operation(fnc, op);
+}
+
+void generate_ARRAY(BoundNode *node, void *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
+    ir_function_add_push_u64(fnc, node->array_def.base_type);
+    ir_function_add_push_u64(fnc, node->array_def.size);
+    op.operation = IR_DEFINE_ARRAY;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
 void generate_ASSIGNMENT(BoundNode *node, void *target)
 {
     generate_node(node->assignment.expression, target);
@@ -127,6 +148,10 @@ void generate_COMPOUND_INITIALIZER(BoundNode *node, void *target)
     for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
         generate_node(arg, target);
     }
+    IROperation op;
+    op.operation = IR_NEW_DATUM;
+    op.integer.unsigned_value = node->typespec.type_id;
+    ir_function_add_operation((IRFunction *) target, op);
 }
 
 void generate_CONTINUE(BoundNode *node, void *target)
@@ -258,28 +283,17 @@ void generate_FUNCTION(BoundNode *node, void *target)
 
 void generate_FUNCTION_CALL(BoundNode *node, void *target)
 {
-    struct arg_list {
-        BoundNode       *arg;
-        struct arg_list *prev;
-        struct arg_list *next;
-    };
-
-    struct arg_list *last_arg = NULL;
-    size_t           argc = 0;
+    size_t     argc = 0;
+    BoundNode *last = NULL;
     for (BoundNode *arg = node->call.argument; arg; arg = arg->next) {
-        struct arg_list *current = allocate(sizeof(struct arg_list));
-        current->arg = arg;
-        current->prev = last_arg;
-        if (last_arg)
-            last_arg->next = current;
-        last_arg = current;
-        ++argc;
+        last = arg;
+        argc++;
     }
-    for (struct arg_list *arg = last_arg; arg; arg = arg->prev) {
-        generate_node(arg->arg, target);
+    for (BoundNode *arg = last; arg; arg = arg->prev) {
+        generate_node(arg, target);
     }
     IROperation op;
-    BoundNode *func = node->call.function;
+    BoundNode  *func = node->call.function;
     switch (func->type) {
     case BNT_FUNCTION:
         if (func->function.function_impl->type == BNT_FUNCTION_IMPL) {
@@ -289,7 +303,7 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
             op.operation = IR_NATIVE_CALL;
             op.native.name = func->function.function_impl->name;
             op.native.signature.argc = argc;
-            op.native.signature.types = allocate_array(ExpressionType*, argc);
+            op.native.signature.types = allocate_array(ExpressionType *, argc);
             int ix = 0;
             for (BoundNode *param = func->function.parameter; param; param = param->next) {
                 op.native.signature.types[ix++] = type_registry_get_type_by_id(param->typespec.type_id);
@@ -398,6 +412,11 @@ void generate_MODULE(BoundNode *node, void *target)
     }
 }
 
+void generate_NAME(BoundNode *node, void *target)
+{
+    UNREACHABLE();
+}
+
 void generate_NUMBER(BoundNode *node, void *target)
 {
     IROperation op;
@@ -423,6 +442,17 @@ void generate_PARAMETER(BoundNode *node, void *target)
 
 void generate_PROGRAM(BoundNode *node, void *target)
 {
+    IRProgram *program = (IRProgram *) target;
+    program->$static = (int) program->num_functions++;
+    IRFunction *statik = (IRFunction *) &program->functions[program->$static];
+    statik->kind = FK_SCRIBBLE;
+    statik->type = (TypeSpec) { .type_id = VOID_ID, .optional = false };
+    statik->name = sv_from("$static");
+    statik->cap_operations = 256;
+    statik->operations = allocate_operations(256);
+    for (BoundNode *type = node->program.types; type; type = type->next) {
+        generate_node(type, statik);
+    }
     for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
         generate_node(intrinsic, target);
     }
@@ -450,14 +480,43 @@ void generate_STRING(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+void generate_STRUCT(BoundNode *node, void *target)
+{
+    BoundNode *last;
+    size_t     components = 0;
+    for (BoundNode *component = node->compound_def.components; component; component = component->next) {
+        last = component;
+        ++components;
+    }
+    if (last) {
+        for (BoundNode *component = last; component; component = component->prev) {
+            generate_node(component, target);
+        }
+    }
+    ir_function_add_push_u64((IRFunction *) target, components);
+    IROperation op;
+    op.operation = (node->type == BNT_STRUCT) ? IR_DEFINE_AGGREGATE : IR_DEFINE_VARIANT;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
 void generate_TYPE(BoundNode *node, void *target)
 {
-    IRFunction *fnc = (IRFunction *) target;
+    ir_function_add_push_u64((IRFunction *) target, node->typespec.type_id);
+    IROperation op;
+    op.operation = IR_DEFINE_ALIAS;
+    op.sv = node->name;
+    ir_function_add_operation((IRFunction *) target, op);
 }
 
 void generate_TYPE_COMPONENT(BoundNode *node, void *target)
 {
     IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
+    op.operation = IR_PUSH_STRING_CONSTANT;
+    op.sv = node->name;
+    ir_function_add_operation(fnc, op);
+    ir_function_add_push_u64(fnc, node->typespec.type_id);
 }
 
 void generate_UNARYEXPRESSION(BoundNode *node, void *target)
@@ -478,9 +537,24 @@ void generate_UNBOUND_TYPE(BoundNode *node, void *target)
 void generate_VARIABLE(BoundNode *node, void *target)
 {
     IROperation op;
-    op.operation = IR_PUSH_VAR;
-    op.sv = node->name;
-    ir_function_add_operation((IRFunction *) target, op);
+    if (node->variable.names->next) {
+        op.operation = IR_PUSH_VAR_COMPONENT;
+        op.var_component.name = node->variable.names->name;
+        ExpressionType *et = type_registry_get_type_by_id(node->variable.names->typespec.type_id);
+        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+            if (sv_eq(node->variable.names->next->name, et->components.components->name)) {
+                op.var_component.component = ix;
+                ir_function_add_operation((IRFunction *) target, op);
+                return;
+            }
+        }
+        fatal("Could not find index of component '" SV_SPEC "' of type '" SV_SPEC "'. This shouldn't happen",
+            SV_ARG(node->variable.names->next->name), SV_ARG(et->name));
+    } else {
+        op.operation = IR_PUSH_VAR;
+        op.sv = node->name;
+        ir_function_add_operation((IRFunction *) target, op);
+    }
 }
 
 void generate_VARIABLE_DECL(BoundNode *node, void *target)
@@ -497,6 +571,11 @@ void generate_VARIABLE_DECL(BoundNode *node, void *target)
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
     }
+}
+
+void generate_VARIANT(BoundNode *node, void *target)
+{
+    generate_STRUCT(node, target);
 }
 
 void generate_WHILE(BoundNode *node, void *target)
@@ -541,6 +620,7 @@ IRProgram generate(BoundNode *program)
     IRProgram ret = { 0 };
     ret.name = program->name;
     ret.main = -1;
+    ret.$static = -1;
     ret.cap_functions = 256;
     ret.functions = allocate_functions(256);
     generate_node(program, &ret);
@@ -575,7 +655,7 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         break;
     case IR_PUSH_INT_CONSTANT:
         if (op->integer.un_signed) {
-            printf("%llu", op->integer.unsigned_value);
+            printf("%llu [0x%08llx]", op->integer.unsigned_value, op->integer.unsigned_value);
         } else {
             printf("%lld", op->integer.int_value);
         }
@@ -588,6 +668,9 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         break;
     case IR_NATIVE_CALL:
         printf(SV_SPEC, SV_ARG(op->native.name));
+        break;
+    case IR_NEW_DATUM:
+        printf(SV_SPEC " [0x%08llx]", SV_ARG(typeid_name(op->integer.unsigned_value)), op->integer.unsigned_value);
         break;
     case IR_OPERATOR:
         printf("%s", Operator_name(op->op));

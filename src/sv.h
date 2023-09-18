@@ -53,7 +53,11 @@ extern StringView sv_printf(char const *fmt, ...);
 extern StringView sv_vprintf(char const *fmt, va_list args);
 
 #define SV_SPEC "%.*s"
+#define SV_SPEC_RALIGN "%*.s%.*s"
+#define SV_SPEC_LALIGN "%.*s%*.s"
 #define SV_ARG(sv) (int) sv.length, sv.ptr
+#define SV_ARG_RALIGN(sv, width) (int) (width - sv.length), "", (int) sv.length, sv.ptr
+#define SV_ARG_LALIGN(sv, width) (int) sv.length, sv.ptr, (int) (width - sv.length), ""
 
 extern StringBuilder sb_create();
 extern StringBuilder sb_create_with_allocator(Allocator *allocator);

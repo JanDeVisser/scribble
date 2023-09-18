@@ -23,5 +23,6 @@ extern OptionList *get_option_values(StringView option);
 #define OPT_TRACE (!sv_empty(get_option(sv_from("trace"))))
 #define OPT_GRAPH (!sv_empty(get_option(sv_from("graph"))))
 #define OPT_RUN (!sv_empty(get_option(sv_from("run"))))
+#define OPT_STATIC (!sv_empty(get_option(sv_from("static"))))
 
 #endif /* __OPTIONS_H__ */
