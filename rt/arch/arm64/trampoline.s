@@ -8,193 +8,36 @@
 
 .align 4
 
-marshall_param:
-        stp     x29, x30, [sp, -48]!
-        mov     x29, sp
-
-        str     x0,[sp, 16]  ; Save *value
-        ldr     w2,[x0]      ; Load value->type in w2
-
-        lsr     w2,w2,16
-        cmp     w2,#0004     ; Type is float
-        b.eq    __type_float
-
-        and     w1,w2,#0x0600
-        cmp     w1,wzr
-        b.eq    __type_other ; Type is not an integer. We'll deal with that later
-
-        and     w1,w2,#0xFF  ; Width is type & 0x00FF
-
-        cmp     w1,#8
-        b.gt    __type_16
-        ldr     b0,[x0,#8]
-        b       __marshall_param_done
-
-__type_16:
-        cmp     w1,#16
-        b.gt    __type_32
-        ldr     h0,[x0,#8]
-        b       __marshall_param_done
-
-__type_32:
-        cmp     w1,#32
-        b.gt    __type_64
-        ldr     w0,[x0,#8]
-        b       __marshall_param_done
-
-__type_64:
-        cmp     w1,#64
-        b.gt    __type_other
-        ldr     x0,[x0,#8]
-        b       __marshall_param_done
-
-__type_float:
-        ldr     d0,[x0,#8]
-        b       __marshall_param_done
-
-__type_other:
-        mov     x0, xzr
-
-__marshall_param_done:
-        mov     sp, x29
-        ldp     x29, x30, [sp],48
-        ret
-
-marshall_retval:
-        stp     x29, x30, [sp, -48]!
-        mov     x29, sp
-
-        stp     x1,x0,[sp, 16]  ; Save *retval (16), return value (24)
-        ldr     w2,[x1]         ; Load retval->type in w2
-
-        lsr     w2,w2,16
-        cmp     w2,#0004     ; Type is float
-        b.eq    __retval_type_float
-
-        and     w3,w2,#0x0600
-        cmp     w3,wzr
-        b.eq    __retval_type_other ; Type is not an integer. We'll deal with that later
-
-        and     w3,w2,#0xFF  ; Width is type & 0x00FF
-
-        cmp     w3,#8
-        b.gt    __retval_type_16
-        str     b0,[x1,#8]
-        b       __marshall_retval_done
-
-__retval_type_16:
-        cmp     w3,#16
-        b.gt    __retval_type_32
-        str     h0,[x1,#8]
-        b       __marshall_retval_done
-
-__retval_type_32:
-        cmp     w3,#32
-        b.gt    __retval_type_64
-        str     w0,[x1,#8]
-        b       __marshall_retval_done
-
-__retval_type_64:
-        cmp     w3,#64
-        b.gt    __retval_type_other
-        str     x0,[x1,#8]
-        b       __marshall_retval_done
-
-__retval_type_float:
-        str     d0,[x1,#8]
-        b       __marshall_retval_done
-
-__retval_type_other:
-        str     xzr,[x1,#8]
-
-__marshall_retval_done:
-        mov     sp, x29
-        ldp     x29, x30, [sp],48
-        ret
-
 _trampoline:
-        stp     x29, x30, [sp, -48]!
-        mov     x29, sp
-        stp     x1,x0,[sp, 32]  ; Save argc (32), function pointer (40)
-        stp     x3,x2,[sp, 16]  ; Save *ret (16), **values (24)
-        mov     x12, x2         ; Get **values
-        mov     x14, x1         ; Get argc
+        stp     fp, lr, [sp, #-16]! ; Set up SP, FP, LR
+        mov     fp, sp
+        mov     x12, x0             ; Get *Trampoline
 
-        ldr     x12, [sp, 24]   ; **values in x12
-        cmp     x14, #1
-        b.lt    __trampoline_call
-        ldr     x0, [x12], 8    ; *values[0] in x0, x12 now points to *values[1]
-        bl      marshall_param
+        ldr     x0, [x12, 8]        ; Load general purpose registers
+        ldr     x1, [x12, 16]
+        ldr     x2, [x12, 24]
+        ldr     x3, [x12, 32]
+        ldr     x4, [x12, 40]
+        ldr     x5, [x12, 48]
+        ldr     x6, [x12, 56]
+        ldr     x7, [x12, 64]
 
-        cmp     x14, #2
-        b.lt    __trampoline_call
-        str     x0,[sp,-16]!
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
+        ldr     d0, [x12, 72]       ; Load FP registers
+        ldr     d1, [x12, 80]
+        ldr     d2, [x12, 88]
+        ldr     d3, [x12, 96]
+        ldr     d4, [x12, 104]
+        ldr     d5, [x12, 112]
+        ldr     d6, [x12, 120]
+        ldr     d7, [x12, 128]
 
-        cmp     x14, #3
-        b.lt    __load_x1
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
-
-        cmp     x14, #4
-        b.lt    __load_x2
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
-
-        cmp     x14, #5
-        b.lt    __load_x3
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
-
-        cmp     x14, #6
-        b.lt    __load_x4
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
-
-        cmp     x14, #7
-        b.lt    __load_x5
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        str     x0, [sp], 16
-
-        cmp     x14, #8
-        b.lt    __load_x6
-        ldr     x0, [x12], 8
-        bl      marshall_param
-        mov     x7, x0
-
-__load_x6:
-        ldr     x6, [sp], 16
-
-__load_x5:
-        ldr     x5, [sp], 16
-
-__load_x4:
-        ldr     x4, [sp], 16
-
-__load_x3:
-        ldr     x3, [sp], 16
-
-__load_x2:
-        ldr     x2, [sp], 16
-
-__load_x1:
-        ldr     x1, [sp], 16
-        ldr     x0, [sp], 16
-
-__trampoline_call:
-        ldr     x16,[sp, 40]
-        blr     x16
-        ldr     x1, [sp, 16]
-        bl      marshall_retval
-        mov     x0, xzr
-
-        mov     sp, x29
-        ldp     x29, x30, [sp],48
-        ret
+        str     x12, [sp, #-16]!    ; Save x12 (caller saved)
+        ldr     x16, [x12]          ; Load function pointer in x16
+        blr     x16                 ; Call function pointer
+        ldr     x12, [sp], #16      ; Restore x12
+        str     x0, [x12, 136]      ; Store x0 to int_return_value
+        str     d0, [x12, 144]      ; Store d0 to float_return_value
+        mov     x0, xzr             ; Return all good
+        mov     sp, fp              ; Restore SP, FP, and LR
+        ldp     fp, lr, [sp], 16
+        ret                         ; Return

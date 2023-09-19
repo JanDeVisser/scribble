@@ -14,6 +14,6 @@
 
 size_t  endln();
 size_t  putint(int64_t);
-int     trampoline(void_t func, size_t argc, Datum **values, Datum *ret);
+int     trampoline(void *trampoline);
 
 #endif // __RT_H__
