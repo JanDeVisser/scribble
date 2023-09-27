@@ -497,9 +497,9 @@ void program_collect_types(BoundNode *program)
             type_node->array_def.base_type = et->array.base_type.type_id;
             type_node->array_def.size = et->array.size;
         } break;
-        case TK_COMPOSITE:
+        case TK_AGGREGATE:
         case TK_VARIANT: {
-            type_node = bound_node_make((type_kind(et) == TK_COMPOSITE) ? BNT_STRUCT : BNT_VARIANT, program);
+            type_node = bound_node_make((type_kind(et) == TK_AGGREGATE) ? BNT_STRUCT : BNT_VARIANT, program);
             type_node->name = et->name;
             BoundNode **dst = &type_node->compound_def.components;
             BoundNode  *last = NULL;
@@ -571,7 +571,7 @@ BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         type_components[num].type_id = component->typespec.type_id;
         num++;
     }
-    ErrorOrTypeID struct_id_maybe = type_registry_make_type(stmt->name, TK_COMPOSITE);
+    ErrorOrTypeID struct_id_maybe = type_registry_make_type(stmt->name, TK_AGGREGATE);
     if (ErrorOrTypeID_is_error(struct_id_maybe)) {
         fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
     }
@@ -619,7 +619,7 @@ BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     ExpressionType *et = type_registry_get_type_by_id(decl->typespec.type_id);
     SyntaxNode     *name_stmt;
     for (name_stmt = stmt->variable.names; name_stmt->next != NULL; name_stmt = name_stmt->next) {
-        if (type_kind(et) != TK_COMPOSITE) {
+        if (type_kind(et) != TK_AGGREGATE) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
         }
         if (!type_is_concrete(et)) {
@@ -669,7 +669,7 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
             }
             ExpressionType *et = type_registry_get_type_by_id(var_type.type_id);
             assert(et);
-            if (type_kind(et) != TK_COMPOSITE) {
+            if (type_kind(et) != TK_AGGREGATE) {
                 fatal(LOC_SPEC "Cannot initialize variables with non-compound types using a compound initializer", LOC_ARG(stmt->token.loc));
             }
             expr->typespec = var_type;

@@ -24,7 +24,6 @@
     S(JUMP_F)                 \
     S(JUMP_T)                 \
     S(LABEL)                  \
-    S(NATIVE_CALL)            \
     S(NEW_DATUM)              \
     S(OPERATOR)               \
     S(POP_VAR)                \
@@ -71,10 +70,6 @@ typedef struct ir_operation {
         Operator   op;
         struct {
             StringView name;
-            Signature  signature;
-        } native;
-        struct {
-            StringView name;
             size_t     component;
         } var_component;
     };
@@ -86,64 +81,44 @@ typedef enum ir_function_kind {
     FK_INTRINSIC
 } IRFunctionKind;
 
-typedef struct ir_abstract_function {
-    IRFunctionKind kind;
-    StringView     name;
-    size_t         num_parameters;
-    IRVarDecl     *parameters;
-    TypeSpec       type;
-    void          *padding[4];
-} IRAbstractFunction;
-
 typedef struct ir_function {
-    IRFunctionKind kind;
-    StringView     name;
-    size_t         num_parameters;
-    IRVarDecl     *parameters;
-    TypeSpec       type;
-    size_t         cap_operations;
-    size_t         num_operations;
-    IROperation   *operations;
+    struct ir_program *program;
+    IRFunctionKind     kind;
+    StringView         name;
+    size_t             num_parameters;
+    IRVarDecl         *parameters;
+    TypeSpec           type;
+    union {
+        struct {
+            size_t       cap_operations;
+            size_t       num_operations;
+            IROperation *operations;
+        } scribble;
+        StringView native_name;
+        Intrinsic  intrinsic;
+    };
 } IRFunction;
 
-typedef void (*VoidFnc)();
-
-typedef struct ir_native_function {
-    IRFunctionKind kind;
-    StringView     name;
-    size_t         num_parameters;
-    IRVarDecl     *parameters;
-    TypeSpec       type;
-    char          *native_name;
-    VoidFnc        native_fnc;
-} IRNativeFunction;
-
-typedef struct ir_intrinsic_function {
-    IRFunctionKind kind;
-    StringView     name;
-    size_t         num_parameters;
-    IRVarDecl     *parameters;
-    TypeSpec       type;
-    Intrinsic      intrinsic;
-} IRIntrinsicFunction;
-
 typedef struct ir_program {
-    StringView          name;
-    int                 main;
-    int                 $static;
-    size_t              cap_functions;
-    size_t              num_functions;
-    IRAbstractFunction *functions;
+    StringView  name;
+    int         main;
+    int         $static;
+    size_t      cap_functions;
+    size_t      num_functions;
+    IRFunction *functions;
 } IRProgram;
 
-char const         *ir_operation_type_name(IROperationType optype);
-void                ir_operation_print_prefix(IROperation *op, char const *prefix);
-void                ir_operation_print(IROperation *op);
-void                ir_function_list(IRFunction *function, size_t mark);
-void                ir_function_print(IRFunction *function);
-size_t              ir_function_resolve_label(IRFunction *function, size_t label);
-void                ir_program_list(IRProgram program);
-IRAbstractFunction *ir_program_function_by_name(IRProgram *program, StringView name);
-IRProgram           generate(BoundNode *program);
+extern char const *ir_operation_type_name(IROperationType optype);
+extern void        ir_operation_print_prefix(IROperation *op, char const *prefix);
+extern void        ir_operation_print(IROperation *op);
+extern StringView  ir_var_decl_to_string(IRVarDecl *var, Allocator *allocator);
+extern void        ir_var_decl_print(IRVarDecl *var);
+extern void        ir_function_list(IRFunction *function, size_t mark);
+extern StringView  ir_function_to_string(IRFunction *function, Allocator *allocator);
+extern void        ir_function_print(IRFunction *function);
+extern size_t      ir_function_resolve_label(IRFunction *function, size_t label);
+extern void        ir_program_list(IRProgram program);
+extern IRFunction *ir_program_function_by_name(IRProgram *program, StringView name);
+extern IRProgram   generate(BoundNode *program);
 
 #endif /* __INTERMEDIATE_H__ */

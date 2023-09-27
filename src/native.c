@@ -346,7 +346,7 @@ void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_na
     LibHandle *lib, *my_lib = NULL;
     ErrorOrDLResult result;
 
-    int paren = sv_find_char(func_name, '(');
+    int paren = sv_first(func_name, '(');
     if (paren > 0) {
         func_name = sv_copy(sv_substring(func_name, 0, paren));
     }
@@ -389,16 +389,15 @@ bool resolve_library(StringView library) {
 
 void_t resolve_function(StringView func_name) {
     Resolve *resolve;
-    StringView lib_func[2];
     StringView lib = sv_null();
-    size_t has_lib = sv_split(func_name, sv_from(":"), 2, lib_func);
+    StringList lib_func = sv_asplit(get_allocator(), func_name, sv_from(":"));
 
     resolve = resolve_get();
     assert(resolve);
-    if (has_lib > 1) {
-        lib = sv_copy(lib_func[0]);
+    if (lib_func.size > 1) {
+        lib = sv_copy(sl_front(&lib_func));
     }
-    StringView func = sv_copy(lib_func[has_lib - 1]);
+    StringView func = sv_copy(sl_back(&lib_func));
     return resolve_resolve(resolve, lib, func);
 }
 

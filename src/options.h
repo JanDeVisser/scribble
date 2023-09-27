@@ -19,6 +19,7 @@ extern void        set_option(StringView option, StringView value);
 extern StringView  get_option(StringView option);
 extern OptionList *get_option_values(StringView option);
 
+#define has_option(opt) (!sv_empty(get_option(sv_from(opt))))
 #define OPT_DEBUG (!sv_empty(get_option(sv_from("debug"))))
 #define OPT_TRACE (!sv_empty(get_option(sv_from("trace"))))
 #define OPT_GRAPH (!sv_empty(get_option(sv_from("graph"))))

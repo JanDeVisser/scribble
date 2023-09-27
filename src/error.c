@@ -5,6 +5,7 @@
  */
 
 #include <error.h>
+#include <mem.h>
 
 char const* ErrorCode_name(ErrorCategory cat)
 {
@@ -22,8 +23,13 @@ char const* ErrorCode_name(ErrorCategory cat)
 
 char const* Error_to_string(Error error)
 {
-    static char buffer[81];
-    snprintf(buffer, 80, "ERROR: %s(%d): %s",
+#undef _ERROR_MSG_FORMAT
+#define _ERROR_MSG_FORMAT "ERROR: %s(%d): %s"
+    size_t str_len = snprintf(NULL, 0, _ERROR_MSG_FORMAT,
+            ErrorCode_name(error.code), error.code, error.message);
+    char *str = mem_allocate(str_len);
+    snprintf(str, str_len, _ERROR_MSG_FORMAT,
         ErrorCode_name(error.code), error.code, error.message);
-    return buffer;
+#undef _ERROR_MSG_FORMAT
+    return str;
 }

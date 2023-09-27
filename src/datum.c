@@ -69,7 +69,7 @@ void datum_initialize(Datum *d)
     switch (typeid_kind(d->type)) {
     case TK_PRIMITIVE:
         break;
-    case TK_COMPOSITE: {
+    case TK_AGGREGATE: {
         d->composite.num_components = et->components.num_components;
         d->composite.components = allocate_datums(d->composite.num_components);
         for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
@@ -177,7 +177,7 @@ Datum *datum_copy(Datum *dest, Datum *src)
             UNREACHABLE();
         }
     } break;
-    case TK_COMPOSITE: {
+    case TK_AGGREGATE: {
         dest->composite.num_components = src->composite.num_components;
         dest->composite.components = allocate_datums(src->composite.num_components);
         for (size_t ix = 0; ix < dest->composite.num_components; ++ix) {
@@ -219,7 +219,7 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     assert(geq->bool_value);
     datum_free(geq);
     MUST(TypeID, type_id, type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }))
-    assert(typeid_has_kind(type, TK_COMPOSITE));
+    assert(typeid_has_kind(type, TK_AGGREGATE));
     Datum *ret = datum_allocate(type);
     datum_copy(ret->composite.components, d1);
     datum_copy(ret->composite.components + 1, d2);
@@ -558,7 +558,7 @@ void datum_print(Datum *d)
 
 StringView datum_sprint(Datum *d)
 {
-    StringBuilder sb = sb_create_with_allocator(get_allocator());
+    StringBuilder sb = sb_acreate(get_allocator());
     switch (datum_kind(d)) {
     case TK_PRIMITIVE: {
         switch (typeid_primitive_type(d->type)) {
@@ -591,7 +591,7 @@ StringView datum_sprint(Datum *d)
             UNREACHABLE();
         }
     } break;
-    case TK_COMPOSITE: {
+    case TK_AGGREGATE: {
         sb_append_cstr(&sb, "{");
         char const     *comma = "";
         ExpressionType *et = type_registry_get_type_by_id(d->type);
@@ -683,7 +683,7 @@ Datum *datum_make_integer(size_t width, bool un_signed, int64_t signed_value, ui
 void datum_free_contents(Datum *d)
 {
     switch (datum_kind(d)) {
-    case TK_COMPOSITE: {
+    case TK_AGGREGATE: {
         for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
             datum_free(d->composite.components + ix);
         }

@@ -5,12 +5,14 @@
  */
 
 #include <binder.h>
+#include <config.h>
 #include <execute.h>
 #include <graph.h>
 #include <intermediate.h>
 #include <options.h>
 #include <parser.h>
 #include <type.h>
+#include <arch/arm64/arm64.h>
 
 int main(int argc, char **argv)
 {
@@ -37,6 +39,7 @@ int main(int argc, char **argv)
             scribble_params = argv + ix;
         }
     }
+    set_option(sv_from("scribble-dir"), sv_from(SCRIBBLE_DIR));
     log_init(OPT_TRACE);
     type_registry_init();
 
@@ -47,5 +50,5 @@ int main(int argc, char **argv)
     }
     BoundNode *ast = bind(program);
     IRProgram ir = generate(ast);
-    return execute(ir);
+    MUST_VOID(Int, output_arm64(&ir));
 }

@@ -7,6 +7,7 @@ add_executable(
         error.c
         execute.c
         graph.c
+        hash.c
         intermediate.c
         io.c
         lexer.c
@@ -16,11 +17,19 @@ add_executable(
         mutex.c
         native.c
         parser.c
+        process.c
         options.c
+        sl.c
         sv.c
         threadonce.h
         type.c
-)
+
+        arch/arm64/arm64.c
+        arch/arm64/assembly.c
+        arch/arm64/code.c
+        arch/arm64/context.c
+        arch/arm64/function.c
+        arch/arm64/variable.c arch/arm64/generate.c)
 
 target_link_libraries(scribble scribblert)
 
@@ -28,6 +37,7 @@ add_executable(
         sv_test
         log.c
         mem.c
+        sl.c
         sv.c
 )
 

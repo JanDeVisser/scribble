@@ -122,7 +122,7 @@ type_id type_registry_id_of_primitive_type(PrimitiveType type)
 {
     for (size_t ix = 0; ix < 20 && ix < type_registry.size; ++ix) {
         if (typeid_has_kind(type_registry.types[ix]->type_id, TK_PRIMITIVE) && typeid_primitive_type(type_registry.types[ix]->type_id) == type) {
-            return type;
+            return type_registry.types[ix]->type_id;
         }
     }
     fatal("Primitive type '%s' (0x%04x) not found", PrimitiveType_name(type), type);
@@ -193,7 +193,7 @@ void type_registry_init()
     MUST_VOID(TypeID, type_registry_alias(sv_from("long"), I64_ID))
     MUST_VOID(TypeID, type_registry_alias(sv_from("ulong"), U64_ID))
 
-    MUST_TO_VAR(TypeID, RANGE_ID, type_registry_make_type(sv_from("range"), TK_COMPOSITE))
+    MUST_TO_VAR(TypeID, RANGE_ID, type_registry_make_type(sv_from("range"), TK_AGGREGATE))
     MUST_VOID(TypeID,
         type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
     MUST_VOID(TypeID,
@@ -232,11 +232,19 @@ StringView typespec_name(TypeSpec typespec)
     return et->name;
 }
 
-void typespec_print(FILE *f, TypeSpec typespec)
+StringView typespec_to_string(TypeSpec typespec, Allocator *allocator)
 {
     ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
     assert(et);
-    fprintf(f, SV_SPEC "%s [0x%08x]", SV_ARG(et->name), (typespec.optional) ? "?" : "", typespec.type_id);
+    return sv_aprintf(allocator, SV_SPEC "%s [0x%08x]", SV_ARG(et->name), (typespec.optional) ? "?" : "", typespec.type_id);
+}
+
+void typespec_print(FILE *f, TypeSpec typespec)
+{
+    AllocatorState as = save_allocator();
+    StringView s = typespec_to_string(typespec, get_allocator());
+    fprintf(f, SV_SPEC, SV_ARG(s));
+    release_allocator(as);
 }
 
 bool type_is_concrete(ExpressionType *type)
@@ -254,7 +262,7 @@ bool typeid_is_concrete(type_id type)
         return typeid_is_concrete(typeid_canonical_type_id(type));
     case TK_ARRAY:
         return et->array.base_type.kind == CK_TYPE;
-    case TK_COMPOSITE:
+    case TK_AGGREGATE:
     case TK_VARIANT: {
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
             if (et->components.components[ix].kind != CK_TYPE) {
@@ -282,7 +290,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
         TRY(Size, size_t, component_size, type_sizeof(type_registry_get_type_by_id(type->array.base_type.type_id)))
         RETURN(Size, component_size * type->array.size);
     }
-    case TK_COMPOSITE: {
+    case TK_AGGREGATE: {
         size_t size = 0;
         TRY(Size, size_t, align, type_alignat(type))
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
@@ -329,7 +337,7 @@ ErrorOrSize type_alignat(ExpressionType *type)
             ERROR(Size, TypeError, 0, "Cannot get size of template type");
         }
         return type_alignat(type_registry_get_type_by_id(type->array.base_type.type_id));
-    case TK_COMPOSITE:
+    case TK_AGGREGATE:
     case TK_VARIANT: {
         size_t align = 0;
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
@@ -349,13 +357,61 @@ ErrorOrSize type_alignat(ExpressionType *type)
     }
 }
 
+ErrorOrSize type_offsetof_index(ExpressionType *type, size_t index)
+{
+    if (!type_has_kind(type, TK_AGGREGATE)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not an aggregate", SV_ARG(type->name));
+    }
+    if (index >= type->components.num_components) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' has no component with index %d", SV_ARG(type->name), index);
+    }
+    if (!type_is_concrete(type)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
+    }
+    size_t offset = 0;
+    TRY(Size, size_t, align, type_alignat(type))
+    for (size_t ix = 0; ix < index; ++ix) {
+        if (offset % align) {
+            offset += offset + align - (offset % align);
+        }
+        ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
+        TRY(Size, size_t, component_size, type_sizeof(component_type))
+        offset += component_size;
+    }
+    RETURN(Size, offset);
+}
+
+ErrorOrSize type_offsetof_name(ExpressionType *type, StringView name)
+{
+    if (!type_has_kind(type, TK_AGGREGATE)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not an aggregate", SV_ARG(type->name));
+    }
+    if (!type_is_concrete(type)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
+    }
+    size_t offset = 0;
+    TRY(Size, size_t, align, type_alignat(type))
+    for (size_t ix = 0; ix < type->components.num_components; ++ix) {
+        if (sv_eq(type->components.components[ix].name, name)) {
+            RETURN(Size, offset);
+        }
+        if (offset % align) {
+            offset += offset + align - (offset % align);
+        }
+        ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
+        TRY(Size, size_t, component_size, type_sizeof(component_type))
+        offset += component_size;
+    }
+    ERROR(Size, TypeError, 0, "Type '%.*s' has no component with name '%.*s'", SV_ARG(type->name), SV_ARG(name));
+}
+
 ErrorOrTypeID type_set_struct_components(type_id struct_id, size_t num, TypeComponent *components)
 {
     ExpressionType *struct_type = type_registry_get_type_by_id(struct_id);
     if (!struct_type) {
         ERROR(TypeID, TypeError, 0, "Invalid type ID");
     }
-    if (typeid_kind(struct_id) != TK_COMPOSITE) {
+    if (typeid_kind(struct_id) != TK_AGGREGATE) {
         ERROR(TypeID, TypeError, 0, "Type is not a composite");
     }
     for (size_t ix = 0; ix < num; ++ix) {
@@ -531,7 +587,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         }
     }
 
-    StringBuilder name = sb_create_with_allocator(get_allocator());
+    StringBuilder name = sb_acreate(get_allocator());
     sb_printf(&name, SV_SPEC "<", SV_ARG(template_type->name));
     char *comma = "";
     for (size_t ix = 0; ix < num; ++ix) {
@@ -585,7 +641,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         } break;
         }
     }
-    case TK_COMPOSITE:
+    case TK_AGGREGATE:
     case TK_VARIANT: {
         type->components.num_components = template_type->components.num_components;
         type->components.components = allocate_array(TypeComponent, type->components.num_components);
@@ -640,7 +696,7 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
         }
     }
 
-    StringBuilder name = sb_create_with_allocator(get_allocator());
+    StringBuilder name = sb_acreate(get_allocator());
     char         *comma = "";
     sb_append_cstr(&name, "<");
     for (size_t ix = 0; ix < num; ++ix) {

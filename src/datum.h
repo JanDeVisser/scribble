@@ -68,7 +68,7 @@ static inline bool datum_is_primitive(Datum *d)
 
 static inline bool datum_is_composite(Datum *d)
 {
-    return typeid_has_kind(d->type, TK_COMPOSITE);
+    return typeid_has_kind(d->type, TK_AGGREGATE);
 }
 
 static inline bool datum_is_array(Datum *d)

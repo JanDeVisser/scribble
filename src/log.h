@@ -18,10 +18,10 @@ extern void              vtrace(char const* msg, va_list args);
 [[noreturn]] extern void vfatal(char const* msg, va_list args);
 
 #define UNREACHABLE() fatal("%s:%d: Unreachable", __FILE_NAME__, __LINE__)
-#define NYI(what, ...) fatal("%s:%d: Not yet implemented: " what, __FILE_NAME__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define NYI(what, ...) fatal("%s:%d: Not yet implemented in %s: " what, __FILE_NAME__, __LINE__, __func__ __VA_OPT__(,) __VA_ARGS__)
 #define OUT_OF_MEMORY(where) fatal("Out of memory at %s:%d: %s", __FILE_NAME__, __LINE__, where)
 
-#define assert(cond) if (!(cond)) fatal(__FILE_NAME__ ":%d: assert(" #cond ") FAILED", __FILE_NAME__, __LINE__, #cond)
+#define assert(cond) if (!(cond)) fatal(__FILE_NAME__ ":%d: assert(" #cond ") FAILED", __LINE__, #cond)
 #define assert_msg(cond, msg, ...) if (!(cond)) fatal(__FILE_NAME__ ":%d: assert(" #cond ") " msg, __LINE__ __VA_OPT__(,) __VA_ARGS__)
 
 #endif // __LOG_H__

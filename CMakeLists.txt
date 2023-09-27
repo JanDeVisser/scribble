@@ -26,7 +26,7 @@ add_subdirectory("src")
 add_subdirectory("rt")
 add_subdirectory("test")
 
-install(TARGETS scribble scribblert testlib
+install(TARGETS scribble scribblert testlib sv_test
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)

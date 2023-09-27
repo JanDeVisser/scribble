@@ -37,9 +37,9 @@ IROperation *allocate_operations(size_t num)
     return (IROperation *) array_allocate(sizeof(IROperation), num);
 }
 
-IRAbstractFunction *allocate_functions(size_t num)
+IRFunction *allocate_functions(size_t num)
 {
-    return (IRAbstractFunction *) array_allocate(sizeof(IRAbstractFunction), num);
+    return allocate_array(IRFunction, num);
 }
 
 unsigned int next_label()
@@ -63,14 +63,15 @@ char const *ir_operation_type_name(IROperationType optype)
 
 void ir_function_add_operation(IRFunction *fnc, IROperation op)
 {
-    if (fnc->num_operations == fnc->cap_operations - 1) {
-        IROperation *new_operations = allocate_operations(2 * fnc->cap_operations);
-        memcpy(new_operations, fnc->operations, fnc->cap_operations * sizeof(IROperation));
-        fnc->operations = new_operations;
-        fnc->cap_operations *= 2;
+    assert(fnc->kind == FK_SCRIBBLE);
+    if (fnc->scribble.num_operations == fnc->scribble.cap_operations - 1) {
+        IROperation *new_operations = allocate_operations(2 * fnc->scribble.cap_operations);
+        memcpy(new_operations, fnc->scribble.operations, fnc->scribble.cap_operations * sizeof(IROperation));
+        fnc->scribble.operations = new_operations;
+        fnc->scribble.cap_operations *= 2;
     }
-    op.index = fnc->num_operations + 1;
-    fnc->operations[fnc->num_operations++] = op;
+    op.index = fnc->scribble.num_operations + 1;
+    fnc->scribble.operations[fnc->scribble.num_operations++] = op;
 }
 
 void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
@@ -252,7 +253,7 @@ void generate_FUNCTION(BoundNode *node, void *target)
 {
     IRProgram *program = (IRProgram *) target;
     if (program->num_functions == program->cap_functions - 1) {
-        IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
+        IRFunction *new_functions = allocate_functions(2 * program->cap_functions);
         memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
         program->functions = new_functions;
         program->cap_functions *= 2;
@@ -261,11 +262,10 @@ void generate_FUNCTION(BoundNode *node, void *target)
         program->main = (int) program->num_functions;
     }
     IRFunction *fnc = (IRFunction *) &program->functions[program->num_functions++];
-    fnc->kind = FK_SCRIBBLE;
+    fnc->program = program;
+    fnc->kind = (node->function.function_impl->type == BNT_NATIVE_FUNCTION) ? FK_NATIVE : FK_SCRIBBLE;
     fnc->type = node->typespec;
     fnc->name = node->name;
-    fnc->cap_operations = 256;
-    fnc->operations = allocate_operations(256);
     for (BoundNode *param = node->function.parameter; param; param = param->next) {
         ++fnc->num_parameters;
     }
@@ -276,14 +276,6 @@ void generate_FUNCTION(BoundNode *node, void *target)
             fnc->parameters[ix].name = param->name;
             fnc->parameters[ix].type = param->typespec;
             ++ix;
-            IROperation op;
-            op.operation = IR_DECL_VAR;
-            op.var_decl.name = param->name;
-            op.var_decl.type = param->typespec;
-            ir_function_add_operation(fnc, op);
-            op.operation = IR_POP_VAR;
-            op.sv = param->name;
-            ir_function_add_operation(fnc, op);
         }
     }
     generate_node(node->function.function_impl, fnc);
@@ -301,36 +293,16 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
         generate_node(arg, target);
     }
     IROperation op;
-    BoundNode  *func = node->call.function;
-    switch (func->type) {
-    case BNT_FUNCTION:
-        if (func->function.function_impl->type == BNT_FUNCTION_IMPL) {
-            op.operation = IR_CALL;
-            op.sv = node->name;
-        } else {
-            op.operation = IR_NATIVE_CALL;
-            op.native.name = func->function.function_impl->name;
-            op.native.signature.argc = argc;
-            op.native.signature.types = allocate_array(ExpressionType *, argc);
-            int ix = 0;
-            for (BoundNode *param = func->function.parameter; param; param = param->next) {
-                op.native.signature.types[ix++] = type_registry_get_type_by_id(param->typespec.type_id);
-            }
-            op.native.signature.ret_type = type_registry_get_type_by_id(func->typespec.type_id);
-        }
-        break;
-    case BNT_INTRINSIC:
-        op.operation = IR_CALL;
-        op.sv = node->name;
-        break;
-    default:
-        UNREACHABLE();
-    }
+    op.operation = IR_CALL;
+    op.sv = node->name;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
 void generate_FUNCTION_IMPL(BoundNode *node, void *target)
 {
+    IRFunction *fnc = (IRFunction *) target;
+    fnc->scribble.cap_operations = 256;
+    fnc->scribble.operations = allocate_operations(256);
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
         generate_node(stmt, target);
     }
@@ -385,12 +357,13 @@ void generate_INTRINSIC(BoundNode *node, void *target)
 {
     IRProgram *program = (IRProgram *) target;
     if (program->num_functions == program->cap_functions - 1) {
-        IRAbstractFunction *new_functions = allocate_functions(2 * program->cap_functions);
+        IRFunction *new_functions = allocate_functions(2 * program->cap_functions);
         memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
         program->functions = new_functions;
         program->cap_functions *= 2;
     }
-    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) &program->functions[program->num_functions++];
+    IRFunction *intrinsic = program->functions + program->num_functions++;
+    intrinsic->program = program;
     intrinsic->kind = FK_INTRINSIC;
     intrinsic->type = node->typespec;
     intrinsic->name = node->name;
@@ -442,6 +415,9 @@ void generate_NAME(BoundNode *node, void *target)
 
 void generate_NATIVE_FUNCTION(BoundNode *node, void *target)
 {
+    IRFunction *function = (IRFunction *) target;
+    assert(function->kind == FK_NATIVE);
+    function->native_name = node->name;
 }
 
 void generate_PARAMETER(BoundNode *node, void *target)
@@ -456,8 +432,8 @@ void generate_PROGRAM(BoundNode *node, void *target)
     statik->kind = FK_SCRIBBLE;
     statik->type = (TypeSpec) { .type_id = VOID_ID, .optional = false };
     statik->name = sv_from("$static");
-    statik->cap_operations = 256;
-    statik->operations = allocate_operations(256);
+    statik->scribble.cap_operations = 256;
+    statik->scribble.operations = allocate_operations(256);
     for (BoundNode *type = node->program.types; type; type = type->next) {
         generate_node(type, statik);
     }
@@ -635,10 +611,20 @@ IRProgram generate(BoundNode *program)
     return ret;
 }
 
+StringView ir_var_decl_to_string(IRVarDecl *var, Allocator *allocator)
+{
+    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    sb_printf(&sb, SV_SPEC ": ", SV_ARG(var->name));
+    sb_append_sv(&sb, typespec_to_string(var->type, allocator));
+    return sb.view;
+}
+
 void ir_var_decl_print(IRVarDecl *var)
 {
-    printf(SV_SPEC ": ", SV_ARG(var->name));
-    typespec_print(stdout, var->type);
+    AllocatorState as = save_allocator();
+    StringView     s = ir_var_decl_to_string(var, get_allocator());
+    printf(SV_SPEC, SV_ARG(s));
+    release_allocator(as);
 }
 
 void ir_operation_print_prefix(IROperation *op, char const *prefix)
@@ -677,9 +663,6 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
     case IR_LABEL:
         printf("lbl_%zu", op->label);
         break;
-    case IR_NATIVE_CALL:
-        printf(SV_SPEC, SV_ARG(op->native.name));
-        break;
     case IR_NEW_DATUM:
         printf(SV_SPEC " [0x%08llx]", SV_ARG(typeid_name(op->integer.unsigned_value)), op->integer.unsigned_value);
         break;
@@ -702,25 +685,36 @@ void ir_operation_print(IROperation *op)
 
 size_t ir_function_resolve_label(IRFunction *function, size_t label)
 {
-    assert(function);
-    for (size_t ix = 0; ix < function->num_operations; ++ix) {
-        if (function->operations[ix].operation == IR_LABEL && function->operations[ix].label == label) {
+    assert(function && function->kind == FK_SCRIBBLE);
+    for (size_t ix = 0; ix < function->scribble.num_operations; ++ix) {
+        if (function->scribble.operations[ix].operation == IR_LABEL && function->scribble.operations[ix].label == label) {
             return ix;
         }
     }
     fatal("Label '%d' not found in function '" SV_SPEC "'", label, SV_ARG(function->name));
 }
 
+StringView ir_function_to_string(IRFunction *function, Allocator *allocator)
+{
+    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    sb_printf(&sb, SV_SPEC "(", SV_ARG(function->name));
+    StringList params = sl_acreate(sb.allocator);
+    for (size_t ix = 0; ix < function->num_parameters; ++ix) {
+        IRVarDecl *param = function->parameters + ix;
+        sl_push(&params, ir_var_decl_to_string(param, sb.allocator));
+    }
+    sb_append_sv(&sb, sl_join(&params, sv_from(", ")));
+    sb_append_cstr(&sb, ") -> ");
+    sb_append_sv(&sb, typespec_to_string(function->type, sb.allocator));
+    return sb.view;
+}
+
 void ir_function_print(IRFunction *function)
 {
-    printf(SV_SPEC "(", SV_ARG(function->name));
-    for (size_t ix = 0; ix < function->num_parameters; ++ix) {
-        if (ix > 0)
-            printf(", ");
-        ir_var_decl_print(function->parameters + ix);
-    }
-    printf(") -> ");
-    typespec_print(stdout, function->type);
+    AllocatorState as = save_allocator();
+    StringView     s = ir_function_to_string(function, get_allocator());
+    printf(SV_SPEC, SV_ARG(s));
+    release_allocator(as);
 }
 
 void ir_function_list(IRFunction *function, size_t mark)
@@ -735,15 +729,27 @@ void ir_function_list(IRFunction *function, size_t mark)
     typespec_print(stdout, function->type);
     printf("\n");
     printf("--------------------------------------------\n");
-    for (size_t ix = 0; ix < function->num_operations; ++ix) {
-        if (function->operations[ix].operation == IR_LABEL) {
-            printf("lbl_%zu:\n", function->operations[ix].label);
+    switch (function->kind) {
+    case FK_SCRIBBLE: {
+        for (size_t ix = 0; ix < function->scribble.num_operations; ++ix) {
+            if (function->scribble.operations[ix].operation == IR_LABEL) {
+                printf("lbl_%zu:\n", function->scribble.operations[ix].label);
+            }
+            if (ix == mark) {
+                ir_operation_print_prefix(function->scribble.operations + ix, ">");
+            } else {
+                ir_operation_print(function->scribble.operations + ix);
+            }
         }
-        if (ix == mark) {
-            ir_operation_print_prefix(function->operations + ix, ">");
-        } else {
-            ir_operation_print(function->operations + ix);
-        }
+    } break;
+    case FK_NATIVE: {
+        printf("  Native Function => %.*s\n", SV_ARG(function->native_name));
+    } break;
+    case FK_INTRINSIC: {
+        printf("  Intrinsic %s\n", Intrinsic_name(function->intrinsic));
+    } break;
+    default:
+        UNREACHABLE();
     }
     printf("\n");
 }
@@ -759,11 +765,11 @@ void ir_program_list(IRProgram program)
     }
 }
 
-IRAbstractFunction *ir_program_function_by_name(IRProgram *program, StringView name)
+IRFunction *ir_program_function_by_name(IRProgram *program, StringView name)
 {
     for (size_t ix = 0; ix < program->num_functions; ++ix) {
         if (sv_eq(program->functions[ix].name, name)) {
-            return (IRAbstractFunction *) program->functions + ix;
+            return program->functions + ix;
         }
     }
     return NULL;

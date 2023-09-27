@@ -17,7 +17,7 @@ typedef int (*qsort_fnc_t)(void const *, void const *);
 
 #define TYPEKINDS(S)   \
     S(PRIMITIVE, 0x00) \
-    S(COMPOSITE, 0x01) \
+    S(AGGREGATE, 0x01) \
     S(VARIANT, 0x02)   \
     S(ARRAY, 0x04)     \
     S(ALIAS, 0x08)
@@ -214,11 +214,14 @@ extern ExpressionType    *typeid_canonical_type(type_id type);
 extern void               type_registry_init();
 extern bool               typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
 extern StringView         typespec_name(TypeSpec typespec);
+extern StringView         typespec_to_string(TypeSpec typespec, Allocator *allocator);
 extern void               typespec_print(FILE *f, TypeSpec typespec);
 extern bool               type_is_concrete(ExpressionType *type);
 extern bool               typeid_is_concrete(type_id type);
 extern ErrorOrSize        type_sizeof(ExpressionType *type);
 extern ErrorOrSize        type_alignat(ExpressionType *type);
+extern ErrorOrSize        type_offsetof_name(ExpressionType *type, StringView name);
+extern ErrorOrSize        type_offsetof_index(ExpressionType *type, size_t index);
 extern TemplateParameter *type_get_parameter(ExpressionType *type, StringView param);
 extern TemplateArgument  *type_get_argument(ExpressionType *type, StringView arg);
 extern TypeComponent     *type_get_component(ExpressionType *type, StringView component);
@@ -250,6 +253,13 @@ static PrimitiveType typeid_primitive_type(type_id type)
 static size_t typeid_ix(type_id type)
 {
     return type & 0x0000FFFF;
+}
+
+static size_t typeid_sizeof(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    MUST(Size, size_t, sz, type_sizeof(et));
+    return sz;
 }
 
 static inline TypeKind type_kind(ExpressionType *type)

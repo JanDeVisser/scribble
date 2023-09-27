@@ -42,14 +42,13 @@ VarList               *scope_variable(Scope *scope, StringView name);
 char const            *scope_declare_variable(Scope *scope, StringView name, type_id type);
 char const            *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack);
 char const            *scope_push_variable(Scope *scope, StringView name, DatumStack *stack);
-void                   scope_dump_call_stack(Scope *scope);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
-FunctionReturn         execute_function(ExecutionContext *ctx, IRFunction *function);
+
 
 #undef INTRINSIC_ENUM
 #define INTRINSIC_ENUM(i) static Datum *execute_##i(ExecutionContext *ctx);
-INTRINSICS(INTRINSIC_ENUM)
+__attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
 #undef INTRINSIC_ENUM
 
 Datum *datum_stack_pop(DatumStack *stack)
@@ -203,7 +202,7 @@ char const *scope_pop_variable_component(Scope *scope, StringView name, size_t i
             case TK_PRIMITIVE:
             case TK_VARIANT:
                 return "Attempted pop of component of non-compound datum";
-            case TK_COMPOSITE:
+            case TK_AGGREGATE:
                 if (index >= v->value->composite.num_components) {
                     return "Attempted pop of out-of-range component index";
                 }
@@ -255,7 +254,7 @@ char const *scope_push_variable_component(Scope *scope, StringView name, size_t 
             case TK_PRIMITIVE:
             case TK_VARIANT:
                 return "Attempted push of component of non-compound datum";
-            case TK_COMPOSITE:
+            case TK_AGGREGATE:
                 if (index >= v->value->composite.num_components) {
                     return "Attempted push of out-of-range component index";
                 }
@@ -309,7 +308,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     switch (op->operation) {
     case IR_CALL: {
         call_stack_push(&ctx->call_stack, ctx->function, ctx->index);
-        IRAbstractFunction *function = NULL;
+        IRFunction *function = NULL;
         function = ir_program_function_by_name(ctx->program, op->sv);
         assert(function);
         FunctionReturn func_ret;
@@ -318,8 +317,18 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             func_ret = execute_function(ctx, (IRFunction *) function);
             break;
         case FK_INTRINSIC:
-            func_ret = execute_intrinsic(ctx, (IRIntrinsicFunction *) function);
+            func_ret = execute_intrinsic(ctx, function);
             break;
+        case FK_NATIVE: {
+            Datum **args = allocate_array(Datum *, function->num_parameters);
+            trace("Preparing native call of '%.*s'", SV_ARG(function->native_name));
+            for (size_t ix = 0; ix < function->num_parameters; ++ix) {
+                args[ix] = datum_stack_pop(&ctx->stack);
+            }
+            Datum *ret = datum_allocate(typeid_canonical_type_id(function->type.type_id));
+            native_call(function->native_name, function->num_parameters, args, ret);
+            datum_stack_push(&ctx->stack, ret);
+        } break;
         default:
             UNREACHABLE();
         }
@@ -356,14 +365,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
                     SV_ARG(op->sv), SV_ARG(typeid_name(alias_for_id)), SV_ARG(et->name));
             }
         } else {
-            MUST_VOID(TypeID, type_registry_alias(op->sv, alias_for_id));
+            MUST_VOID(TypeID, type_registry_alias(op->sv, alias_for_id))
         }
     } break;
     case IR_DEFINE_AGGREGATE: {
         size_t          num_components = datum_stack_pop_u64(&ctx->stack);
         ExpressionType *et = type_registry_get_type_by_name(op->sv);
         if (et) {
-            if (type_kind(et) != TK_COMPOSITE) {
+            if (type_kind(et) != TK_AGGREGATE) {
                 fatal("Attempting to define '" SV_SPEC "' as an aggregate but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
             }
             if (et->components.num_components != num_components) {
@@ -390,8 +399,8 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             components[ix].type_id = comp_type;
         }
         if (!et) {
-            MUST(TypeID, type_id, new_id, type_registry_make_type(op->sv, TK_COMPOSITE));
-            MUST_VOID(TypeID, type_set_struct_components(new_id, num_components, components));
+            MUST(TypeID, type_id, new_id, type_registry_make_type(op->sv, TK_AGGREGATE))
+            MUST_VOID(TypeID, type_set_struct_components(new_id, num_components, components))
         }
     } break;
     case IR_DEFINE_ARRAY: {
@@ -411,7 +420,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
                     SV_ARG(op->sv), size, et->array.size);
             }
         } else {
-            MUST_VOID(TypeID, type_registry_array(op->sv, type, size));
+            MUST_VOID(TypeID, type_registry_array(op->sv, type, size))
         }
     } break;
     case IR_DEFINE_VARIANT: {
@@ -438,7 +447,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             options[ix] = opt_type;
         }
         if (!et) {
-            MUST_VOID(TypeID, type_registry_get_variant(num_variants, options));
+            MUST_VOID(TypeID, type_registry_get_variant(num_variants, options))
         }
     } break;
     case IR_JUMP: {
@@ -478,11 +487,11 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         break;
     case IR_NEW_DATUM: {
         type_id tid = typeid_canonical_type_id(op->integer.unsigned_value);
-        assert(typeid_kind(tid) == TK_COMPOSITE || typeid_kind(tid) == TK_ARRAY);
+        assert(typeid_kind(tid) == TK_AGGREGATE || typeid_kind(tid) == TK_ARRAY);
         ExpressionType *et = type_registry_get_type_by_id(tid);
         Datum          *new_datum = datum_allocate(tid);
         switch (typeid_kind(tid)) {
-        case TK_COMPOSITE: {
+        case TK_AGGREGATE: {
             for (int ix = (int) et->components.num_components - 1; ix >= 0; --ix) {
                 Datum *d = datum_stack_pop(&ctx->stack);
                 datum_copy(new_datum->composite.components + ix, d);
@@ -498,18 +507,8 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         } break;
         default:
             UNREACHABLE();
-        };
-        datum_stack_push(&ctx->stack, new_datum);
-    } break;
-    case IR_NATIVE_CALL: {
-        Datum **args = allocate_array(Datum *, op->native.signature.argc);
-        trace("Preparing native call of '%.*s'", SV_ARG(op->native.name));
-        for (size_t ix = 0; ix < op->native.signature.argc; ++ix) {
-            args[ix] = datum_stack_pop(&ctx->stack);
         }
-        Datum *ret = datum_allocate(typeid_canonical_type_id(op->native.signature.ret_type->type_id));
-        native_call(op->native.name, op->native.signature.argc, args, ret);
-        datum_stack_push(&ctx->stack, ret);
+        datum_stack_push(&ctx->stack, new_datum);
     } break;
     case IR_OPERATOR: {
         Datum *d2 = datum_stack_pop(&ctx->stack);
@@ -592,7 +591,7 @@ Command get_command()
     static char arguments[256];
     int         cmd = 0;
     Command     ret = { 0 };
-    char       *current_arg = arguments;
+    char       *current_arg;
     char       *last_arg = NULL;
     size_t      arg_count = 0;
 
@@ -678,7 +677,7 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
     bp->index = ctx->index;
     bp->function = ctx->function;
     if (sv_not_empty(bp_function)) {
-        bp->function = (IRFunction *) ir_program_function_by_name(ctx->program, bp_function);
+        bp->function = ir_program_function_by_name(ctx->program, bp_function);
         if (bp->function) {
             if (bp->function->kind != FK_SCRIBBLE) {
                 printf("Cannot set breakpoint in function '" SV_SPEC "'\n", SV_ARG(bp_function));
@@ -686,7 +685,7 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
             } else {
                 bp->index = 1;
                 if (sv_not_empty(bp_index)) {
-                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->num_operations) {
+                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->scribble.num_operations) {
                         printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
                         bp->function = NULL;
                     }
@@ -728,7 +727,7 @@ void debugger_help()
 
 bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
 {
-    ir_operation_print(function->operations + ix);
+    ir_operation_print(function->scribble.operations + ix);
     while (true) {
         Command command = get_command();
         switch (command.command) {
@@ -751,7 +750,7 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
             debugger_help();
             break;
         case 'L': {
-            IRAbstractFunction *fnc = (IRAbstractFunction *) function;
+            IRFunction *fnc = function;
             if (command.num_arguments) {
                 fnc = ir_program_function_by_name(ctx->program, command.arguments[0]);
                 if (!fnc) {
@@ -764,12 +763,10 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
                     ir_function_list((IRFunction *) fnc, ix);
                     break;
                 case FK_NATIVE: {
-                    IRNativeFunction *native = (IRNativeFunction *) fnc;
-                    printf(SV_SPEC " -> %s\n", SV_ARG(native->name), native->native_name);
+                    printf(SV_SPEC " -> %.*s\n", SV_ARG(fnc->name), SV_ARG(fnc->native_name));
                 } break;
                 case FK_INTRINSIC: {
-                    IRIntrinsicFunction *intrinsic = (IRIntrinsicFunction *) fnc;
-                    printf(SV_SPEC " -> intrinsic %s\n", SV_ARG(intrinsic->name), Intrinsic_name(intrinsic->intrinsic));
+                    printf(SV_SPEC " -> intrinsic %s\n", SV_ARG(fnc->name), Intrinsic_name(fnc->intrinsic));
                 } break;
                 }
             }
@@ -814,6 +811,34 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     ctx->scope = &func_scope;
     ctx->function = function;
 
+    for (size_t param_ix = 0; param_ix < function->num_parameters; ++param_ix) {
+        IRVarDecl *var_decl = function->parameters + param_ix;
+        char const *err = scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
+        if (!err) {
+            err = scope_pop_variable(ctx->scope, var_decl->name, &ctx->stack);
+        }
+        if (err) {
+            printf("Exception caught: %s\n", err);
+            printf("\nCall stack:\n");
+            call_stack_dump(&ctx->call_stack);
+            if (ctx->stack.top) {
+                printf("\nCurrent data stack:\n");
+                printf("-------------------\n");
+                datum_stack_dump(&ctx->stack);
+                printf("-------------------\n");
+            } else {
+                printf("\nCurrent data stack EMPTY\n");
+            }
+            FunctionReturn ret = { 0 };
+            ret.type = FRT_EXCEPTION;
+            Datum exception = { 0 };
+            exception.type = PT_ERROR;
+            exception.error = err;
+            ctx->scope = current;
+            return ret;
+        }
+    }
+
     bool step_over = ctx->execution_mode == EM_STEP_OVER;
     if (step_over) {
         ctx->execution_mode = EM_CONTINUE;
@@ -822,11 +847,11 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         ir_function_print(function);
         printf("\n");
     }
-    while (ix < function->num_operations) {
-        ctx->index = function->operations[ix].index;
+    while (ix < function->scribble.num_operations) {
+        ctx->index = function->scribble.operations[ix].index;
         if (ctx->execution_mode & (EM_RUN_TO_RETURN | EM_CONTINUE | EM_STEP_OVER)) {
             for (size_t bp = 0; bp < ctx->num_breakpoints; ++bp) {
-                if (function == ctx->breakpoints[bp].function && function->operations[ix].index == ctx->breakpoints[bp].index) {
+                if (function == ctx->breakpoints[bp].function && function->scribble.operations[ix].index == ctx->breakpoints[bp].index) {
                     ctx->execution_mode = EM_SINGLE_STEP;
                 }
             }
@@ -841,9 +866,9 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             }
         }
         if (ctx->trace) {
-            ir_operation_print(function->operations + ix);
+            ir_operation_print(function->scribble.operations + ix);
         }
-        switch (function->operations[ix].operation) {
+        switch (function->scribble.operations[ix].operation) {
         case IR_SCOPE_BEGIN: {
             Scope *new_scope = allocate(sizeof(Scope));
             new_scope->enclosing = ctx->scope;
@@ -856,7 +881,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             ix += 1;
         } break;
         default: {
-            NextInstructionPointer pointer = execute_operation(ctx, function->operations + ix);
+            NextInstructionPointer pointer = execute_operation(ctx, function->scribble.operations + ix);
             switch (pointer.type) {
             case NIT_RELATIVE:
                 ix += pointer.pointer;
@@ -868,7 +893,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ix = 0;
                 break;
             case NIT_RETURN:
-                ix = function->num_operations;
+                ix = function->scribble.num_operations;
                 if (ctx->execution_mode == EM_RUN_TO_RETURN) {
                     ctx->execution_mode = EM_SINGLE_STEP;
                 }
@@ -883,7 +908,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             case NIT_EXCEPTION:
                 printf("Exception caught: %s\n", pointer.exception);
                 printf("\nInstruction:\n");
-                ir_operation_print(function->operations + ix);
+                ir_operation_print(function->scribble.operations + ix);
                 printf("\nCall stack:\n");
                 call_stack_dump(&ctx->call_stack);
                 if (ctx->stack.top) {
@@ -1033,7 +1058,7 @@ Datum *execute_WRITE(ExecutionContext *ctx)
     return ret;
 }
 
-FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRIntrinsicFunction *intrinsic)
+FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRFunction *intrinsic)
 {
     FunctionReturn ret = { 0 };
     ret.type = FRT_NORMAL;
@@ -1066,10 +1091,9 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     ctx.trace = false;
     if (OPT_DEBUG) {
         for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {
-            StringView bp[2];
-            size_t     components = sv_split(breakpoint->value, sv_from(":"), 2, bp);
-            StringView bp_index = (components > 1) ? bp[1] : sv_null();
-            StringView bp_function = (components) ? bp[0] : sv_null();
+            StringList components = sv_split(breakpoint->value, sv_from(":"));
+            StringView bp_index = (components.size > 1) ? components.strings[1] : sv_null();
+            StringView bp_function = (components.size > 0) ? components.strings[0] : sv_null();
             set_breakpoint(&ctx, bp_function, bp_index);
         }
     }

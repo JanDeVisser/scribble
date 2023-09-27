@@ -242,7 +242,7 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
             parse_arguments(lexer, call, '(', ')');
             return call;
         } else {
-            StringBuilder sb = sb_create_with_allocator(get_allocator());
+            StringBuilder sb = sb_acreate(get_allocator());
             SyntaxNode *var = syntax_node_make(SNT_VARIABLE, token.text, token);
             SyntaxNode **name_part = &var->variable.names;
             while (true) {

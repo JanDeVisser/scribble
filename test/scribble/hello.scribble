@@ -1,0 +1,4 @@
+func main() : int {
+    puti(420);
+    endln();
+}
