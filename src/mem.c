@@ -31,7 +31,7 @@ typedef struct allocator {
 } Allocator;
 
 typedef struct {
-    Arena  *arena;
+    Arena *arena;
     size_t index;
     size_t ptr;
 } AllocatorState;
@@ -42,12 +42,12 @@ const static size_t SLAB_SZ = 10 * 1024 * 1024;
 #define MEM_IMPL
 #include <mem.h>
 
-Arena         *arena_new(size_t slabs, size_t slab_size);
-void           arena_init(Arena *arena, size_t slabs, size_t slab_size);
-void           arena_destroy(Arena *arena);
-void           arena_allocate_slab(Arena *arena, size_t slab_size);
-void          *arena_allocate(Arena *arena, size_t size);
-void           arena_release(Arena *arena, AllocatorState state);
+Arena *arena_new(size_t slabs, size_t slab_size);
+void   arena_init(Arena *arena, size_t slabs, size_t slab_size);
+void   arena_destroy(Arena *arena);
+void   arena_allocate_slab(Arena *arena, size_t slab_size);
+void  *arena_allocate(Arena *arena, size_t size);
+void   arena_release(Arena *arena, AllocatorState state);
 
 void *malloc_fatal(size_t size, char const *where, ...)
 {

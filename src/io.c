@@ -41,7 +41,7 @@ ErrorOrChar read_file(int fd)
         ERROR(Char, IOError, errno, "Could not fstat file");
     }
     size_t sz = sb.st_size;
-    char* buffer = mem_allocate(sz + 1);
+    char  *buffer = mem_allocate(sz + 1);
     if (!buffer) {
         ERROR(Char, OutOfMemory, errno, "Out-of-memory allocating file buffer");
     }

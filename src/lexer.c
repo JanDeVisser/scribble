@@ -298,7 +298,7 @@ Token lexer_peek(Lexer *lexer)
         size_t ix = 0;
         for (; isspace(buffer[ix]) && buffer[ix] != '\n'; ++ix)
             ;
-        return lexer_set_current(lexer, (Token) { { buffer, ix + 1}, TK_WHITESPACE, TC_WHITESPACE });
+        return lexer_set_current(lexer, (Token) { { buffer, ix + 1 }, TK_WHITESPACE, TC_WHITESPACE });
     }
     if (isdigit(buffer[0])) {
         return lexer_set_current(lexer, (Token) scan_number(buffer));
@@ -359,7 +359,7 @@ Token lexer_lex(Lexer *lexer)
     return ret;
 }
 
-Token lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const* msg, ...)
+Token lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...)
 {
     Token ret = lexer_next(lexer);
     if (!token_matches(ret, kind, code)) {

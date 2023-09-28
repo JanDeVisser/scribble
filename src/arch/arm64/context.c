@@ -91,13 +91,13 @@ void arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset)
 {
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE:
-        switch (typeid_primitive_type(type)) {
+        switch (typeid_builtin_type(type)) {
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case PT_##dt:
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case BIT_##dt:
             INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
-        case PT_POINTER:
-        case PT_BOOL: {
+        case BIT_POINTER:
+        case BIT_BOOL: {
             OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
             assert(opcode_map_maybe.has_value);
             OpcodeMap *opcode_map = &opcode_map_maybe.value;
@@ -106,7 +106,7 @@ void arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset)
                 arm64context_get_stack_depth(ctx) - offset);
         } break;
         default:
-            NYI("zero_initialize of primitive type '%s'", PrimitiveType_name(typeid_primitive_type(type)));
+            NYI("zero_initialize of builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
         }
         break;
     case TK_AGGREGATE: {
@@ -126,7 +126,7 @@ void arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset)
     }
 }
 
-void arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, int target)
+int arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, int target)
 {
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
@@ -142,27 +142,25 @@ void arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, 
         }
         assembly_add_instruction(ctx->assembly, opcode_map->load_opcode, "%s%d,[fp,#%d]", opcode_map->reg_width, target,
             arm64context_get_stack_depth(ctx) - offset);
-    } break;
+        return target + 1;
+    }
     case TK_AGGREGATE: {
         assembly_add_comment(ctx->assembly, "Loading composite variable: stack_depth %zu offset %zu",
             arm64context_get_stack_depth(ctx), offset);
         ExpressionType *et = type_registry_get_type_by_id(type);
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            char const *reg_width = "w";
-            if (typeid_sizeof(et->components.num_components) > 4) {
-                reg_width = "x";
-            }
+            TypeComponent *component_type = et->components.components + ix;
             MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-            assembly_add_instruction(ctx->assembly, "ldr", "%s%d,[fp,#%zu]", reg_width, target++,
-                arm64context_get_stack_depth(ctx) - offset + offset_of);
+            target = arm64context_load_variable(ctx, component_type->type_id, offset + offset_of, target);
         }
-    } break;
+        return target;
+    }
     default:
         fatal("Cannot load variables of kind '%s' yet", TypeKind_name(typeid_kind(type)));
     }
 }
 
-void arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset, int from)
+int arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset, int from)
 {
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
@@ -173,25 +171,89 @@ void arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset,
         OpcodeMap *opcode_map = &opcode_map_maybe.value;
         assembly_add_comment(ctx->assembly, "Storing to variable: stack_depth %zu offset %zu",
             arm64context_get_stack_depth(ctx), offset);
-        assembly_add_instruction(ctx->assembly, opcode_map->store_opcode, "%s%d,[fp,#%d]", opcode_map->reg_width, from,
+        assembly_add_instruction(ctx->assembly, opcode_map->store_opcode, "%s%d,[fp,#%ld]", opcode_map->reg_width, from,
             arm64context_get_stack_depth(ctx) - offset);
-    } break;
+        return from + 1;
+    }
     case TK_AGGREGATE: {
         assembly_add_comment(ctx->assembly, "Storing composite variable: stack_depth %zu offset %zu",
             arm64context_get_stack_depth(ctx), offset);
         ExpressionType *et = type_registry_get_type_by_id(type);
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            char const *reg_width = "w";
-            if (typeid_sizeof(et->components.num_components) > 4) {
-                reg_width = "x";
-            }
+            TypeComponent *component_type = et->components.components + ix;
             MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-            assembly_add_instruction(ctx->assembly, "str", "%s%d,[fp,#%zu]", reg_width, from++,
-                arm64context_get_stack_depth(ctx) - offset + offset_of);
+            from = arm64context_store_variable(ctx, component_type->type_id, offset + offset_of, from);
         }
-    } break;
+        return from;
+    }
     default:
         fatal("Cannot store variables of kind '%s' yet", TypeKind_name(typeid_kind(type)));
+    }
+}
+
+int arm64context_push_value(ARM64Context *ctx, type_id type, int from)
+{
+    assembly_add_comment(ctx->assembly, "Pushing value of type '%.*s'", SV_ARG(typeid_name(type)));
+    switch (typeid_kind(type)) {
+    case TK_PRIMITIVE: {
+        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
+        if (!opcode_map_maybe.has_value) {
+            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
+        }
+        OpcodeMap *opcode_map = &opcode_map_maybe.value;
+        assembly_add_instruction(ctx->assembly, opcode_map->store_opcode, "%s%d,[sp,#-16]!", opcode_map->reg_width, from);
+        return from + 1;
+    }
+    case TK_AGGREGATE: {
+        if (type != STRING_ID) {
+            fatal("Cannot push values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
+        }
+        //        ExpressionType *et = type_registry_get_type_by_id(type);
+        //        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+        //            TypeComponent *component_type = et->components.components + ix;
+        //            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
+        //            from = arm64context_push_value(ctx, component_type->type_id, from);
+        //        }
+        //        return from;
+        assembly_push(ctx->assembly, "x1");
+        assembly_push(ctx->assembly, "x0");
+        return from + 2;
+    }
+    default:
+        fatal("Cannot push values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
+    }
+}
+
+int arm64context_pop_value(ARM64Context *ctx, type_id type, int target)
+{
+    assembly_add_comment(ctx->assembly, "Popping value of type '%.*s'", SV_ARG(typeid_name(type)));
+    switch (typeid_kind(type)) {
+    case TK_PRIMITIVE: {
+        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
+        if (!opcode_map_maybe.has_value) {
+            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
+        }
+        OpcodeMap *opcode_map = &opcode_map_maybe.value;
+        assembly_add_instruction(ctx->assembly, opcode_map->load_opcode, "%s%d,[sp],#16", opcode_map->reg_width, target);
+        return target + 1;
+    }
+    case TK_AGGREGATE: {
+        if (type != STRING_ID) {
+            fatal("Cannot pop values of type '%.*s' yet", SV_ARG(typeid_name(type)));
+        }
+        //        ExpressionType *et = type_registry_get_type_by_id(type);
+        //        for (int ix = (int) et->components.num_components; ix >= 0; --ix) {
+        //            TypeComponent *component_type = et->components.components + ix;
+        //            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
+        //            target = arm64context_pop_value(ctx, component_type->type_id, target);
+        //        }
+        //        return target;
+        assembly_pop(ctx->assembly, "x0");
+        assembly_pop(ctx->assembly, "x1");
+        return target + 2;
+    }
+    default:
+        fatal("Cannot pop values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
     }
 }
 
@@ -201,27 +263,27 @@ void arm64context_define_static_storage(
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
         StringView static_type = { 0 };
-        switch (typeid_primitive_type(type)) {
-        case PT_POINTER:
-        case PT_I64:
-        case PT_U64:
+        switch (typeid_builtin_type(type)) {
+        case BIT_POINTER:
+        case BIT_I64:
+        case BIT_U64:
             static_type = sv_from(".quad");
             break;
-        case PT_I32:
-        case PT_U32:
+        case BIT_I32:
+        case BIT_U32:
             static_type = sv_from(".int");
             break;
-        case PT_I16:
-        case PT_U16:
+        case BIT_I16:
+        case BIT_U16:
             static_type = sv_from(".short");
             break;
-        case PT_I8:
-        case PT_U8:
-        case PT_BOOL: {
+        case BIT_I8:
+        case BIT_U8:
+        case BIT_BOOL: {
             static_type = sv_from(".byte");
         } break;
         default:
-            NYI("Defining static storage for primitive type '%s'", PrimitiveType_name(typeid_primitive_type(type)));
+            NYI("Defining static storage for builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
         }
         assembly_add_data(
             ctx->assembly, label, global, static_type, true, sv_aprintf(ctx->allocator, "%ld", initial_value));
@@ -239,7 +301,7 @@ void arm64context_define_static_storage(
 void arm64context_load_immediate(ARM64Context *ctx, type_id type, uint64_t value, int target)
 {
     if (!typeid_has_kind(type, TK_PRIMITIVE)) {
-        fatal("Cannot load non-primitive types as immediates");
+        fatal("Cannot load non-builtin types as immediates");
     }
     size_t      sz = typeid_sizeof(type);
     char const *width = (sz == 8) ? "x" : "w";
@@ -276,13 +338,13 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
         ARM64VarDecl *param = func->parameters + ix;
         switch (typeid_kind(param->var_decl->type.type_id)) {
         case TK_PRIMITIVE: {
-            switch (typeid_primitive_type(param->var_decl->type.type_id)) {
+            switch (typeid_builtin_type(param->var_decl->type.type_id)) {
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case PT_##dt:
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case BIT_##dt:
                 INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
-            case PT_POINTER:
-            case PT_BOOL: {
+            case BIT_POINTER:
+            case BIT_BOOL: {
                 switch (param->method) {
                 case PPM_REGISTER: {
                     assembly_add_comment(ctx->assembly, "Register parameter %.*s: x%d -> %zu",
@@ -300,7 +362,7 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
                 }
             } break;
             default:
-                NYI("Primitive type '%s'", PrimitiveType_name(typeid_primitive_type(param->var_decl->type.type_id)));
+                NYI("Builtin type '%s'", BuiltinType_name(typeid_builtin_type(param->var_decl->type.type_id)));
             }
         } break;
         case TK_AGGREGATE:
@@ -353,7 +415,6 @@ void arm64context_leave_function(ARM64Context *ctx)
 
 void arm64context_prepare_function_arguments(ARM64Context *ctx)
 {
-
 }
 
 ARM64Function *arm64context_function_by_name(ARM64Context *ctx, StringView name)

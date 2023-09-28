@@ -13,19 +13,19 @@ typedef enum log_level {
     LL_PANIC,
 } LogLevel;
 
-static void vemit_log_message(LogLevel level, char const* msg, va_list args);
-static void emit_log_message(LogLevel level, char const* msg, ...);
+static void vemit_log_message(LogLevel level, char const *msg, va_list args);
+static void emit_log_message(LogLevel level, char const *msg, ...);
 
 static LogLevel log_level;
 
-void emit_log_message(LogLevel level, char const* msg, ...)
+void emit_log_message(LogLevel level, char const *msg, ...)
 {
     va_list args;
     va_start(args, msg);
     vemit_log_message(level, msg, args);
 }
 
-void vemit_log_message(LogLevel level, char const* msg, va_list args)
+void vemit_log_message(LogLevel level, char const *msg, va_list args)
 {
     if (level >= log_level) {
         vfprintf(stderr, msg, args);
@@ -33,26 +33,26 @@ void vemit_log_message(LogLevel level, char const* msg, va_list args)
     }
 }
 
-void trace(char const* msg, ...)
+void trace(char const *msg, ...)
 {
     va_list args;
     va_start(args, msg);
     vemit_log_message(LL_TRACE, msg, args);
 }
 
-void vtrace(char const* msg, va_list args)
+void vtrace(char const *msg, va_list args)
 {
     vemit_log_message(LL_TRACE, msg, args);
 }
 
-void fatal(char const* msg, ...)
+void fatal(char const *msg, ...)
 {
     va_list args;
     va_start(args, msg);
     vfatal(msg, args);
 }
 
-void vfatal(char const* msg, va_list args)
+void vfatal(char const *msg, va_list args)
 {
     vemit_log_message(LL_PANIC, msg, args);
     emit_log_message(LL_PANIC, "Aborting...");

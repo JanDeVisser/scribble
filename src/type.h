@@ -55,13 +55,17 @@ typedef enum {
 
 // type_id is 32 bit unsigned int.
 // top 16 bits:
-//   0x0xxx - Primitive types
+//   0x0xxx - Builtin types
 //   0x0100 - unsigned
 //   0x0200 - integer
 //   0x0400 - can be treated as integer
-//   0x0000 - Other types
-//   0x00FF - Width in bits
-//   0x1000 - Composite types
+//   0x0xFF - Width in bits
+//   0x00xx - Other types
+
+//   0x1000 - Aggregate types
+//   0x1F00 - Aggregate id
+//   0x1x0F - Number of components
+
 //   0x2000 - Array types
 //   0x4000 - Variant types
 //   0x8000 - Array types
@@ -76,11 +80,10 @@ typedef enum {
 #define ALL_INTEGERS_MASK 0x0600
 #define WIDTH_MASK 0x00FF
 
-#define PRIMITIVETYPES(S)     \
-    S(VOID, void, 0x0000)     \
-    S(ERROR, error, 0x0001)   \
-    S(STRING, string, 0x0002) \
-    S(FLOAT, float, 0x0004)   \
+#define BUILTINTYPES(S)       \
+    S(VOID, void, 0x0001)     \
+    S(ERROR, error, 0x0002)   \
+    S(FLOAT, float, 0x0003)   \
     S(I8, i8, 0x0208)         \
     S(U8, u8, 0x0308)         \
     S(I16, i16, 0x0210)       \
@@ -90,7 +93,9 @@ typedef enum {
     S(I64, i64, 0x0240)       \
     S(U64, u64, 0x0340)       \
     S(BOOL, bool, 0x0408)     \
-    S(POINTER, ptr, 0x0440)
+    S(POINTER, ptr, 0x0440)   \
+    S(STRING, string, 0x1102) \
+    S(RANGE, range, 0x1202)
 
 #define NUMERICTYPES(S)   \
     S(U8, u8, uint8_t)    \
@@ -113,13 +118,13 @@ typedef enum {
     S(U64, u64, uint64_t, false, "llu", 8) \
     S(I64, i64, int64_t, true, "lld", 8)
 
-typedef enum {
-#undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, code) PT_##type = code,
-    PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
-        PT_COUNT
-} PrimitiveType;
+typedef enum : uint16_t {
+    BIT_NOTYPE = 0x0000,
+#undef BUILTINTYPE_ENUM
+#define BUILTINTYPE_ENUM(type, name, code) BIT_##type = code,
+    BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
+} BuiltinType;
 
 typedef uint32_t               type_id;
 typedef struct expression_type ExpressionType;
@@ -152,13 +157,13 @@ typedef struct template_argument {
 typedef struct expression_type {
     type_id            type_id;
     StringView         name;
+    BuiltinType        builtin_type;
     size_t             num_parameters;
     TemplateParameter *template_parameters;
     type_id            specialization_of;
     size_t             num_arguments;
     TemplateArgument  *template_arguments;
     union {
-        PrimitiveType primitive_type;
         struct {
             size_t         num_components;
             TypeComponent *components;
@@ -182,27 +187,36 @@ typedef struct signature {
     ExpressionType  *ret_type;
 } Signature;
 
-#define PRIMITIVETYPE_ENUM(type, name, code) extern type_id type##_ID;
-PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
+#define BUILTINTYPE_ENUM(type, name, code) extern type_id type##_ID;
+BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
 extern type_id RANGE_ID;
+extern type_id STRING_ID;
 extern type_id FIRST_CUSTOM_IX;
 extern type_id NEXT_CUSTOM_IX;
 
 ErrorOr(TypeID, type_id);
 ErrorOr(Size, size_t);
 
+typedef struct integer {
+    BuiltinType type;
+    union {
+        int64_t  signed_value;
+        uint64_t unsigned_value;
+    } value;
+} Integer;
+
 extern char const        *TypeKind_name(TypeKind kind);
-extern char const        *PrimitiveType_name(PrimitiveType type);
-extern size_t             PrimitiveType_width(PrimitiveType type);
-extern PrimitiveType      PrimitiveType_get_integer_type(size_t width, bool un_signed);
-extern bool               PrimitiveType_is_integer(PrimitiveType type);
-extern bool               PrimitiveType_is_number(PrimitiveType type);
-extern bool               PrimitiveType_is_unsigned(PrimitiveType type);
+extern char const        *BuiltinType_name(BuiltinType type);
+extern size_t             BuiltinType_width(BuiltinType type);
+extern BuiltinType        BuiltinType_get_integer_type(size_t width, bool un_signed);
+extern bool               BuiltinType_is_integer(BuiltinType type);
+extern bool               BuiltinType_is_number(BuiltinType type);
+extern bool               BuiltinType_is_unsigned(BuiltinType type);
 extern ExpressionType    *type_registry_get_type_by_name(StringView name);
 extern ExpressionType    *type_registry_get_type_by_id(type_id id);
 extern ExpressionType    *type_registry_get_type_by_index(size_t ix);
-extern type_id            type_registry_id_of_primitive_type(PrimitiveType type);
+extern type_id            type_registry_id_of_builtin_type(BuiltinType type);
 extern type_id            type_registry_id_of_integer_type(size_t width, bool un_signed);
 extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
 extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
@@ -244,10 +258,9 @@ static inline bool typeid_has_kind(type_id type, TypeKind kind)
     return typeid_kind(type) == kind;
 }
 
-static PrimitiveType typeid_primitive_type(type_id type)
+static BuiltinType typeid_builtin_type(type_id type)
 {
-    assert(typeid_kind(type) == TK_PRIMITIVE);
-    return (PrimitiveType) ((type >> 16) & 0x0FFF);
+    return (BuiltinType) ((type >> 16) & 0xFFFF);
 }
 
 static size_t typeid_ix(type_id type)
@@ -270,6 +283,47 @@ static inline TypeKind type_kind(ExpressionType *type)
 static inline bool type_has_kind(ExpressionType *type, TypeKind kind)
 {
     return typeid_has_kind(type->type_id, kind);
+}
+
+static inline void Integer_boundscheck(Integer integer)
+{
+    switch (integer.type) {
+    case BIT_I8:
+        if (integer.value.signed_value > INT8_MAX || integer.value.signed_value < INT8_MIN) {
+            fatal("i8 value out of range: %zu", integer.value.signed_value);
+        }
+        break;
+    case BIT_U8:
+        if (integer.value.unsigned_value > UINT8_MAX) {
+            fatal("u8 value out of range: %zu", integer.value.unsigned_value);
+        }
+        break;
+    case BIT_I16:
+        if (integer.value.signed_value > INT16_MAX || integer.value.signed_value < INT16_MIN) {
+            fatal("i16 value out of range: %zu", integer.value.signed_value);
+        }
+        break;
+    case BIT_U16:
+        if (integer.value.unsigned_value > UINT16_MAX) {
+            fatal("u16 value out of range: %zu", integer.value.unsigned_value);
+        }
+        break;
+    case BIT_I32:
+        if (integer.value.signed_value > INT32_MAX || integer.value.signed_value < INT32_MIN) {
+            fatal("i32 value out of range: %zu", integer.value.signed_value);
+        }
+        break;
+    case BIT_U32:
+        if (integer.value.unsigned_value > UINT32_MAX) {
+            fatal("u32 value out of range: %zu", integer.value.unsigned_value);
+        }
+        break;
+    case BIT_I64:
+    case BIT_U64:
+        break;
+    default:
+        UNREACHABLE();
+    }
 }
 
 #endif /* __TYPE_H__ */

@@ -243,8 +243,8 @@ SyntaxNode *parse_primary_expression(Lexer *lexer)
             return call;
         } else {
             StringBuilder sb = sb_acreate(get_allocator());
-            SyntaxNode *var = syntax_node_make(SNT_VARIABLE, token.text, token);
-            SyntaxNode **name_part = &var->variable.names;
+            SyntaxNode   *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+            SyntaxNode  **name_part = &var->variable.names;
             while (true) {
                 *name_part = syntax_node_make(SNT_NAME, token.text, token);
                 sb_append_sv(&sb, token.text);
@@ -420,7 +420,7 @@ SyntaxNode *parse_return(Lexer *lexer)
 
 SyntaxNode *parse_while(Lexer *lexer)
 {
-    Token token = lexer_lex(lexer);
+    Token       token = lexer_lex(lexer);
     SyntaxNode *expr = parse_expression(lexer);
     if (!expr) {
         fatal(LOC_SPEC "Expected condition in 'while' statement", LEXER_LOC_ARG(lexer));
@@ -690,7 +690,7 @@ SyntaxNode *parse_function(Lexer *lexer)
         lexer_lex(lexer);
         func->function.function_impl = syntax_node_make(
             SNT_NATIVE_FUNCTION,
-            (StringView) { token.text.ptr + 1, token.text.length - 2},
+            (StringView) { token.text.ptr + 1, token.text.length - 2 },
             token);
         return func;
     } else {
@@ -802,15 +802,15 @@ SyntaxNode *parse(char const *dir_or_file)
         trace("CWD: %s dir: %s", cwd, dir_or_file);
         free(cwd);
     }
-    Token          token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
-    SyntaxNode    *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
+    Token       token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
+    SyntaxNode *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
 
     DIR *dir = opendir(dir_or_file);
     if (dir == NULL) {
         if (errno == ENOTDIR) {
             dir = opendir(".");
             if (dir == NULL) {
-               fatal("Could not open current directory");
+                fatal("Could not open current directory");
             }
             parse_module_file(program, dirfd(dir), dir_or_file);
             closedir(dir);

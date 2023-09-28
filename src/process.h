@@ -24,7 +24,7 @@ extern ErrorOrInt process_execute(Process *p);
 ErrorOrInt        execute_sl(StringView cmd, StringList *args);
 ErrorOrInt        _execute(StringView cmd, ...);
 
-#define process_create(cmd, ...) _process_create(cmd __VA_OPT__(,) __VA_ARGS__, NULL)
-#define execute(cmd, ...) _execute(cmd __VA_OPT__(,) __VA_ARGS__, NULL)
+#define process_create(cmd, ...) _process_create(cmd __VA_OPT__(, ) __VA_ARGS__, NULL)
+#define execute(cmd, ...) _execute(cmd __VA_OPT__(, ) __VA_ARGS__, NULL)
 
 #endif /* __PROCESS_H__ */

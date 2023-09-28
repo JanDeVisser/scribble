@@ -43,7 +43,7 @@ void code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, 
     code_vadd_text(code, opcode_sv.ptr, args);
 }
 
-void code_add_text(Code *code, char const* text, ...)
+void code_add_text(Code *code, char const *text, ...)
 {
     va_list args;
     va_start(args, text);
@@ -51,7 +51,7 @@ void code_add_text(Code *code, char const* text, ...)
     va_end(args);
 }
 
-void code_vadd_text(Code *code, char const* text, va_list args)
+void code_vadd_text(Code *code, char const *text, va_list args)
 {
     StringView txt = sv_from(text);
     if (strchr(text, '%')) {

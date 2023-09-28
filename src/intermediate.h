@@ -54,14 +54,7 @@ typedef struct ir_operation {
     IROperationType operation;
     size_t          index;
     union {
-        struct {
-            union {
-                int64_t  int_value;
-                uint64_t unsigned_value;
-            };
-            size_t width;
-            bool   un_signed;
-        } integer;
+        Integer    integer;
         size_t     label;
         double     double_value;
         bool       bool_value;

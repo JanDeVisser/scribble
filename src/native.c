@@ -55,9 +55,10 @@ static Mutex _resolve_mutex;
 
 /* ------------------------------------------------------------------------ */
 
-ErrorOrDLResult _resolve_result_create(void *result) {
-    char *error;
-    int errorcode;
+ErrorOrDLResult _resolve_result_create(void *result)
+{
+    char           *error;
+    int             errorcode;
     ErrorOrDLResult ret;
 
     errorcode = 0;
@@ -102,7 +103,8 @@ ErrorOrDLResult _resolve_result_create(void *result) {
 
 /* ------------------------------------------------------------------------ */
 
-LibHandle *_resolve_handle_create(StringView image) {
+LibHandle *_resolve_handle_create(StringView image)
+{
     LibHandle *ret = allocate_new(LibHandle);
 
     ret->image = image;
@@ -110,12 +112,13 @@ LibHandle *_resolve_handle_create(StringView image) {
     return _resolve_handle_open(ret);
 }
 
-StringView _resolve_handle_get_platform_image(LibHandle *handle) {
+StringView _resolve_handle_get_platform_image(LibHandle *handle)
+{
     size_t len;
-    char *ptr;
-    char *canonical;
-    char *platform_image;
-    int ix;
+    char  *ptr;
+    char  *canonical;
+    char  *platform_image;
+    int    ix;
 
     if (sv_empty(handle->image)) {
         handle->platform_image = sv_null();
@@ -166,10 +169,11 @@ StringView _resolve_handle_get_platform_image(LibHandle *handle) {
     return handle->platform_image;
 }
 
-LibHandle *_resolve_handle_try_open(LibHandle *handle, StringView dir) {
-    StringView path;
-    StringView image;
-    lib_handle_t libhandle;
+LibHandle *_resolve_handle_try_open(LibHandle *handle, StringView dir)
+{
+    StringView      path;
+    StringView      image;
+    lib_handle_t    libhandle;
     ErrorOrDLResult res;
 
     image = _resolve_handle_get_platform_image(handle);
@@ -205,10 +209,11 @@ LibHandle *_resolve_handle_try_open(LibHandle *handle, StringView dir) {
     return handle;
 }
 
-LibHandle *_resolve_handle_open(LibHandle *handle) {
-    LibHandle *ret = NULL;
-    StringView image;
-    char *obldir;
+LibHandle *_resolve_handle_open(LibHandle *handle)
+{
+    LibHandle      *ret = NULL;
+    StringView      image;
+    char           *obldir;
     ErrorOrDLResult result;
 
     image = _resolve_handle_get_platform_image(handle);
@@ -270,7 +275,8 @@ LibHandle *_resolve_handle_open(LibHandle *handle) {
     return ret;
 }
 
-ErrorOrDLResult _resolve_handle_get_function(LibHandle *handle, StringView function_name) {
+ErrorOrDLResult _resolve_handle_get_function(LibHandle *handle, StringView function_name)
+{
     void_t function;
 
     trace("dlsym('%.*s', '%.*s')", SV_ARG(_resolve_handle_get_platform_image(handle)), SV_ARG(function_name));
@@ -287,7 +293,8 @@ ErrorOrDLResult _resolve_handle_get_function(LibHandle *handle, StringView funct
 
 /* ------------------------------------------------------------------------ */
 
-void __resolve_init(void) {
+void __resolve_init(void)
+{
     assert(!_singleton);
     _resolve_mutex = mutex_create();
     _singleton = allocate_new(Resolve);
@@ -295,12 +302,14 @@ void __resolve_init(void) {
     atexit(resolve_free);
 }
 
-Resolve *resolve_get(void) {
+Resolve *resolve_get(void)
+{
     _resolve_init();
     return _singleton;
 }
 
-void resolve_free(void) {
+void resolve_free(void)
+{
     LibHandle *image;
     if (_singleton) {
         trace("resolve_free");
@@ -317,7 +326,8 @@ void resolve_free(void) {
     }
 }
 
-LibHandle *_resolve_open(Resolve *resolve, StringView image) {
+LibHandle *_resolve_open(Resolve *resolve, StringView image)
+{
     LibHandle *handle = NULL;
 
     mutex_lock(_resolve_mutex);
@@ -337,13 +347,15 @@ LibHandle *_resolve_open(Resolve *resolve, StringView image) {
     return handle;
 }
 
-LibHandle *resolve_open(Resolve *resolve, StringView image) {
+LibHandle *resolve_open(Resolve *resolve, StringView image)
+{
     _resolve_init();
     return _resolve_open(resolve, image);
 }
 
-void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_name) {
-    LibHandle *lib, *my_lib = NULL;
+void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_name)
+{
+    LibHandle      *lib, *my_lib = NULL;
     ErrorOrDLResult result;
 
     int paren = sv_first(func_name, '(');
@@ -379,7 +391,8 @@ void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_na
     return ret;
 }
 
-bool resolve_library(StringView library) {
+bool resolve_library(StringView library)
+{
     Resolve *resolve;
 
     resolve = resolve_get();
@@ -387,8 +400,9 @@ bool resolve_library(StringView library) {
     return resolve_open(resolve, library) != NULL;
 }
 
-void_t resolve_function(StringView func_name) {
-    Resolve *resolve;
+void_t resolve_function(StringView func_name)
+{
+    Resolve   *resolve;
     StringView lib = sv_null();
     StringList lib_func = sv_asplit(get_allocator(), func_name, sv_from(":"));
 
@@ -402,18 +416,19 @@ void_t resolve_function(StringView func_name) {
 }
 
 typedef struct trampoline {
-    void_t fnc;
+    void_t   fnc;
     uint64_t x[8];
-    double d[8];
+    double   d[8];
     uint64_t int_return_value;
-    double double_return_value;
+    double   double_return_value;
 } Trampoline;
 
-void native_call(StringView name, size_t argc, Datum **values, Datum *ret) {
+void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
+{
     if (argc > 8) {
         fatal("Can't do native calls with more than 8 parameters");
     }
-    Trampoline t = {0};
+    Trampoline t = { 0 };
     t.fnc = resolve_function(name);
     if (!t.fnc) {
         fatal("Function '%.*s' not found", SV_ARG(name));
@@ -546,8 +561,8 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret) {
         // 8, the argument is copied to the least significant bits in x[NGRN].
         // The NGRN is incremented by one. The argument has now been allocated.
         if ((type_kind(et) == TK_PRIMITIVE) && (ngrn < 8)) {
-            PrimitiveType primitive_type = typeid_primitive_type(et->type_id);
-            if (PrimitiveType_is_integer(primitive_type) || primitive_type == PT_POINTER) {
+            BuiltinType builtin_type = typeid_builtin_type(et->type_id);
+            if (BuiltinType_is_integer(builtin_type) || builtin_type == BIT_POINTER) {
                 t.x[ngrn] = datum_unsigned_integer_value(values[ix]);
                 ++ngrn;
                 continue;
@@ -596,27 +611,27 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret) {
     if (trampoline_result) {
         fatal("Error executing '%.*s'. Trampoline returned %d", SV_ARG(name), trampoline_result);
     }
-    switch (typeid_primitive_type(ret->type)) {
+    switch (typeid_builtin_type(ret->type)) {
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case PT_##dt:                                       \
+    case BIT_##dt:                                      \
         ret->n = (ct) t.int_return_value;               \
         break;
         INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
-        case PT_BOOL:
-            ret->bool_value = (bool) t.int_return_value;
-            break;
-        case PT_POINTER:
-            ret->pointer = (void *) t.int_return_value;
-            break;
-        case PT_FLOAT:
-            ret->float_value = t.double_return_value;
-            break;
-        case PT_VOID:
-            ret->void_value = 0;
-            break;
-        default:
-            UNREACHABLE();
+    case BIT_BOOL:
+        ret->bool_value = (bool) t.int_return_value;
+        break;
+    case BIT_POINTER:
+        ret->pointer = (void *) t.int_return_value;
+        break;
+    case BIT_FLOAT:
+        ret->float_value = t.double_return_value;
+        break;
+    case BIT_VOID:
+        ret->void_value = 0;
+        break;
+    default:
+        UNREACHABLE();
     }
 }

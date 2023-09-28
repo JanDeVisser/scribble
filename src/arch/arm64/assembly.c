@@ -221,7 +221,7 @@ void assembly_push(Assembly *assembly, char const *reg)
 
 void assembly_pop(Assembly *assembly, char const *reg)
 {
-    assembly_add_instruction(assembly, "ldr", "{},[sp],16", reg);
+    assembly_add_instruction(assembly, "ldr", "%s,[sp],16", reg);
 }
 
 void assembly_write_char(Assembly *assembly, int fd, char ch)
@@ -229,8 +229,8 @@ void assembly_write_char(Assembly *assembly, int fd, char ch)
     assembly_add_instruction(assembly, "mov", "w0,#0x%02x", (uint8_t) ch);
     assembly_add_instruction(assembly, "strb", "w0,[sp,-16]!");
     assembly_add_instruction(assembly, "mov", "x0,#%d", fd); // x0: fd
-    assembly_add_instruction(assembly, "mov", "x1,sp");  // x1: SP
-    assembly_add_instruction(assembly, "mov", "x2,#1");  // x2: Number of characters
+    assembly_add_instruction(assembly, "mov", "x1,sp");      // x1: SP
+    assembly_add_instruction(assembly, "mov", "x2,#1");      // x2: Number of characters
     assembly_syscall(assembly, 0x04);
     assembly_add_instruction(assembly, "add", "sp,sp,16");
 }

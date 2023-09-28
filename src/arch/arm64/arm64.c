@@ -19,12 +19,12 @@ SHARED_ALLOCATOR_IMPL(arm64)
 
 OptionalOpcodeMap get_opcode_map(type_id type)
 {
-    OptionalOpcodeMap ret = {0};
+    OptionalOpcodeMap ret = { 0 };
     ret.has_value = false;
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
         ret.has_value = true;
-        ret.value.type = typeid_primitive_type(type);
+        ret.value.type = typeid_builtin_type(type);
         uint16_t type_meta = type >> 16;
         bool     un_signed = type_meta & 0x0100;
         switch ((type >> 16) & 0x00FF) {

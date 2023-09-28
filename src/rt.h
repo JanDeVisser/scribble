@@ -12,8 +12,8 @@
 #ifndef __RT_H__
 #define __RT_H__
 
-size_t  endln();
-size_t  putint(int64_t);
-int     trampoline(void *trampoline);
+size_t endln();
+size_t putint(int64_t);
+int    trampoline(void *trampoline);
 
 #endif // __RT_H__

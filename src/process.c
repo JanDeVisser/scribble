@@ -14,7 +14,7 @@
 #include <allocate.h>
 #include <process.h>
 
-Process * process_create_sl(StringView cmd, StringList *args)
+Process *process_create_sl(StringView cmd, StringList *args)
 {
     Process *p = allocate_new(Process);
     p->command = cmd;
@@ -24,16 +24,16 @@ Process * process_create_sl(StringView cmd, StringList *args)
     return p;
 }
 
-Process * process_vcreate(StringView cmd, va_list args)
+Process *process_vcreate(StringView cmd, va_list args)
 {
     StringList sl_args = sl_acreate(get_allocator());
-    for (char const *arg = va_arg(args, char const*); arg; arg = va_arg(args, char const*)) {
+    for (char const *arg = va_arg(args, char const *); arg; arg = va_arg(args, char const *)) {
         sl_push(&sl_args, sv_copy_cstr(arg));
     }
     return process_create_sl(cmd, &sl_args);
 }
 
-Process * _process_create(StringView cmd, ...)
+Process *_process_create(StringView cmd, ...)
 {
     va_list args;
     va_start(args, cmd);
@@ -45,7 +45,7 @@ Process * _process_create(StringView cmd, ...)
 ErrorOrInt process_execute(Process *p)
 {
     size_t sz = p->arguments.size;
-    char** argv = allocate_array(char*, sz + 2);
+    char **argv = allocate_array(char *, sz + 2);
     argv[0] = (char *) sv_cstr(p->command);
     for (size_t ix = 0u; ix < sz; ++ix) {
         argv[ix + 1] = (char *) sv_cstr(p->arguments.strings[ix]);
@@ -106,7 +106,7 @@ ErrorOrInt execute_sl(StringView cmd, StringList *args)
 
 ErrorOrInt _execute(StringView cmd, ...)
 {
-    va_list args;
+    va_list  args;
     Process *p;
 
     va_start(args, cmd);

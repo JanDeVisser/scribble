@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <arch/arm64/arm64.h>
 #include <binder.h>
 #include <config.h>
 #include <execute.h>
@@ -12,7 +13,6 @@
 #include <options.h>
 #include <parser.h>
 #include <type.h>
-#include <arch/arm64/arm64.h>
 
 int main(int argc, char **argv)
 {
@@ -23,9 +23,9 @@ int main(int argc, char **argv)
     for (int ix = 1; ix < argc; ++ix) {
         if (!program_dir_or_file) {
             if (!strncmp(argv[ix], "--", 2) && (strlen(argv[ix]) > 2)) {
-                StringView option = sv_from(argv[ix] + 2);
-                StringView value = sv_from("true");
-                char const *equals = strchr(argv[ix]+2, '=');
+                StringView  option = sv_from(argv[ix] + 2);
+                StringView  value = sv_from("true");
+                char const *equals = strchr(argv[ix] + 2, '=');
                 if (equals) {
                     option = (StringView) { argv[ix] + 2, equals - argv[ix] - 2 };
                     value = sv_from(equals + 1);
@@ -49,6 +49,6 @@ int main(int argc, char **argv)
         register_binding_observer(graph_ast);
     }
     BoundNode *ast = bind(program);
-    IRProgram ir = generate(ast);
+    IRProgram  ir = generate(ast);
     MUST_VOID(Int, output_arm64(&ir));
 }

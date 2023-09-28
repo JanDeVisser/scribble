@@ -11,7 +11,7 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
-static ErrorOrTypeID type_registry_add_primitive(StringView name, PrimitiveType primitive_type);
+static ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type);
 
 typedef struct {
     size_t           size;
@@ -21,10 +21,9 @@ typedef struct {
 
 static TypeRegistry type_registry = { 0 };
 
-#define PRIMITIVETYPE_ENUM(type, name, code) type_id type##_ID = 0;
-PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
-type_id RANGE_ID = 0;
+#define BUILTINTYPE_ENUM(type, name, code) type_id type##_ID = 0;
+BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
 type_id FIRST_CUSTOM_IX = 0;
 type_id NEXT_CUSTOM_IX = 0;
 
@@ -42,52 +41,53 @@ char const *TypeKind_name(TypeKind kind)
     }
 }
 
-char const *PrimitiveType_name(PrimitiveType type)
+char const *BuiltinType_name(BuiltinType type)
 {
     switch (type) {
-#undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, code) \
-    case PT_##type:                          \
+#undef BUILTINTYPE_ENUM
+#define BUILTINTYPE_ENUM(type, name, code) \
+    case BIT_##type:                       \
         return #name;
-        PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
+        BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
     default:
         UNREACHABLE();
     }
 }
 
-size_t PrimitiveType_width(PrimitiveType type)
+size_t BuiltinType_width(BuiltinType type)
 {
     return type & WIDTH_MASK;
 }
 
-PrimitiveType PrimitiveType_get_integer_type(size_t width, bool un_signed)
+BuiltinType BuiltinType_get_integer_type(size_t width, bool un_signed)
 {
     return INTEGER_MASK | width | ((size_t) un_signed << 16);
 }
 
-bool PrimitiveType_is_integer(PrimitiveType type)
+bool BuiltinType_is_integer(BuiltinType type)
 {
     return type & INTEGER_MASK;
 }
 
-bool PrimitiveType_is_number(PrimitiveType type)
+bool BuiltinType_is_number(BuiltinType type)
 {
-    return PrimitiveType_is_integer(type) || (type == PT_FLOAT);
+    return BuiltinType_is_integer(type) || (type == BIT_FLOAT);
 }
 
-bool PrimitiveType_is_unsigned(PrimitiveType type)
+bool BuiltinType_is_unsigned(BuiltinType type)
 {
     return type & UNSIGNED_MASK;
 }
 
-ErrorOrTypeID type_registry_add_primitive(StringView name, PrimitiveType primitive_type)
+ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type)
 {
-    TRY(TypeID, type_id, id, type_registry_make_type(name, TK_PRIMITIVE))
+    uint8_t kind = builtin_type >> 12;
+    TRY(TypeID, type_id, id, type_registry_make_type(name, kind))
     ExpressionType *type = type_registry_get_type_by_id(id);
     assert(type);
-    type->type_id |= primitive_type << 16;
-    type->primitive_type = primitive_type;
+    type->type_id |= ((uint32_t) builtin_type) << 16;
+    type->builtin_type = builtin_type;
     RETURN(TypeID, type->type_id);
 }
 
@@ -118,14 +118,14 @@ ExpressionType *type_registry_get_type_by_index(size_t ix)
     fatal("Invalid type index %d referenced", ix);
 }
 
-type_id type_registry_id_of_primitive_type(PrimitiveType type)
+type_id type_registry_id_of_builtin_type(BuiltinType type)
 {
     for (size_t ix = 0; ix < 20 && ix < type_registry.size; ++ix) {
-        if (typeid_has_kind(type_registry.types[ix]->type_id, TK_PRIMITIVE) && typeid_primitive_type(type_registry.types[ix]->type_id) == type) {
+        if (typeid_has_kind(type_registry.types[ix]->type_id, type >> 12) && typeid_builtin_type(type_registry.types[ix]->type_id) == type) {
             return type_registry.types[ix]->type_id;
         }
     }
-    fatal("Primitive type '%s' (0x%04x) not found", PrimitiveType_name(type), type);
+    fatal("Builtin type '%s' (0x%04x) not found", BuiltinType_name(type), type);
 }
 
 type_id type_registry_id_of_integer_type(size_t width, bool un_signed)
@@ -179,11 +179,11 @@ void type_registry_init()
     type_registry.types = NULL;
     type_registry.capacity = 0;
     type_registry.size = 0;
-#undef PRIMITIVETYPE_ENUM
-#define PRIMITIVETYPE_ENUM(type, name, code) \
-    MUST_TO_VAR(TypeID, type##_ID, type_registry_add_primitive(sv_from(#name), PT_##type));
-    PRIMITIVETYPES(PRIMITIVETYPE_ENUM)
-#undef PRIMITIVETYPE_ENUM
+#undef BUILTINTYPE_ENUM
+#define BUILTINTYPE_ENUM(type, name, code) \
+    MUST_TO_VAR(TypeID, type##_ID, type_registry_add_builtin(sv_from(#name), BIT_##type));
+    BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
     MUST_VOID(TypeID, type_registry_alias(sv_from("int"), I32_ID))
     MUST_VOID(TypeID, type_registry_alias(sv_from("unsigned"), U32_ID))
     MUST_VOID(TypeID, type_registry_alias(sv_from("byte"), I8_ID))
@@ -192,8 +192,9 @@ void type_registry_init()
     MUST_VOID(TypeID, type_registry_alias(sv_from("ushort"), U16_ID))
     MUST_VOID(TypeID, type_registry_alias(sv_from("long"), I64_ID))
     MUST_VOID(TypeID, type_registry_alias(sv_from("ulong"), U64_ID))
+    assert(typeid_has_kind(STRING_ID, TK_AGGREGATE));
+    assert(typeid_has_kind(RANGE_ID, TK_AGGREGATE));
 
-    MUST_TO_VAR(TypeID, RANGE_ID, type_registry_make_type(sv_from("range"), TK_AGGREGATE))
     MUST_VOID(TypeID,
         type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
     MUST_VOID(TypeID,
@@ -201,6 +202,11 @@ void type_registry_init()
             (TypeComponent[]) {
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("min"), .param = sv_from("T") },
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("max"), .param = sv_from("T") } }))
+    MUST_VOID(TypeID,
+        type_set_struct_components(STRING_ID, 2,
+            (TypeComponent[]) {
+                { .kind = CK_TYPE, .name = sv_from("ptr"), .type_id = POINTER_ID },
+                { .kind = CK_TYPE, .name = sv_from("length"), .type_id = U64_ID } }))
     FIRST_CUSTOM_IX = type_registry.size;
     NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
 }
@@ -242,7 +248,7 @@ StringView typespec_to_string(TypeSpec typespec, Allocator *allocator)
 void typespec_print(FILE *f, TypeSpec typespec)
 {
     AllocatorState as = save_allocator();
-    StringView s = typespec_to_string(typespec, get_allocator());
+    StringView     s = typespec_to_string(typespec, get_allocator());
     fprintf(f, SV_SPEC, SV_ARG(s));
     release_allocator(as);
 }
@@ -280,7 +286,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
 {
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
-        RETURN(Size, PrimitiveType_width(type->primitive_type) / 8);
+        RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_sizeof(typeid_canonical_type(type->type_id));
     case TK_ARRAY: {
@@ -329,7 +335,7 @@ ErrorOrSize type_alignat(ExpressionType *type)
 {
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
-        RETURN(Size, PrimitiveType_width(type->primitive_type) / 8);
+        RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_alignat(typeid_canonical_type(type->type_id));
     case TK_ARRAY:
@@ -666,7 +672,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         }
     } break;
     case TK_PRIMITIVE:
-        type->primitive_type = template_type->primitive_type;
+        type->builtin_type = template_type->builtin_type;
         break;
     }
     RETURN(TypeID, type->type_id);

@@ -22,7 +22,6 @@
     S(U64, u64, uint64_t)         \
     S(I64, i64, int64_t)          \
     S(POINTER, pointer, void *)   \
-    S(STRING, string, StringView) \
     S(BOOL, bool_value, bool)     \
     S(FLOAT, float_value, double)
 
@@ -33,6 +32,7 @@ typedef struct datum {
 #define PRIMITIVETYPE(dt, n, ct) ct n;
         DATUM_PRIMITIVETYPES(PRIMITIVETYPE)
 #undef PRIMITIVETYPE
+        StringView string;
         struct {
             size_t        num_components;
             struct datum *components;
@@ -46,7 +46,7 @@ typedef struct datum {
 } Datum;
 
 extern Datum        *datum_allocate(type_id type);
-extern Datum        *datum_make_integer(size_t width, bool un_signed, int64_t signed_value, uint64_t unsigned_value);
+extern Datum        *datum_make_integer(Integer value);
 extern unsigned long datum_unsigned_integer_value(Datum *d);
 extern long          datum_signed_integer_value(Datum *d);
 extern Datum        *datum_copy(Datum *dest, Datum *src);
@@ -61,7 +61,7 @@ static inline TypeKind datum_kind(Datum *d)
     return typeid_kind(d->type);
 }
 
-static inline bool datum_is_primitive(Datum *d)
+static inline bool datum_is_builtin(Datum *d)
 {
     return typeid_has_kind(d->type, TK_PRIMITIVE);
 }
@@ -83,7 +83,7 @@ static inline bool datum_is_variant(Datum *d)
 
 static inline bool datum_is_integer(Datum *d)
 {
-    return (datum_is_primitive(d)) && PrimitiveType_is_integer(typeid_primitive_type(d->type));
+    return (datum_is_builtin(d)) && BuiltinType_is_integer(typeid_builtin_type(d->type));
 }
 
 #endif /* __DATUM_H__ */

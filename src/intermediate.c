@@ -78,9 +78,8 @@ void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
-    op.integer.width = 64;
-    op.integer.un_signed = true;
-    op.integer.unsigned_value = value;
+    op.integer.type = BIT_U64;
+    op.integer.value.unsigned_value = value;
     ir_function_add_operation(fnc, op);
 }
 
@@ -151,7 +150,7 @@ void generate_COMPOUND_INITIALIZER(BoundNode *node, void *target)
     }
     IROperation op;
     op.operation = IR_NEW_DATUM;
-    op.integer.unsigned_value = node->typespec.type_id;
+    op.integer.value.unsigned_value = node->typespec.type_id;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -179,7 +178,7 @@ void generate_FOR(BoundNode *node, void *target)
     op.operation = IR_SCOPE_BEGIN;
     ir_function_add_operation(fnc, op);
     ExpressionType *range = type_registry_get_type_by_id(node->for_statement.range->typespec.type_id);
-    ExpressionType *range_of = type_registry_get_type_by_id(type_get_argument(range, sv_from("T"))->type);
+    ExpressionType *range_of = typeid_canonical_type(type_get_argument(range, sv_from("T"))->type);
 
     op.operation = IR_DECL_VAR;
     op.var_decl.name = sv_from("$range");
@@ -228,13 +227,12 @@ void generate_FOR(BoundNode *node, void *target)
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
     op.operation = IR_PUSH_INT_CONSTANT;
-    assert(typeid_primitive_type(range_of->type_id));
-    op.integer.width = PrimitiveType_width(range_of->primitive_type);
-    op.integer.un_signed = PrimitiveType_is_unsigned(range_of->primitive_type);
-    if (op.integer.un_signed) {
-        op.integer.unsigned_value = 1;
+    assert(typeid_builtin_type(range_of->type_id));
+    op.integer.type = range_of->builtin_type;
+    if (BuiltinType_is_unsigned(op.integer.type)) {
+        op.integer.value.unsigned_value = 1;
     } else {
-        op.integer.int_value = 1;
+        op.integer.value.signed_value = 1;
     }
     ir_function_add_operation(fnc, op);
     op.operation = IR_OPERATOR;
@@ -343,13 +341,13 @@ void generate_INTEGER(BoundNode *node, void *target)
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
     ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
-    op.integer.width = PrimitiveType_width(et->primitive_type);
-    op.integer.un_signed = PrimitiveType_is_unsigned(et->primitive_type);
-    if (op.integer.un_signed) {
-        op.integer.unsigned_value = strtoul(node->name.ptr, NULL, 10);
+    op.integer.type = typeid_builtin_type(typeid_canonical_type_id(node->typespec.type_id));
+    if (BuiltinType_is_unsigned(op.integer.type)) {
+        op.integer.value.unsigned_value = strtoul(node->name.ptr, NULL, 10);
     } else {
-        op.integer.int_value = strtol(node->name.ptr, NULL, 10);
+        op.integer.value.signed_value = strtol(node->name.ptr, NULL, 10);
     }
+    Integer_boundscheck(op.integer);
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -651,10 +649,10 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         printf("%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
-        if (op->integer.un_signed) {
-            printf("%llu [0x%08llx]", op->integer.unsigned_value, op->integer.unsigned_value);
+        if (BuiltinType_is_unsigned(op->integer.type)) {
+            printf("%llu [0x%08llx]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
         } else {
-            printf("%lld", op->integer.int_value);
+            printf("%lld", op->integer.value.signed_value);
         }
         break;
     case IR_JUMP:
@@ -664,7 +662,7 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         printf("lbl_%zu", op->label);
         break;
     case IR_NEW_DATUM:
-        printf(SV_SPEC " [0x%08llx]", SV_ARG(typeid_name(op->integer.unsigned_value)), op->integer.unsigned_value);
+        printf(SV_SPEC " [0x%08llx]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
         break;
     case IR_OPERATOR:
         printf("%s", Operator_name(op->op));

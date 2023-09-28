@@ -13,16 +13,16 @@
 
 #include <pthread.h>
 
-#define THREAD_ONCE(var)  static pthread_once_t var = PTHREAD_ONCE_INIT
-#define ONCE(var, fnc)    pthread_once(&var, fnc);
+#define THREAD_ONCE(var) static pthread_once_t var = PTHREAD_ONCE_INIT
+#define ONCE(var, fnc) pthread_once(&var, fnc);
 
 #elif defined(HAVE_INITONCEEXECUTEONCE)
 
 #include <windows.h>
 
 OBLCORE_IMPEXP BOOL CALLBACK InitHandleFunction(PINIT_ONCE, PVOID, PVOID *);
-#define THREAD_ONCE(var)  static INIT_ONCE var = INIT_ONCE_STATIC_INIT;
-#define ONCE(var, fnc)    (void) InitOnceExecuteOnce(&var, InitHandleFunction, (fnc), NULL);
+#define THREAD_ONCE(var) static INIT_ONCE var = INIT_ONCE_STATIC_INIT;
+#define ONCE(var, fnc) (void) InitOnceExecuteOnce(&var, InitHandleFunction, (fnc), NULL);
 
 #else
 

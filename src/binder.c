@@ -242,7 +242,7 @@ BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_BOOL, parent);
     ret->name = stmt->token.text;
-    ret->typespec.type_id = type_registry_id_of_primitive_type(PT_BOOL);
+    ret->typespec.type_id = type_registry_id_of_builtin_type(BIT_BOOL);
     ret->typespec.optional = false;
     return ret;
 }
@@ -439,11 +439,11 @@ BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 }
 
 typedef struct intrinsic_param {
-    char const   *name;
-    PrimitiveType type;
+    char const *name;
+    BuiltinType type;
 } IntrinsicParam;
 
-void program_define_intrinsic(BoundNode *program, char const *name, PrimitiveType ret_type,
+void program_define_intrinsic(BoundNode *program, char const *name, BuiltinType ret_type,
     Intrinsic intrinsic_code, IntrinsicParam params[])
 {
     BoundNode *intrinsic;
@@ -451,7 +451,7 @@ void program_define_intrinsic(BoundNode *program, char const *name, PrimitiveTyp
     intrinsic->next = program->program.intrinsics;
     program->program.intrinsics = intrinsic;
     intrinsic->name = sv_from(name);
-    intrinsic->typespec.type_id = type_registry_id_of_primitive_type(ret_type);
+    intrinsic->typespec.type_id = type_registry_id_of_builtin_type(ret_type);
     intrinsic->typespec.optional = false;
     intrinsic->intrinsic.intrinsic = intrinsic_code;
     for (size_t ix = 0; params[ix].name; ++ix) {
@@ -462,21 +462,21 @@ void program_define_intrinsic(BoundNode *program, char const *name, PrimitiveTyp
         }
         intrinsic->intrinsic.parameter = param;
         param->name = sv_from(params[ix].name);
-        param->typespec.type_id = type_registry_id_of_primitive_type(params[ix].type);
+        param->typespec.type_id = type_registry_id_of_builtin_type(params[ix].type);
         param->typespec.optional = false;
     }
 }
 
 void program_define_intrinsics(BoundNode *program)
 {
-    program_define_intrinsic(program, "close", PT_I32, INT_CLOSE, (IntrinsicParam[]) { { "fh", PT_I32 }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "endln", PT_U64, INT_ENDLN, (IntrinsicParam[]) { { NULL, PT_VOID } });
-    program_define_intrinsic(program, "fputs", PT_I32, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "s", PT_STRING }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "open", PT_I32, INT_OPEN, (IntrinsicParam[]) { { "name", PT_STRING }, { "mode", PT_U32 }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "puti", PT_I32, INT_PUTI, (IntrinsicParam[]) { { "i", PT_I32 }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "putln", PT_I32, INT_PUTLN, (IntrinsicParam[]) { { "s", PT_STRING }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "read", PT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "buffer", PT_POINTER }, { "bytes", PT_U64 }, { NULL, PT_VOID } });
-    program_define_intrinsic(program, "write", PT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", PT_I32 }, { "buffer", PT_POINTER }, { "bytes", PT_U64 }, { NULL, PT_VOID } });
+    program_define_intrinsic(program, "close", BIT_I32, INT_CLOSE, (IntrinsicParam[]) { { "fh", BIT_I32 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "endln", BIT_U64, INT_ENDLN, (IntrinsicParam[]) { { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "fputs", BIT_I32, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "s", BIT_STRING }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "open", BIT_I32, INT_OPEN, (IntrinsicParam[]) { { "name", BIT_STRING }, { "mode", BIT_U32 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "puti", BIT_I32, INT_PUTI, (IntrinsicParam[]) { { "i", BIT_I32 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "putln", BIT_I32, INT_PUTLN, (IntrinsicParam[]) { { "s", BIT_STRING }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "read", BIT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "write", BIT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
 }
 
 void program_collect_types(BoundNode *program)
@@ -547,7 +547,7 @@ BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_STRING, parent);
     ret->name = stmt->name;
-    ret->typespec.type_id = type_registry_id_of_primitive_type(PT_STRING);
+    ret->typespec.type_id = type_registry_id_of_builtin_type(BIT_STRING);
     ret->typespec.optional = false;
     return ret;
 }
@@ -712,7 +712,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     static size_t VOID_ID = -1;
 
     if (VOID_ID < 0) {
-        type_registry_id_of_primitive_type(PT_VOID);
+        type_registry_id_of_builtin_type(BIT_VOID);
     }
     if (!stmt) {
         return NULL;

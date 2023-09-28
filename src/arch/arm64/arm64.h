@@ -163,10 +163,10 @@ typedef struct arm64_context {
 } ARM64Context;
 
 typedef struct opcode_map {
-    PrimitiveType type;
-    char const   *load_opcode;
-    char const   *store_opcode;
-    char const   *reg_width;
+    BuiltinType type;
+    char const *load_opcode;
+    char const *store_opcode;
+    char const *reg_width;
 } OpcodeMap;
 
 OPTIONAL(OpcodeMap)
@@ -227,8 +227,10 @@ extern StringView        arm64variable_address_to_string(ARM64VariableAddress *a
 extern ARM64Context     *arm64context_acreate(Allocator *allocator);
 extern void              arm64context_add_module(ARM64Context *ctx, StringView name);
 extern void              arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset);
-extern void              arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, int target);
-extern void              arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset, int from);
+extern int               arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, int target);
+extern int               arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset, int from);
+extern int               arm64context_push_value(ARM64Context *ctx, type_id type, int from);
+extern int               arm64context_pop_value(ARM64Context *ctx, type_id type, int target);
 extern void              arm64context_enter_function(ARM64Context *ctx, ARM64Function *func);
 extern void              arm64context_function_return(ARM64Context *ctx);
 extern void              arm64context_leave_function(ARM64Context *ctx);

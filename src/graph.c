@@ -156,7 +156,7 @@ StringView graph_node_label(GraphNode *node)
     if (sv_empty(node->label_str)) {
         switch (node->kind) {
         case NK_BOUND: {
-            BoundNode *bn = node->bound_node;
+            BoundNode      *bn = node->bound_node;
             ExpressionType *et = type_registry_get_type_by_id(bn->typespec.type_id);
             assert(et);
             node->label_str = sv_printf("%s %s " SV_SPEC " " SV_SPEC,

@@ -90,5 +90,5 @@ StringView sl_back(StringList *sl)
     if (!sl || !sl->size) {
         return sv_null();
     }
-    return sl->strings[sl->size-1];
+    return sl->strings[sl->size - 1];
 }

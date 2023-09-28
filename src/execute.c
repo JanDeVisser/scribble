@@ -45,13 +45,12 @@ char const            *scope_push_variable(Scope *scope, StringView name, DatumS
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 
-
 #undef INTRINSIC_ENUM
 #define INTRINSIC_ENUM(i) static Datum *execute_##i(ExecutionContext *ctx);
 __attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
 #undef INTRINSIC_ENUM
 
-Datum *datum_stack_pop(DatumStack *stack)
+    Datum *datum_stack_pop(DatumStack *stack)
 {
     if (!stack->top) {
         Datum *error = datum_allocate(ERROR_ID);
@@ -437,7 +436,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         }
         type_id *options = alloca(num_variants * sizeof(type_id));
         for (size_t ix = 0; ix < num_variants; ++ix) {
-            type_id    opt_type = datum_stack_pop_u64(&ctx->stack);
+            type_id opt_type = datum_stack_pop_u64(&ctx->stack);
             if (et) {
                 if (et->components.components[ix].type_id != opt_type) {
                     fatal("Attempting to define '" SV_SPEC "' as option %d of variant '" SV_SPEC "' but the variant is already defined with type '%.*s'",
@@ -486,7 +485,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     case IR_LABEL:
         break;
     case IR_NEW_DATUM: {
-        type_id tid = typeid_canonical_type_id(op->integer.unsigned_value);
+        type_id tid = typeid_canonical_type_id(op->integer.value.unsigned_value);
         assert(typeid_kind(tid) == TK_AGGREGATE || typeid_kind(tid) == TK_ARRAY);
         ExpressionType *et = type_registry_get_type_by_id(tid);
         Datum          *new_datum = datum_allocate(tid);
@@ -544,7 +543,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_INT_CONSTANT: {
-        Datum *d = datum_make_integer(op->integer.width, op->integer.un_signed, op->integer.int_value, op->integer.int_value);
+        Datum *d = datum_make_integer(op->integer);
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_STRING_CONSTANT: {
@@ -812,7 +811,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     ctx->function = function;
 
     for (size_t param_ix = 0; param_ix < function->num_parameters; ++param_ix) {
-        IRVarDecl *var_decl = function->parameters + param_ix;
+        IRVarDecl  *var_decl = function->parameters + param_ix;
         char const *err = scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
         if (!err) {
             err = scope_pop_variable(ctx->scope, var_decl->name, &ctx->stack);
@@ -832,7 +831,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             FunctionReturn ret = { 0 };
             ret.type = FRT_EXCEPTION;
             Datum exception = { 0 };
-            exception.type = PT_ERROR;
+            exception.type = BIT_ERROR;
             exception.error = err;
             ctx->scope = current;
             return ret;
@@ -922,7 +921,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 FunctionReturn ret = { 0 };
                 ret.type = FRT_EXCEPTION;
                 Datum exception = { 0 };
-                exception.type = PT_ERROR;
+                exception.type = BIT_ERROR;
                 exception.error = pointer.exception;
                 ctx->scope = current;
                 return ret;

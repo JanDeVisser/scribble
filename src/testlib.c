@@ -6,7 +6,8 @@
 
 #include <stdio.h>
 
-int foo(int bar) {
+int foo(int bar)
+{
     fprintf(stderr, "IN FOO! I'M CALLED WITH 0x%04x\n", bar);
-    return 2*bar + 42;
+    return 2 * bar + 42;
 }

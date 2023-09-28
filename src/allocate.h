@@ -49,7 +49,7 @@ static Allocator *get_allocator()
 
 #endif /* STATIC_ALLOCATOR */
 
-static Allocator * get_allocator();
+static Allocator *get_allocator();
 
 static inline void *allocate(size_t size)
 {

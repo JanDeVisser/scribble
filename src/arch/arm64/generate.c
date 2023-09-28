@@ -129,9 +129,10 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
     assert(arm_function);
     IRFunction *function = arm_function->function;
 
+    int target = 0;
     for (size_t ix = 0; ix < arm_function->num_parameters; ++ix) {
         ARM64VarDecl *var_decl = arm_function->parameters + ix;
-        arm64variable_address_store_variable(&var_decl->address, var_decl->var_decl->type.type_id, ctx, var_decl->where);
+        target = arm64context_pop_value(ctx, var_decl->var_decl->type.type_id, target);
     }
     switch (function->kind) {
     case FK_SCRIBBLE:
@@ -206,7 +207,7 @@ void generate_POP_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
 
 void generate_PUSH_BOOL_CONSTANT(ARM64Context *ctx, IROperation *op)
 {
-    assembly_add_instruction(ctx->assembly, "mov", "w0,#%%d", (op->bool_value) ? 1 : 0);
+    assembly_add_instruction(ctx->assembly, "mov", "w0,#%d", (op->bool_value) ? 1 : 0);
     assembly_push(ctx->assembly, "x0");
 }
 
@@ -216,12 +217,13 @@ void generate_PUSH_FLOAT_CONSTANT(ARM64Context *ctx, IROperation *op)
 
 void generate_PUSH_INT_CONSTANT(ARM64Context *ctx, IROperation *op)
 {
-    if (op->integer.width < 64) {
-        assembly_add_instruction(ctx->assembly, "mov", "w0,#%zu", op->integer.unsigned_value);
+    char reg_width = (BuiltinType_width(op->integer.type) < 64) ? 'w' : 'x';
+    if (BuiltinType_is_unsigned(op->integer.type)) {
+        assembly_add_instruction(ctx->assembly, "mov", "%c0,#%zu", reg_width, op->integer.value.unsigned_value);
     } else {
-        assembly_add_instruction(ctx->assembly, "mov", "x0,#%zu", op->integer.unsigned_value);
+        assembly_add_instruction(ctx->assembly, "mov", "%c0,#%ld", reg_width, op->integer.value.signed_value);
     }
-    assembly_push(ctx->assembly, "x0");
+    arm64context_push_value(ctx, type_registry_id_of_builtin_type(op->integer.type), 0);
 }
 
 void generate_PUSH_STRING_CONSTANT(ARM64Context *ctx, IROperation *op)
@@ -229,8 +231,7 @@ void generate_PUSH_STRING_CONSTANT(ARM64Context *ctx, IROperation *op)
     size_t str_id = assembly_add_string(ctx->assembly, op->sv);
     assembly_add_instruction(ctx->assembly, "adr", "x0,str_%zu", str_id);
     assembly_add_instruction(ctx->assembly, "mov", "x1,#%zu", op->sv.length);
-    assembly_push(ctx->assembly, "x1");
-    assembly_push(ctx->assembly, "x0");
+    arm64context_push_value(ctx, STRING_ID, 0);
 }
 
 void generate_PUSH_VAR(ARM64Context *ctx, IROperation *op)

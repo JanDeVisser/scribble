@@ -33,7 +33,7 @@ void arm64variable_address_store_variable(ARM64VariableAddress *address, type_id
             ExpressionType *component_type = type_registry_get_type_by_id(et->components.components[ix].type_id);
             MUST(Size, size_t, sz, type_sizeof(component_type))
             MUST(Size, size_t, offset, type_offsetof_index(et, ix))
-            char const * reg_width = "w";
+            char const *reg_width = "w";
             if (sz > 4) {
                 reg_width = "x";
             }
@@ -82,7 +82,7 @@ void arm64variable_address_load_variable(ARM64VariableAddress *address, type_id 
         ExpressionType *et = type_registry_get_type_by_id(type);
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
             ExpressionType *component_type = type_registry_get_type_by_id(et->components.components[ix].type_id);
-            char const * reg_width = "w";
+            char const     *reg_width = "w";
             MUST(Size, size_t, sz, type_sizeof(component_type))
             MUST(Size, size_t, offset, type_offsetof_index(et, ix))
             if (sz > 4) {
