@@ -56,8 +56,10 @@ void *malloc_fatal(size_t size, char const *where, ...)
         va_list args;
         va_start(args, where);
         char strbuf[256];
-        vsnprintf(strbuf, 255, where, args);
-        vfatal("Out of memory %s", strbuf);
+        strcpy(strbuf, "Out of memory ");
+        strncpy(strbuf, where, 255 - strlen("Out of memory "));
+        strbuf[255] = 0;
+        vfatal(strbuf, args);
         va_end(args);
     }
     memset(ret, 0, size);
