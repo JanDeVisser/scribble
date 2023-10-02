@@ -4,10 +4,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <intermediate.h>
+#include <inttypes.h>
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
+#include <intermediate.h>
 
 typedef struct intermediate {
     union {
@@ -650,9 +651,9 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         break;
     case IR_PUSH_INT_CONSTANT:
         if (BuiltinType_is_unsigned(op->integer.type)) {
-            printf("%llu [0x%08llx]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
+            printf("%" PRIu64 " [0x%08" PRIx64 "]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
         } else {
-            printf("%lld", op->integer.value.signed_value);
+            printf("%" PRIi64, op->integer.value.signed_value);
         }
         break;
     case IR_JUMP:
@@ -662,7 +663,7 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         printf("lbl_%zu", op->label);
         break;
     case IR_NEW_DATUM:
-        printf(SV_SPEC " [0x%08llx]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
+        printf(SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
         break;
     case IR_OPERATOR:
         printf("%s", Operator_name(op->op));
