@@ -2,18 +2,18 @@
 .global puts
 .global _puts
 
-;
-; puts - Print string
-;
-; In:
-;   x0: String length
-;   x1: Pointer to string buffer
+//
+// puts - Print string
+//
+// In:
+//   x0: String length
+//   x1: Pointer to string buffer
 
-; Out:
-;   x0: Number of characters printed.
+// Out:
+//   x0: Number of characters printed.
 
-; Work:
-;   x16: Syscall
+// Work:
+//   x16: Syscall
 
 puts:
 _puts:
@@ -31,7 +31,7 @@ __puts_print:
     ldp     fp,lr,[sp],#16
     ret
 
-    ; Print '[[null]]' if the buffer is the null pointer:
+    // Print '[[null]]' if the buffer is the null pointer:
 __puts_print_null:
     adr     x1,__str_nullptr
     mov     x2,str_nullptr_len

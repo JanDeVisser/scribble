@@ -2,19 +2,19 @@
 .global scribble$open
 .global _scribble$open
 
-;
-; puthex - Print integer in hexadecimal.
-;
-; In:
-name    .req x0     ; Pointer to filename
-len     .req x1     ; Filename length
-mode    .req x2     ; File open mode
+//
+// scribble$open - Call the open(2) syscall
+//
+// In:
+name    .req x0     // Pointer to filename
+len     .req x1     // Filename length
+mode    .req x2     // File open mode
 
-; Out:
-;   x0: File handle
+// Out:
+//   x0: File handle
 
-; Work:
-;   ---
+// Work:
+//   ---
 
 scribble$open:
 _scribble$open:
@@ -33,8 +33,8 @@ _scribble$open:
 __open_len_mod_16_zero:
     sub         sp,sp,x3
     mov         x4,sp
-    sub         x3,len,#0x01 ; Start loop at 1 because len is one more than the
-                            ; actual length of the string.
+    sub         x3,len,#0x01 // Start loop at 1 because len is one more than the
+                            // actual length of the string.
 __open_copy_to_stack_loop:
     cbz         x3,__open_copied_name_to_stack
     ldrb        w5,[x0],0x01

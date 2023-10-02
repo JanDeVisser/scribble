@@ -3,19 +3,19 @@
 .global putln
 .global _putln
 
-;
-; putln - Print string followed by a newline character
-;
-; In:
-len     .req w0     ; Length of the string
-buffer  .req x1     ; Pointer to the string buffer
+//
+// putln - Print string followed by a newline character
+//
+// In:
+len     .req w0     // Length of the string
+buffer  .req x1     // Pointer to the string buffer
 
-; Out:
-;   x0: Number of characters printed.
+// Out:
+//   x0: Number of characters printed.
 
-; Work:
-;   x7 - characters printed
-;   x16 - syscall
+// Work:
+//   x7 - characters printed
+//   x16 - syscall
 
 _putln:
 putln:

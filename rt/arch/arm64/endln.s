@@ -3,16 +3,16 @@
 .global endln
 .global _endln
 
-;
-; endln - Prints a newline character
-;
-; In:
+//
+// endln - Prints a newline character
+//
+// In:
 
-; Out:
-;   x0: Number of characters printed.
+// Out:
+//   x0: Number of characters printed.
 
-; Work:
-;   x16 - syscall
+// Work:
+//   x16 - syscall
 
 _endln:
 endln:

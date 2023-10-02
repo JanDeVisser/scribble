@@ -4,13 +4,13 @@
 .global scribble$write
 .global _scribble$write
 
-; In:
-fd  .req x0    ; fd to write to (0=stdin)
-buffer .req x1 ; Buffer to write from
-len .req w2    ; Number of characters to write
+// In:
+fd  .req x0    // fd to write to (0=stdin)
+buffer .req x1 // Buffer to write from
+len .req w2    // Number of characters to write
 
-; Out
-; x0: >0: bytes written, <0: -errno
+// Out
+// x0: >0: bytes written, <0: -errno
 
 scribble$write:
 _scribble$write:
