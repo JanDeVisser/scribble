@@ -798,9 +798,9 @@ SyntaxNode *parse_module_file(SyntaxNode *program, int dir_fd, char const *file)
 SyntaxNode *parse(char const *dir_or_file)
 {
     if (OPT_TRACE) {
-        char *cwd = getwd(NULL);
+        char cwd[256];
+        getcwd(cwd, 256);
         trace("CWD: %s dir: %s", cwd, dir_or_file);
-        free(cwd);
     }
     Token       token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
     SyntaxNode *program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
@@ -820,7 +820,12 @@ SyntaxNode *parse(char const *dir_or_file)
 
     struct dirent *dp;
     while ((dp = readdir(dir)) != NULL) {
+#ifdef __clang__
         if ((dp->d_namlen > 8) && strcmp(dp->d_name + (dp->d_namlen - 9), ".scribble") == 0) {
+#else
+        size_t namlen = strlen(dp->d_name);
+        if ((namlen > 8) && strcmp(dp->d_name + (namlen - 9), ".scribble") == 0) {
+#endif
             parse_module_file(program, dirfd(dir), dp->d_name);
         }
     }
