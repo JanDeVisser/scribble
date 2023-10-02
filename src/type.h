@@ -22,7 +22,7 @@ typedef int (*qsort_fnc_t)(void const *, void const *);
     S(ARRAY, 0x04)     \
     S(ALIAS, 0x08)
 
-typedef enum : uint8_t {
+typedef enum /* : uint8_t */ {
 #undef TYPEKINDS_ENUM
 #define TYPEKINDS_ENUM(type, value) TK_##type = value,
     TYPEKINDS(TYPEKINDS_ENUM)
@@ -118,7 +118,7 @@ typedef enum {
     S(U64, u64, uint64_t, false, "llu", 8) \
     S(I64, i64, int64_t, true, "lld", 8)
 
-typedef enum : uint16_t {
+typedef enum /* : uint16_t */ {
     BIT_NOTYPE = 0x0000,
 #undef BUILTINTYPE_ENUM
 #define BUILTINTYPE_ENUM(type, name, code) BIT_##type = code,
