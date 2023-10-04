@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <error.h>
 #define STATIC_ALLOCATOR
 #include <allocate.h>
+#include <error_or.h>
 #include <io.h>
 #include <lexer.h>
 

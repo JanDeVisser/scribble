@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <allocate.h>
+#include <error_or.h>
 #include <options.h>
 #include <process.h>
 

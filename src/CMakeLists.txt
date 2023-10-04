@@ -4,7 +4,7 @@ add_executable(
         scribble
         binder.c
         datum.c
-        error.c
+        error_or.c
         execute.c
         graph.c
         hash.c
@@ -29,7 +29,9 @@ add_executable(
         arch/arm64/code.c
         arch/arm64/context.c
         arch/arm64/function.c
-        arch/arm64/variable.c arch/arm64/generate.c)
+        arch/arm64/generate.c
+        arch/arm64/variable.c
+)
 
 target_link_libraries(scribble scribblert)
 

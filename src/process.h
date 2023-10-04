@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <error.h>
+#include <error_or.h>
 #include <sv.h>
 
 #ifndef __PROCESS_H__

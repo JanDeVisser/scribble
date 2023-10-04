@@ -7,7 +7,7 @@
 #include <errno.h>
 
 #include <allocate.h>
-#include <error.h>
+#include <error_or.h>
 #include <options.h>
 #include <process.h>
 

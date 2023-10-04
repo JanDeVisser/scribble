@@ -43,7 +43,7 @@ extern char const *Error_to_string(Error error);
         Error error;                                                                                     \
     } ErrorOr##name;                                                                                     \
                                                                                                          \
-    inline static ErrorOr##name ErrorOr##name##_error(ErrorCategory cat, int code, const char *msg, ...) \
+    inline static ErrorOr##name ErrorOr##name##_error(ErrorCategory cat, int code, char const *msg, ...) \
     {                                                                                                    \
         va_list args;                                                                                    \
         va_start(args, msg);                                                                             \
@@ -51,7 +51,7 @@ extern char const *Error_to_string(Error error);
         ret.error.cat = cat;                                                                             \
         ret.error.code = code;                                                                           \
         size_t msg_len = vsnprintf(NULL, 0, msg, args);                                                  \
-        ret.error.message = mem_allocate(msg_len);                                                       \
+        ret.error.message = (char *) mem_allocate(msg_len);                                              \
         vsnprintf(ret.error.message, msg_len, msg, args);                                                \
         return ret;                                                                                      \
     }                                                                                                    \

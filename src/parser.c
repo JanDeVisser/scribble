@@ -9,7 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <error.h>
+#include <error_or.h>
 #include <io.h>
 #include <lexer.h>
 #include <log.h>

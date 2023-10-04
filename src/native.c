@@ -21,7 +21,7 @@
 #include <allocate.h>
 #include <config.h>
 #include <datum.h>
-#include <error.h>
+#include <error_or.h>
 #include <log.h>
 #include <mutex.h>
 #include <native.h>
