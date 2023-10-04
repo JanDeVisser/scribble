@@ -5,6 +5,7 @@
  */
 
 #include <ctype.h>
+#include <stdint.h>
 
 #include <allocate.h>
 #include <sv.h>
@@ -30,13 +31,13 @@ char *allocate_for_length(size_t length, size_t *capacity, Allocator *allocator)
         cap *= 2;
     switch (cap) {
 #define BLOCKSIZE(size)                         \
-    case size:                                  \
+    case size: {                                \
         if (fl_##size) {                        \
             ret = fl_##size;                    \
             fl_##size = *((char **) fl_##size); \
         }                                       \
-        break;
-        BLOCKSIZES(BLOCKSIZE)
+    } break;
+    BLOCKSIZES(BLOCKSIZE)
 #undef BLOCKSIZE
     default:
         break;
@@ -53,6 +54,7 @@ char *allocate_for_length(size_t length, size_t *capacity, Allocator *allocator)
 void free_buffer(char *buffer, size_t capacity)
 {
     if (capacity) {
+        trace("F:0x%08zx:%5zu\n", (uint64_t) buffer, capacity);
         switch (capacity) {
 #undef BLOCKSIZE
 #define BLOCKSIZE(size)                  \
@@ -154,9 +156,16 @@ StringView sv_aprintf(Allocator *allocator, char const *fmt, ...)
 
 StringView sv_avprintf(Allocator *allocator, char const *fmt, va_list args)
 {
-    StringBuilder sb = sb_acreate(allocator);
-    sb_vprintf(&sb, fmt, args);
-    return sb.view;
+    StringView ret = {0};
+    va_list args2;
+    va_copy(args2, args);
+    size_t len = vsnprintf(NULL, 0, fmt, args2);
+    va_end(args2);
+    ret.ptr = allocate_for_length(len + 1, &ret.capacity, allocator);
+    vsnprintf((char *) ret.ptr, len + 1, fmt, args);
+    trace("S:0x%08zx:%5zu:%.60s\n", (uint64_t) ret.ptr, len, ret.ptr);
+    ret.length = len;
+    return ret;
 }
 
 StringView sv_printf(char const *fmt, ...)
@@ -439,12 +448,12 @@ static void sb_reallocate(StringBuilder *sb, size_t new_len)
     if (new_cap <= sb->view.capacity) {
         return;
     }
+    size_t current_cap = sb->view.capacity;
     ret = allocate_for_length(new_len, &sb->view.capacity, sb->allocator);
     if (sb->view.ptr) {
         memcpy(ret, sb->view.ptr, sb->view.capacity);
-        free_buffer((char *) sb->view.ptr, sb->view.capacity);
+        free_buffer((char *) sb->view.ptr, current_cap);
     }
-    sb->view.capacity = new_cap;
     sb->view.ptr = ret;
 }
 
@@ -488,6 +497,7 @@ void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
     memcpy(p + sb->view.length, ptr, len);
     sb->view.length += len;
     p[sb->view.length] = '\0';
+    trace("B:0x%08zx:%5zu:%.60s\n", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
 }
 
 void sb_append_sv(StringBuilder *sb, StringView sv)
@@ -504,10 +514,12 @@ void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
 {
     va_list args2;
     va_copy(args2, args);
-    size_t len = vsnprintf(NULL, 0, fmt, args);
+    size_t len = vsnprintf(NULL, 0, fmt, args2);
+    va_end(args2);
     sb_reallocate(sb, sb->view.length + len + 1);
-    vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args2);
+    vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args);
     sb->view.length += len;
+    trace("B:0x%08zx:%5zu:%.60s\n", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
 }
 
 void sb_printf(StringBuilder *sb, char const *fmt, ...)
