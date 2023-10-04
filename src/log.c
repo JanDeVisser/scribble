@@ -16,7 +16,7 @@ typedef enum log_level {
 static void vemit_log_message(LogLevel level, char const *msg, va_list args);
 static void emit_log_message(LogLevel level, char const *msg, ...);
 
-static LogLevel log_level;
+static LogLevel log_level = 99;
 
 void emit_log_message(LogLevel level, char const *msg, ...)
 {

@@ -54,7 +54,7 @@ char *allocate_for_length(size_t length, size_t *capacity, Allocator *allocator)
 void free_buffer(char *buffer, size_t capacity)
 {
     if (capacity) {
-        trace("F:0x%08zx:%5zu\n", (uint64_t) buffer, capacity);
+        trace("F:0x%08zx:%5zu", (uint64_t) buffer, capacity);
         switch (capacity) {
 #undef BLOCKSIZE
 #define BLOCKSIZE(size)                  \
@@ -163,7 +163,7 @@ StringView sv_avprintf(Allocator *allocator, char const *fmt, va_list args)
     va_end(args2);
     ret.ptr = allocate_for_length(len + 1, &ret.capacity, allocator);
     vsnprintf((char *) ret.ptr, len + 1, fmt, args);
-    trace("S:0x%08zx:%5zu:%.60s\n", (uint64_t) ret.ptr, len, ret.ptr);
+    trace("S:0x%08zx:%5zu:%.60s", (uint64_t) ret.ptr, len, ret.ptr);
     ret.length = len;
     return ret;
 }
@@ -497,7 +497,7 @@ void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
     memcpy(p + sb->view.length, ptr, len);
     sb->view.length += len;
     p[sb->view.length] = '\0';
-    trace("B:0x%08zx:%5zu:%.60s\n", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
+    trace("B:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
 }
 
 void sb_append_sv(StringBuilder *sb, StringView sv)
@@ -519,7 +519,7 @@ void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
     sb_reallocate(sb, sb->view.length + len + 1);
     vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args);
     sb->view.length += len;
-    trace("B:0x%08zx:%5zu:%.60s\n", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
+    trace("B:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
 }
 
 void sb_printf(StringBuilder *sb, char const *fmt, ...)
