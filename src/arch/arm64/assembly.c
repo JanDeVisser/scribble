@@ -20,9 +20,15 @@ Assembly *assembly_acreate(Allocator *allocator, StringView name)
     Assembly *ret = allocator_alloc_new(allocator, Assembly);
     ret->allocator = allocator;
     ret->name = name;
+#ifdef IS_APPLE
     ret->code = code_acreate(allocator,
         sv_from(".section\t__TEXT,__text,regular,pure_instructions\n\n.align 2\n\n"),
         sv_null());
+#elif defined(IS_LINUX)
+    ret->code = code_acreate(allocator,
+        sv_from(".text\n\n.align 2\n\n"),
+        sv_null());
+#endif
     ret->statik = code_acreate(allocator, sv_null(), sv_null());
     code_select_prolog(ret->statik);
     code_enter_function(ret->statik, sv_aprintf(allocator, "static_%.*s", SV_ARG(name)), 0);
@@ -231,13 +237,13 @@ void assembly_write_char(Assembly *assembly, int fd, char ch)
     assembly_add_instruction(assembly, "mov", "x0,#%d", fd); // x0: fd
     assembly_add_instruction(assembly, "mov", "x1,sp");      // x1: SP
     assembly_add_instruction(assembly, "mov", "x2,#1");      // x2: Number of characters
-    assembly_syscall(assembly, 0x04);
+    assembly_syscall(assembly, SYSCALL_WRITE);
     assembly_add_instruction(assembly, "add", "sp,sp,16");
 }
 
 void assembly_syscall(Assembly *assembly, int id)
 {
-    assembly_add_instruction(assembly, "mov", "x16,#0x%02x", id);
+    assembly_add_instruction(assembly, "mov", SYSCALL_REG ",#0x%02x", id);
     assembly_add_instruction(assembly, "svc", "#0x00");
 }
 

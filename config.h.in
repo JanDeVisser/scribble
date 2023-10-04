@@ -14,4 +14,12 @@
 #define SCRIBBLE_DIR                           "@scribble_DIR@"
 #define SCRIBBLE_DATADIR                       "@scribble_DATADIR@"
 
+#cmakedefine HAVE_DIRENT_D_NAMLEN              1
+#cmakedefine HAVE_C23_ATTRIBUTE_NORETURN       1
+#cmakedefine HAVE_LEGACY_ATTRIBUTE_NORETURN    1
+
+#cmakedefine IS_APPLE                          1
+#cmakedefine IS_LINUX                          1
+#cmakedefine IS_WINDOWS                        1
+
 #endif /* __CONFIG_H__ */

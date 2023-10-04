@@ -157,9 +157,9 @@ StringView _resolve_handle_get_platform_image(LibHandle *handle)
             canonical[len] = '.';
             canonical += (len + 1);
         }
-#if defined(__WIN32__) || defined(__CYGWIN__)
+#ifdef IS_WINDOWS
         strcpy(canonical, "dll");
-#elif defined(__APPLE__)
+#elif defined(IS_APPLE)
         strcpy(canonical, "dylib");
 #else
         strcpy(canonical, "so");

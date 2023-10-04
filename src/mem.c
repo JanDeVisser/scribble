@@ -5,6 +5,7 @@
  */
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <string.h>
 
 typedef struct slab {
@@ -203,6 +204,7 @@ void *allocator_allocate(Allocator *alloc, size_t size)
         allocator_allocate_arena(alloc);
         ret = arena_allocate(alloc->current, size);
     }
+    trace("M:0x%08zx:%5zu:0x%08zx\n", (uint64_t) alloc, size, (uint64_t) ret);
     assert(ret);
     return ret;
 }

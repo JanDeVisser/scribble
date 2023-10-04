@@ -820,7 +820,7 @@ SyntaxNode *parse(char const *dir_or_file)
 
     struct dirent *dp;
     while ((dp = readdir(dir)) != NULL) {
-#ifdef __clang__
+#ifdef HAVE_DIRENT_D_NAMLEN
         if ((dp->d_namlen > 8) && strcmp(dp->d_name + (dp->d_namlen - 9), ".scribble") == 0) {
 #else
         size_t namlen = strlen(dp->d_name);

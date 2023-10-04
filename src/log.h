@@ -5,16 +5,21 @@
  */
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <config.h>
 
 #ifndef __LOG_H__
 #define __LOG_H__
 
-#ifdef __clang__
+#ifdef HAVE_LEGACY_ATTRIBUTE_NORETURN
+#define noreturn __attribute__((noreturn))
+#elif defined(HAVE_C23_ATTRIBUTE_NORETURN)
 #define noreturn [[noreturn]]
 #else
-#define noreturn __attribute__((noreturn))
+#define noreturn 
 #endif
 
 extern void          log_init(bool trace_on);

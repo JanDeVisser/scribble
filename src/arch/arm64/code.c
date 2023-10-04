@@ -98,7 +98,7 @@ void code_add_comment(Code *code, StringView comment)
 {
     StringList sl = sv_asplit(code->allocator, comment, sv_from("\n"));
     for (size_t ix = 0; ix < sl.size; ++ix) {
-        sb_printf(code->active, "\t; %.*s\n", SV_ARG(sl.strings[ix]));
+        sb_printf(code->active, "\t// %.*s\n", SV_ARG(sl.strings[ix]));
     }
 }
 

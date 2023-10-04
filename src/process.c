@@ -14,6 +14,14 @@
 #include <allocate.h>
 #include <process.h>
 
+static void process_dump(Process *p)
+{
+    trace("Command: '%.*s' #arguments: %zu", SV_ARG(p->command), p->arguments.size);
+    for (size_t ix = 0; ix < p->arguments.size; ++ix) {
+        trace("Arg #%zu: '%.*s'", ix, SV_ARG(p->arguments.strings[ix]));
+    }
+}
+
 Process *process_create_sl(StringView cmd, StringList *args)
 {
     Process *p = allocate_new(Process);

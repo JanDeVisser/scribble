@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <config.h>
 #include <intermediate.h>
 #include <optional.h>
 #include <sv.h>
@@ -13,6 +14,35 @@
 #define __ARM64_H__
 
 #define ROOT_MODULE_NAME sv_from("$root")
+
+#ifdef IS_APPLE
+
+#define SYSCALL_REG       "x16"
+#define SYSCALL_EXIT      0X0001
+#define SYSCALL_FORK      0X0002
+#define SYSCALL_READ      0X0003
+#define SYSCALL_WRITE     0X0004
+#define SYSCALL_OPEN      0X0005
+#define SYSCALL_CLOSE     0X0006
+#define SYSCALL_WAIT4     0X0007
+#define SYSCALL_STAT      0X0153
+#define SYSCALL_MMAP      0X00C5
+
+#elif defined(IS_LINUX)
+
+#define SYSCALL_REG       "w8"
+#define SYSCALL_SYSCALL   0XFFFF
+#define SYSCALL_CLONE     0X00DC
+#define SYSCALL_EXIT      0X005D
+#define SYSCALL_READ      0X0063
+#define SYSCALL_WRITE     0X0040
+#define SYSCALL_OPENAT    0X0038
+#define SYSCALL_CLOSE     0X0039
+#define SYSCALL_WAIT4     0X0104
+#define SYSCALL_STATX     0X0123
+#define SYSCALL_MMAP      0X00DE
+
+#endif
 
 typedef struct code {
     Allocator     *allocator;

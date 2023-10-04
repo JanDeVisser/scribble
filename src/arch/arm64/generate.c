@@ -30,9 +30,8 @@ void generate_ALLOC(ARM64Context *ctx)
         "mov    w2,#3\n"
         "mov    w3,#0x1002\n"
         "mov    w4,#-1\n"
-        "mov    x5,xzr\n"
-        "mov    x16,#0xC5\n"
-        "svc    #0x00\n");
+        "mov    x5,xzr\n");
+    assembly_syscall(ctx->assembly, SYSCALL_MMAP);
 }
 
 void generate_ENDLN(ARM64Context *ctx)
@@ -42,12 +41,12 @@ void generate_ENDLN(ARM64Context *ctx)
 
 void generate_CLOSE(ARM64Context *ctx)
 {
-    assembly_syscall(ctx->assembly, 0x06);
+    assembly_syscall(ctx->assembly, SYSCALL_CLOSE);
 }
 
 void generate_FPUTS(ARM64Context *ctx)
 {
-    assembly_syscall(ctx->assembly, 0x04);
+    assembly_syscall(ctx->assembly, SYSCALL_WRITE);
 }
 
 void generate_OPEN(ARM64Context *ctx)
@@ -65,7 +64,7 @@ void generate_PUTLN(ARM64Context *ctx)
     assembly_add_instruction(ctx->assembly, "mov", "x2,x1");
     assembly_add_instruction(ctx->assembly, "mov", "x1,x0");
     assembly_add_instruction(ctx->assembly, "mov", "x0,#0x01");
-    assembly_syscall(ctx->assembly, 0x04);
+    assembly_syscall(ctx->assembly, SYSCALL_WRITE);
     assembly_write_char(ctx->assembly, 1, '\n');
 }
 

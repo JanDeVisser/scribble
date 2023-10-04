@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdint.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -124,6 +125,7 @@ ErrorOrInt output_arm64(IRProgram *program)
             bin_name = sv_rchop(bin_name, bin_name.length - dot);
         }
 
+#ifdef IS_APPLE
         StringView sdk_path = { 0 }; // "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk";
         if (sv_empty(sdk_path)) {
             Process *p = process_create(sv_from("xcrun"), "-sdk", "macosx", "--show-sdk-path");
@@ -155,6 +157,22 @@ ErrorOrInt output_arm64(IRProgram *program)
         if (ld_result) {
             fatal("ld failed with exit code %d", ld_result);
         }
+#elif defined(IS_LINUX)
+        StringList ld_args = sl_acreate(get_allocator());
+        sl_push(&ld_args, sv_from("-o"));
+        sl_push(&ld_args, bin_name);
+        sl_push(&ld_args, sv_from("-lscribblert"));
+        sl_push(&ld_args, sv_from("-e"));
+        sl_push(&ld_args, sv_from("_start"));
+        sl_push(&ld_args, sv_from("-A"));
+        sl_push(&ld_args, sv_from("aarch64"));
+        sl_push(&ld_args, sv_aprintf(get_allocator(), "-L%.*s/lib", SV_ARG(scribble_dir)));
+        sl_extend(&ld_args, &modules);
+        MUST(Int, int, ld_result, execute_sl(sv_from("ld"), &ld_args))
+        if (ld_result) {
+            fatal("ld failed with exit code %d", ld_result);
+        }
+#endif
         if (has_option("run-binary")) {
             StringBuilder run_cmd = sb_acreate(get_allocator());
             sb_printf(&run_cmd, "./%s", bin_name);
