@@ -1,4 +1,4 @@
-.include "arch/arm64/syscalls.inc"
+.include "arch/Darwin/arm64/syscalls.inc"
 .align 4
 
 alloc:

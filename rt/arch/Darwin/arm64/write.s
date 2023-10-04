@@ -1,4 +1,4 @@
-.include "rt/arch/arm64/syscalls.inc"
+.include "rt/arch/Darwin/arm64/syscalls.inc"
 .align 4
 
 .global scribble$write

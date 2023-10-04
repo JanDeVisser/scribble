@@ -1,6 +1,6 @@
 .global _start
 
-.include "arch/arm64/syscalls.inc"
+.include "arch/Darwin/arm64/syscalls.inc"
 
 .align 2
 _start:
