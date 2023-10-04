@@ -5,3 +5,5 @@ build/
 .idea/
 test/not_yet_working/
 .DS_Store
+.cache
+.vscode
