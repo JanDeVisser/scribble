@@ -5,16 +5,16 @@ enable_language(ASM-ATT)
 add_library(
         scribblert
         STATIC
-        arch/arm64/alloc.s
-        arch/arm64/endln.s
-        arch/arm64/open.s
-        arch/arm64/puthex.s
-        arch/arm64/putint.s
-        arch/arm64/puts.s
-        arch/arm64/putln.s
-        arch/arm64/start.s
-        arch/arm64/to_string.s
-        arch/arm64/trampoline.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/alloc.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/endln.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/open.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/puthex.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/putint.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/puts.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/putln.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/start.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/to_string.s
+        arch/${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}/trampoline.s
 )
 
 install(TARGETS scribblert

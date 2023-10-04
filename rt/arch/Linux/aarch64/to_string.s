@@ -1,6 +1,13 @@
+/*
+ * Copyright (c) 2023, Jan de Visser <jan@finiandarcy.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+.include "arch/Linux/aarch64/syscalls.inc"
+
 .align 4
 .global to_string
-
 
 // to_string - Convert integer to character string
 
@@ -40,38 +47,38 @@ to_string:
     b.ne    to_string_generic
     mov     radix,#10                // Radix 10 is the default
 
-to_string_generic:                   ; Use a generic algo with remainders and divisors instead of bit masks and
-                                     ; shifts
+to_string_generic:                   // Use a generic algo with remainders and divisors instead of bit masks and
+                                     // shifts
     sub     buffer,buffer,#1
     add     buffer_len,buffer_len,#1
-    sdiv    num_div,num,xradix        ; num_div holds X / radix (rounded down)
-    mul     num_mult,num_div,xradix   ; Multiply num_div with radix so we can get X mod radix with the next step
-    sub     xdigit,num,num_mult       ; xdigit holds X mod radix
-    add     digit,digit,#48           ; Add '0' to digit
-    cmp     digit,#58                 ; did that exceed ASCII '9'?
-    b.lt    generic_push_digit        ; It didn't. Push the digit into the buffer
-    add     digit,digit,#7            ; add 'A' - ('0'+10) if needed
+    sdiv    num_div,num,xradix        // num_div holds X / radix (rounded down)
+    mul     num_mult,num_div,xradix   // Multiply num_div with radix so we can get X mod radix with the next step
+    sub     xdigit,num,num_mult       // xdigit holds X mod radix
+    add     digit,digit,#48           // Add '0' to digit
+    cmp     digit,#58                 // did that exceed ASCII '9'?
+    b.lt    generic_push_digit        // It didn't. Push the digit into the buffer
+    add     digit,digit,#7            // add 'A' - ('0'+10) if needed
 
 generic_push_digit:
-    strb    digit,[buffer]           ; Poke character in x0 which points to the next position
-    cmp     buffer,buffer_stash      ; If x0 equals x6 (the pointer passed in) we're done.
-                                     ; FIXME: flag error by returning -1 or something
+    strb    digit,[buffer]           // Poke character in x0 which points to the next position
+    cmp     buffer,buffer_stash      // If x0 equals x6 (the pointer passed in) we're done.
+                                     // FIXME: flag error by returning -1 or something
     b.le    done
-    mov     num,num_div              ; Move num_div into num, so we're set up for the next round
-    cmp     num,#0                   ; If num is 0, we're done else we go again
+    mov     num,num_div              // Move num_div into num, so we're set up for the next round
+    cmp     num,#0                   // If num is 0, we're done else we go again
     b.ne    to_string_generic
     b       done
 
-; to_hex and to_binary are very similar to the generic case except that we
-; can use bitmasks to find the modulo and bit shifts to get the next digit.
+// to_hex and to_binary are very similar to the generic case except that we
+// can use bitmasks to find the modulo and bit shifts to get the next digit.
 to_hex:
     sub     buffer,buffer,#1
     add     buffer_len,buffer_len,#1
     and     xdigit,num,#0x0F
     add     digit,digit, #48
-    cmp     digit, #58               ; did that exceed ASCII '9'?
+    cmp     digit, #58               // did that exceed ASCII '9'?
     b.lt    to_hex_push_digit
-    add     digit, digit, #7         ; add 'A' - ('0'+10) if needed
+    add     digit, digit, #7         // add 'A' - ('0'+10) if needed
 
 to_hex_push_digit:
     strb    digit,[buffer]
@@ -96,5 +103,5 @@ to_binary:
 
 done:
 bail:
-    ldp     fp,lr,[sp],#16   ; Restore return address
+    ldp     fp,lr,[sp],#16   // Restore return address
     ret
