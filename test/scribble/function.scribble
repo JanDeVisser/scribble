@@ -1,0 +1,14 @@
+func f(x: int, y: int) : int
+{
+    var z: int = x*x;
+    return x + y + z;
+}
+
+func main() : int 
+{
+    var a: int = 12;
+    var b: int = 42;
+    puti(f(a,b));
+    endln();
+    return 0;
+}

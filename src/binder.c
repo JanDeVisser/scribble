@@ -6,6 +6,7 @@
 
 #include <binder.h>
 #include <log.h>
+#include <sv.h>
 #include <type.h>
 
 #define STATIC_ALLOCATOR
@@ -107,7 +108,7 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
         }
         break;
     }
-    case BNT_FUNCTION_IMPL: {
+    case BNT_FUNCTION: {
         if (type == BNT_VARIABLE_DECL) {
             for (BoundNode *n = node->function.parameter; n; n = n->next) {
                 if (sv_eq(n->name, name)) {
@@ -115,13 +116,14 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
                 }
             }
         }
+    } break;
+    case BNT_FUNCTION_IMPL: {
         for (BoundNode *n = node->block.statements; n; n = n->next) {
             if (n->type == type && sv_eq(n->name, name)) {
                 return n;
             }
         }
-        break;
-    }
+    } break;
     case BNT_FOR: {
         if (type == BNT_VARIABLE_DECL && node->for_statement.variable && sv_eq(node->for_statement.variable->name, name)) {
             return node->for_statement.variable;
@@ -136,7 +138,7 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
                 }
             }
         }
-    }
+    } break;
     default:
         break;
     }
@@ -180,7 +182,7 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
         fprintf(stderr, "Unknown type '" SV_SPEC "'", SV_ARG(type_node->name));
         return false;
     }
-    (*typespec).type_id = type->type_id;
+    (*typespec).type_id = typeid_canonical_type_id(type->type_id);
     (*typespec).optional = false;
     return true;
 }
@@ -642,7 +644,7 @@ BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 }
 
 BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{
+{            
     BoundNode *expr = NULL;
     TypeSpec   var_type = { VOID_ID, false };
     if (stmt->variable_decl.var_type != NULL && !resolve_type_node(stmt->variable_decl.var_type, &var_type)) {
@@ -658,7 +660,9 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     if (expr) {
         if (expr->type != BNT_COMPOUND_INITIALIZER) {
             if (var_type.type_id != VOID_ID && expr->typespec.type_id != var_type.type_id) {
-                fatal("Declaration type and expression type are different");
+                fatal("Declaration type '%.*s' and expression type '%.*s' are different", 
+                    SV_ARG(typeid_name(var_type.type_id)), 
+                    SV_ARG(typeid_name(expr->typespec.type_id)));
             }
             if (var_type.type_id == VOID_ID) {
                 var_type = expr->typespec;

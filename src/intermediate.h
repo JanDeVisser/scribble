@@ -60,7 +60,11 @@ typedef struct ir_operation {
         bool       bool_value;
         StringView sv;
         IRVarDecl  var_decl;
-        Operator   op;
+        struct {
+            Operator op;
+            type_id  lhs;
+            type_id  rhs;
+        } operator;
         struct {
             StringView name;
             size_t     component;

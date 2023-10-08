@@ -138,7 +138,7 @@ int arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, i
         assembly_add_comment(
             ctx->assembly, "Loading variable: stack_depth %zu offset %zu", arm64context_get_stack_depth(ctx), offset);
         if (typeid_sizeof(type) < 8) {
-            assembly_add_instruction(ctx->assembly, "mov", "x%.*s,xzr", target);
+            assembly_add_instruction(ctx->assembly, "mov", "x%d,xzr", target);
         }
         assembly_add_instruction(ctx->assembly, opcode_map->load_opcode, "%s%d,[fp,#%d]", opcode_map->reg_width, target,
             arm64context_get_stack_depth(ctx) - offset);
@@ -226,6 +226,7 @@ int arm64context_push_value(ARM64Context *ctx, type_id type, int from)
 
 int arm64context_pop_value(ARM64Context *ctx, type_id type, int target)
 {
+    type = typeid_canonical_type_id(type);
     assembly_add_comment(ctx->assembly, "Popping value of type '%.*s'", SV_ARG(typeid_name(type)));
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
@@ -317,6 +318,7 @@ void arm64context_load_immediate(ARM64Context *ctx, type_id type, uint64_t value
 void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
 {
     ctx->function = func;
+    func->scribble.current_scope = func->scribble.scope;
     size_t stack_depth = func->scribble.stack_depth;
     size_t nsaa = func->scribble.nsaa;
     arm64context_set_stack_depth(ctx, stack_depth);
@@ -335,41 +337,43 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
     }
     assembly_add_instruction(ctx->assembly, "mov", "fp,sp");
     for (size_t ix = 0; ix < func->num_parameters; ++ix) {
-        ARM64VarDecl *param = func->parameters + ix;
-        switch (typeid_kind(param->var_decl->type.type_id)) {
+        ARM64Variable *param = func->parameters + ix;
+        assert(param->kind == VK_PARAMETER);
+        type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
+        switch (typeid_kind(type)) {
         case TK_PRIMITIVE: {
-            switch (typeid_builtin_type(param->var_decl->type.type_id)) {
+            switch (typeid_builtin_type(type)) {
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) case BIT_##dt:
                 INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
             case BIT_POINTER:
             case BIT_BOOL: {
-                switch (param->method) {
+                switch (param->parameter.method) {
                 case PPM_REGISTER: {
                     assembly_add_comment(ctx->assembly, "Register parameter %.*s: x%d -> %zu",
-                        SV_ARG(param->var_decl->name), param->where, param->address.stack_address.offset);
-                    assembly_add_instruction(ctx->assembly, "str", "x%d,[fp,#%zu]", param->where,
-                        func->scribble.stack_depth - param->address.stack_address.offset);
+                        SV_ARG(param->var_decl.name), param->parameter.where, param->parameter.offset);
+                    assembly_add_instruction(ctx->assembly, "str", "x%d,[fp,#%zu]", param->parameter.where,
+                        func->scribble.stack_depth - param->parameter.offset);
                 } break;
                 case PPM_STACK: {
                     assembly_add_comment(ctx->assembly, "Stack parameter %.*s: nsaa %d -> %zu",
-                        SV_ARG(param->var_decl->name), param->where, param->address.stack_address.offset);
-                    assembly_add_instruction(ctx->assembly, "ldr", "x9,[fp,#%d]", 16 + nsaa - param->where);
+                        SV_ARG(param->var_decl.name), param->parameter.where, param->parameter.offset);
+                    assembly_add_instruction(ctx->assembly, "ldr", "x9,[fp,#%d]", 16 + nsaa - param->parameter.where);
                     assembly_add_instruction(ctx->assembly, "str", "x9,[fp,#%.*s]",
-                        func->scribble.stack_depth - param->address.stack_address.offset);
+                        func->scribble.stack_depth - param->parameter.offset);
                 } break;
                 }
             } break;
             default:
-                NYI("Builtin type '%s'", BuiltinType_name(typeid_builtin_type(param->var_decl->type.type_id)));
+                NYI("Builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
             }
         } break;
         case TK_AGGREGATE:
-            switch (param->method) {
+            switch (param->parameter.method) {
             case PPM_REGISTER: {
-                size_t          reg = param->where;
-                ExpressionType *et = type_registry_get_type_by_id(param->var_decl->type.type_id);
+                size_t          reg = param->parameter.where;
+                ExpressionType *et = type_registry_get_type_by_id(type);
                 for (size_t cix = 0; cix < et->components.num_components; ++cix) {
                     char const *reg_width = "w";
                     if (typeid_sizeof(et->components.num_components) > 4) {
@@ -379,7 +383,7 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
 
                     // FIXME BROKEN
                     assembly_add_instruction(ctx->assembly, "str", "%s%.*s,[fp,#-%.*s]", reg_width, reg++,
-                        param->address.stack_address.offset + offset_of);
+                        param->parameter.offset + offset_of);
                 }
             } break;
             case PPM_STACK:
@@ -387,7 +391,7 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
             }
             // Fall through:
         default:
-            NYI("Type '%.*s'", SV_ARG(typeid_name(param->var_decl->type.type_id)));
+            NYI("Type '%.*s'", SV_ARG(typeid_name(type)));
         }
     }
 }

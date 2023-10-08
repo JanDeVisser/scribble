@@ -9,6 +9,7 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 #include <intermediate.h>
+#include <options.h>
 
 typedef struct intermediate {
     union {
@@ -110,7 +111,9 @@ void generate_BINARYEXPRESSION(BoundNode *node, void *target)
     generate_node(node->binary_expr.lhs, target);
     generate_node(node->binary_expr.rhs, target);
     op.operation = IR_OPERATOR;
-    op.op = node->binary_expr.operator;
+    op.operator.op = node->binary_expr.operator;
+    op.operator.lhs = node->binary_expr.lhs->typespec.type_id;
+    op.operator.rhs = node->binary_expr.rhs->typespec.type_id;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -216,7 +219,9 @@ void generate_FOR(BoundNode *node, void *target)
     op.var_component.component = 1;
     ir_function_add_operation(fnc, op);
     op.operation = IR_OPERATOR;
-    op.op = OP_LESS;
+    op.operator.op = OP_LESS;
+    op.operator.lhs = op.operator.rhs = range_of->type_id;
+
     ir_function_add_operation(fnc, op);
     op.operation = IR_JUMP_F;
     op.label = node->intermediate->loop.done;
@@ -237,7 +242,8 @@ void generate_FOR(BoundNode *node, void *target)
     }
     ir_function_add_operation(fnc, op);
     op.operation = IR_OPERATOR;
-    op.op = OP_ADD;
+    op.operator.op = OP_ADD;
+    op.operator.lhs = op.operator.rhs = range_of->type_id;
     ir_function_add_operation(fnc, op);
 
     op.operation = IR_JUMP;
@@ -607,6 +613,9 @@ IRProgram generate(BoundNode *program)
     ret.cap_functions = 256;
     ret.functions = allocate_functions(256);
     generate_node(program, &ret);
+    if (has_option("list-ir")) {
+        ir_program_list(ret);
+    }
     return ret;
 }
 
@@ -666,7 +675,7 @@ void ir_operation_print_prefix(IROperation *op, char const *prefix)
         printf(SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
         break;
     case IR_OPERATOR:
-        printf("%s", Operator_name(op->op));
+        printf("%s(%.*s, %.*s)", Operator_name(op->operator.op), SV_ARG(typeid_name(op->operator.lhs)), SV_ARG(typeid_name(op->operator.rhs)));
         break;
     case IR_RETURN:
         printf("%s", (op->bool_value) ? "true" : "false");

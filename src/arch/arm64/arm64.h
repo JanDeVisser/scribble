@@ -17,30 +17,30 @@
 
 #ifdef IS_APPLE
 
-#define SYSCALL_REG       "x16"
-#define SYSCALL_EXIT      0X0001
-#define SYSCALL_FORK      0X0002
-#define SYSCALL_READ      0X0003
-#define SYSCALL_WRITE     0X0004
-#define SYSCALL_OPEN      0X0005
-#define SYSCALL_CLOSE     0X0006
-#define SYSCALL_WAIT4     0X0007
-#define SYSCALL_STAT      0X0153
-#define SYSCALL_MMAP      0X00C5
+#define SYSCALL_REG "x16"
+#define SYSCALL_EXIT 0X0001
+#define SYSCALL_FORK 0X0002
+#define SYSCALL_READ 0X0003
+#define SYSCALL_WRITE 0X0004
+#define SYSCALL_OPEN 0X0005
+#define SYSCALL_CLOSE 0X0006
+#define SYSCALL_WAIT4 0X0007
+#define SYSCALL_STAT 0X0153
+#define SYSCALL_MMAP 0X00C5
 
 #elif defined(IS_LINUX)
 
-#define SYSCALL_REG       "w8"
-#define SYSCALL_SYSCALL   0XFFFF
-#define SYSCALL_CLONE     0X00DC
-#define SYSCALL_EXIT      0X005D
-#define SYSCALL_READ      0X0063
-#define SYSCALL_WRITE     0X0040
-#define SYSCALL_OPENAT    0X0038
-#define SYSCALL_CLOSE     0X0039
-#define SYSCALL_WAIT4     0X0104
-#define SYSCALL_STATX     0X0123
-#define SYSCALL_MMAP      0X00DE
+#define SYSCALL_REG "w8"
+#define SYSCALL_SYSCALL 0XFFFF
+#define SYSCALL_CLONE 0X00DC
+#define SYSCALL_EXIT 0X005D
+#define SYSCALL_READ 0X0063
+#define SYSCALL_WRITE 0X0040
+#define SYSCALL_OPENAT 0X0038
+#define SYSCALL_CLOSE 0X0039
+#define SYSCALL_WAIT4 0X0104
+#define SYSCALL_STATX 0X0123
+#define SYSCALL_MMAP 0X00DE
 
 #endif
 
@@ -73,53 +73,34 @@ typedef struct assembly {
     struct assembly *next;
 } Assembly;
 
-#define VARIABLEADDRESSTYPES(S) \
-    S(STACK)                    \
-    S(STATIC)                   \
-    S(GLOBAL)                   \
-    S(AGGREGATE_COMPONENT)      \
+#define VARIABLEKINDS(S)   \
+    S(PARAMETER)           \
+    S(LOCAL)               \
+    S(STATIC)              \
+    S(GLOBAL)              \
+    S(AGGREGATE_COMPONENT) \
     S(ARRAY_ELEMENT)
 
-typedef enum variable_address_type {
-#undef VARIABLEADDRESSTYPE
-#define VARIABLEADDRESSTYPE(type) VAT_##type,
-    VARIABLEADDRESSTYPES(VARIABLEADDRESSTYPE)
-#undef VARIABLEADDRESSTYPE
-} ARM64VariableAddressType;
+typedef enum variable_kind {
+#undef VARIABLEKIND
+#define VARIABLEKIND(type) VK_##type,
+    VARIABLEKINDS(VARIABLEKIND)
+#undef VARIABLEKIND
+} ARM64VariableKind;
 
-static inline char const *VariableAddressType_name(ARM64VariableAddressType type)
+static inline char const *VariableKind_name(ARM64VariableKind type)
 {
     switch (type) {
-#undef VARIABLEADDRESSTYPE
-#define VARIABLEADDRESSTYPE(type) \
-    case VAT_##type:              \
+#undef VARIABLEKIND
+#define VARIABLEKIND(type) \
+    case VK_##type:        \
         return #type;
-        VARIABLEADDRESSTYPES(VARIABLEADDRESSTYPE)
-#undef VARIABLEADDRESSTYPE
+        VARIABLEKINDS(VARIABLEKIND)
+#undef VARIABLEKIND
     default:
         UNREACHABLE();
     }
 }
-
-typedef struct arm64_variable_address {
-    ARM64VariableAddressType type;
-    union {
-        struct {
-            size_t offset;
-        } stack_address;
-        struct {
-            StringView label;
-        } static_address;
-        struct {
-            struct arm64_variable_address *aggregate;
-            size_t                         offset;
-        } aggregate_component;
-        struct {
-            struct arm64_variable_address *array;
-            size_t                         element_size;
-        } array_component;
-    };
-} ARM64VariableAddress;
 
 #define PARAMETERPASSINGMETHODS(S) \
     S(REGISTER)                    \
@@ -132,7 +113,8 @@ typedef enum parameter_passing_method {
 #undef PARAMETERPASSINGMETHOD
 } ParameterPassingMethod;
 
-static inline char const *ParameterPassingMethod_name(ParameterPassingMethod mth)
+static inline char const *
+ParameterPassingMethod_name(ParameterPassingMethod mth)
 {
     switch (mth) {
 #undef PARAMETERPASSINGMETHOD
@@ -146,22 +128,53 @@ static inline char const *ParameterPassingMethod_name(ParameterPassingMethod mth
     }
 }
 
-typedef struct arm64_var_decl {
-    IRVarDecl             *var_decl;
-    ARM64VariableAddress   address;
-    ParameterPassingMethod method;
-    size_t                 where;
-} ARM64VarDecl;
-
-typedef struct arm64_function {
-    Allocator    *allocator;
-    IRFunction   *function;
-    size_t        num_parameters;
-    ARM64VarDecl *parameters;
+typedef struct arm64_variable {
+    ARM64VariableKind      kind;
+    IRVarDecl              var_decl;
+    struct arm64_variable *next;
     union {
         struct {
-            size_t nsaa;
-            size_t stack_depth;
+            size_t                 offset;
+            ParameterPassingMethod method;
+            size_t                 where;
+        } parameter;
+        struct {
+            size_t offset;
+        } local_address;
+        struct {
+            StringView label;
+        } static_address;
+        struct {
+            struct arm64_variable *aggregate;
+            size_t                 offset;
+        } aggregate_component;
+        struct {
+            struct arm64_variable *array;
+            size_t                 element_size;
+        } array_component;
+    };
+} ARM64Variable;
+
+typedef struct arm64_scope {
+    ARM64Variable      *variables;
+    IROperation        *operation;
+    size_t              depth;
+    struct arm64_scope *up;
+    struct arm64_scope *scopes;
+    struct arm64_scope *next;
+} ARM64Scope;
+
+typedef struct arm64_function {
+    Allocator     *allocator;
+    IRFunction    *function;
+    size_t         num_parameters;
+    ARM64Variable *parameters;
+    union {
+        struct {
+            size_t      nsaa;
+            size_t      stack_depth;
+            ARM64Scope *scope;
+            ARM64Scope *current_scope;
         } scribble;
         struct {
             StringView stub_name;
@@ -246,14 +259,15 @@ extern void              assembly_save_and_assemble(Assembly *assembly, StringVi
 extern void              assembly_push(Assembly *assembly, char const *reg);
 extern void              assembly_pop(Assembly *assembly, char const *reg);
 extern void              assembly_write_char(Assembly *assembly, int fd, char ch);
-extern StringView        arm64var_decl_to_string(ARM64VarDecl *var, Allocator *allocator);
+extern StringView        arm64variable_to_string(ARM64Variable *var, Allocator *allocator);
 extern ARM64Function    *arm64function_acreate(Allocator *allocator, IRFunction *function, size_t nsaa, size_t stack_depth);
 extern StringView        arm64function_label(ARM64Function *function);
 extern StringView        arm64function_to_string(ARM64Function *function);
-extern void              arm64variable_address_store_variable(ARM64VariableAddress *address, type_id type, ARM64Context *ctx, int from);
-extern void              arm64variable_address_load_variable(ARM64VariableAddress *address, type_id type, ARM64Context *ctx, int target);
-extern void              arm64variable_address_prepare_pointer(ARM64VariableAddress *address, ARM64Context *ctx);
-extern StringView        arm64variable_address_to_string(ARM64VariableAddress *address, Allocator *allocator);
+extern ARM64Variable    *arm64function_variable_by_name(ARM64Function *function, StringView name);
+extern void              arm64variable_store_variable(ARM64Variable *variable, ARM64Context *ctx, int from);
+extern void              arm64variable_load_variable(ARM64Variable *variable, ARM64Context *ctx, int target);
+extern void              arm64variable_prepare_pointer(ARM64Variable *variable, ARM64Context *ctx);
+extern StringView        arm64variable_to_string(ARM64Variable *variable, Allocator *allocator);
 extern ARM64Context     *arm64context_acreate(Allocator *allocator);
 extern void              arm64context_add_module(ARM64Context *ctx, StringView name);
 extern void              arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset);

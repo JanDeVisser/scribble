@@ -5,6 +5,7 @@
  */
 
 #include <arch/arm64/arm64.h>
+#include <sv.h>
 
 #undef INTRINSIC_ENUM
 #define INTRINSIC_ENUM(i) static void generate_##i(ARM64Context *ctx);
@@ -130,13 +131,13 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
 
     int target = 0;
     for (size_t ix = 0; ix < arm_function->num_parameters; ++ix) {
-        ARM64VarDecl *var_decl = arm_function->parameters + ix;
-        target = arm64context_pop_value(ctx, var_decl->var_decl->type.type_id, target);
+        ARM64Variable *var_decl = arm_function->parameters + ix;
+        target = arm64context_pop_value(ctx, var_decl->var_decl.type.type_id, target);
     }
     switch (function->kind) {
     case FK_SCRIBBLE:
     case FK_NATIVE:
-        assembly_add_instruction(ctx->assembly, "bl", "%.*s", SV_ARG(arm_function->function->name));
+        assembly_add_instruction(ctx->assembly, "bl", "%.*s", SV_ARG(arm64function_label(arm_function)));
         break;
     case FK_INTRINSIC:
         generate_intrinsic_call(ctx, arm_function);
@@ -144,6 +145,7 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
     default:
         UNREACHABLE();
     }
+    assembly_push(ctx->assembly, "x0");
 }
 
 void generate_DECL_VAR(ARM64Context *ctx, IROperation *op)
@@ -194,10 +196,26 @@ void generate_NEW_DATUM(ARM64Context *ctx, IROperation *op)
 
 void generate_OPERATOR(ARM64Context *ctx, IROperation *op)
 {
+    arm64context_pop_value(ctx, op->operator.lhs, 0);
+    arm64context_pop_value(ctx, op->operator.rhs, 1);
+    switch (op->operator.op) {
+    case OP_ADD:
+        assembly_add_instruction(ctx->assembly, "add", "w0,w0,w1");
+        break;
+    case OP_MULTIPLY:
+        assembly_add_instruction(ctx->assembly, "mul", "x0,x0,x1");
+        break;
+    default:
+        NYI("Operator %s", Operator_name(op->operator.op));
+    }
+    assembly_push(ctx->assembly, "x0");
 }
 
 void generate_POP_VAR(ARM64Context *ctx, IROperation *op)
 {
+    ARM64Variable *var = arm64function_variable_by_name(ctx->function, op->sv);
+    arm64context_pop_value(ctx, var->var_decl.type.type_id, 0);
+    arm64variable_store_variable(var, ctx, 0);
 }
 
 void generate_POP_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
@@ -235,6 +253,9 @@ void generate_PUSH_STRING_CONSTANT(ARM64Context *ctx, IROperation *op)
 
 void generate_PUSH_VAR(ARM64Context *ctx, IROperation *op)
 {
+    ARM64Variable *var = arm64function_variable_by_name(ctx->function, op->sv);
+    arm64variable_load_variable(var, ctx, 0);
+    arm64context_push_value(ctx, var->var_decl.type.type_id, 0);
 }
 
 void generate_PUSH_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
@@ -283,48 +304,101 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
     arm_function->allocator = ctx->allocator;
     arm_function->function = function;
     arm_function->num_parameters = function->num_parameters;
-    arm_function->parameters = allocator_alloc_array(ctx->allocator, ARM64VarDecl, function->num_parameters);
-    size_t ngrn = 0;
     size_t offset = 0;
-    for (size_t ix = 0; ix < function->num_parameters; ++ix) {
-        ARM64VarDecl *arm_param = arm_function->parameters + ix;
-        IRVarDecl    *ir_param = function->parameters + ix;
-        arm_param->var_decl = ir_param;
-        size_t sz = typeid_sizeof(ir_param->type.type_id);
-        switch (typeid_kind(ir_param->type.type_id)) {
-        case TK_PRIMITIVE: {
-            if (ngrn < 8) {
-                arm_param->method = PPM_REGISTER;
-                arm_param->where = ngrn++;
-                break;
+    if (arm_function->num_parameters) {
+        arm_function->parameters = allocator_alloc_array(ctx->allocator, ARM64Variable, function->num_parameters);
+        size_t         ngrn = 0;
+        size_t         nsrn = 0;
+        ARM64Variable *prev = NULL;
+        for (size_t ix = 0; ix < function->num_parameters; ++ix) {
+            ARM64Variable *arm_param = arm_function->parameters + ix;
+            IRVarDecl     *ir_param = function->parameters + ix;
+            arm_param->kind = VK_PARAMETER;
+            arm_param->var_decl = *ir_param;
+            if (prev) {
+                prev->next = arm_param;
             }
-            arm_function->scribble.nsaa += 8;
-            arm_param->method = PPM_STACK;
-            arm_param->where = arm_function->scribble.nsaa;
-        } break;
-        case TK_AGGREGATE: {
-            size_t size_in_double_words = typeid_sizeof(ir_param->type.type_id) / 8;
-            if (sz % 8) {
-                size_in_double_words++;
+            prev = arm_param;
+            size_t sz = typeid_sizeof(ir_param->type.type_id);
+            offset += sz;
+            if (offset % 16)
+                offset += 16 - (offset % 16);
+            arm_param->parameter.offset = offset;
+            type_id type = typeid_canonical_type_id(ir_param->type.type_id);
+            switch (typeid_kind(type)) {
+            case TK_PRIMITIVE: {
+                if (ngrn < 8) {
+                    arm_param->parameter.method = PPM_REGISTER;
+                    arm_param->parameter.where = (type != FLOAT_ID) ? ngrn++ : nsrn++;
+                    break;
+                }
+                arm_function->scribble.nsaa += sz;
+                arm_param->parameter.method = PPM_STACK;
+                arm_param->parameter.where = arm_function->scribble.nsaa;
+            } break;
+            case TK_AGGREGATE: {
+                size_t size_in_double_words = typeid_sizeof(type) / 8;
+                if (sz % 8) {
+                    size_in_double_words++;
+                }
+                if (ngrn + size_in_double_words <= 8) {
+                    arm_param->parameter.method = PPM_REGISTER;
+                    arm_param->parameter.where = ngrn;
+                    ngrn += size_in_double_words;
+                    break;
+                }
+                arm_function->scribble.nsaa += sz;
+                arm_param->parameter.method = PPM_STACK;
+                arm_param->parameter.where = arm_function->scribble.nsaa;
+            } break;
+            default:
+                NYI("generate arm function parameter for type kind '%s'", TypeKind_name(typeid_kind(type)));
             }
-            if (ngrn + size_in_double_words <= 8) {
-                arm_param->method = PPM_REGISTER;
-                arm_param->where = ngrn;
-                ngrn += size_in_double_words;
-                break;
-            }
-            arm_function->scribble.nsaa += sz;
-            arm_param->method = PPM_STACK;
-            arm_param->where = arm_function->scribble.nsaa;
-        } break;
-        default:
-            NYI("generate arm function parameter for type kind '%s'", TypeKind_name(typeid_kind(ir_param->type.type_id)));
         }
-        offset += sz;
-        if (offset % 16)
-            offset += 16 - (offset % 16);
-        arm_param->address.type = VAT_STACK;
-        arm_param->address.stack_address.offset = offset;
+    }
+    if (function->kind == FK_SCRIBBLE) {
+        arm_function->scribble.scope = allocator_alloc_new(ctx->allocator, ARM64Scope);
+        ARM64Scope *scope = arm_function->scribble.scope;
+
+        // Parameters are accessible in two ways:
+        // - As an _array_ of ARM64Variables through ARM64Function.parameters
+        // - As elements of a _linked list_ of ARM64Variables in the scope
+        // The linked list elements and array elementsare the same memory
+        // objects!
+        scope->variables = arm_function->parameters;
+        scope->depth = offset;
+        for (size_t op_ix = 0; op_ix < function->scribble.num_operations; ++op_ix) {
+            IROperation *op = function->scribble.operations + op_ix;
+            switch (op->operation) {
+            case IR_DECL_VAR: {
+                ARM64Variable *variable = allocator_alloc_new(ctx->allocator, ARM64Variable);
+                variable->var_decl = op->var_decl;
+                variable->kind = VK_LOCAL;
+                variable->next = scope->variables;
+                scope->variables = variable;
+                scope->depth += typeid_sizeof(variable->var_decl.type.type_id);
+                if (scope->depth % 16) {
+                    scope->depth += 16 - scope->depth % 16;
+                }
+                variable->local_address.offset = scope->depth;
+            } break;
+            case IR_SCOPE_BEGIN: {
+                ARM64Scope *new_scope = allocator_alloc_new(ctx->allocator, ARM64Scope);
+                new_scope->operation = op;
+                new_scope->up = scope;
+                new_scope->next = scope->scopes;
+                scope->scopes = new_scope;
+                scope = new_scope;
+            } break;
+            case IR_SCOPE_END: {
+                assert(scope->up);
+                scope = scope->up;
+            } break;
+            default:
+                break;
+            }
+        }
+        arm_function->scribble.stack_depth = arm_function->scribble.scope->depth;
     }
 }
 
