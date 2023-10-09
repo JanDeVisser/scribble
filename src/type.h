@@ -13,7 +13,7 @@
 #define __TYPE_H__
 
 typedef void (*void_t)();
-typedef int (*qsort_fnc_t)(void const *, void const *);
+typedef int  (*qsort_fnc_t)(void const *, void const *);
 
 #define TYPEKINDS(S)   \
     S(PRIMITIVE, 0x00) \
@@ -68,7 +68,7 @@ typedef enum {
 
 //   0x2000 - Array types
 //   0x4000 - Variant types
-//   0x8000 - Array types
+//   0x8000 - Other types
 //
 // Bottom 16 bits position in type registry.
 
@@ -190,8 +190,7 @@ typedef struct signature {
 #define BUILTINTYPE_ENUM(type, name, code) extern type_id type##_ID;
 BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
-extern type_id RANGE_ID;
-extern type_id STRING_ID;
+extern type_id PCHAR_ID;
 extern type_id FIRST_CUSTOM_IX;
 extern type_id NEXT_CUSTOM_IX;
 

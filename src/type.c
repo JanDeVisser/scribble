@@ -24,6 +24,7 @@ static TypeRegistry type_registry = { 0 };
 #define BUILTINTYPE_ENUM(type, name, code) type_id type##_ID = 0;
 BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
+type_id PCHAR_ID = 0;
 type_id FIRST_CUSTOM_IX = 0;
 type_id NEXT_CUSTOM_IX = 0;
 
@@ -196,6 +197,8 @@ void type_registry_init()
     assert(typeid_has_kind(RANGE_ID, TK_AGGREGATE));
 
     MUST_VOID(TypeID,
+        type_set_template_parameters(POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
+    MUST_VOID(TypeID,
         type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
     MUST_VOID(TypeID,
         type_set_struct_components(RANGE_ID, 2,
@@ -207,6 +210,9 @@ void type_registry_init()
             (TypeComponent[]) {
                 { .kind = CK_TYPE, .name = sv_from("ptr"), .type_id = POINTER_ID },
                 { .kind = CK_TYPE, .name = sv_from("length"), .type_id = U64_ID } }))
+    MUST_TO_VAR(TypeID, PCHAR_ID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = U8_ID } }))
+    MUST_VOID(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID))
+
     FIRST_CUSTOM_IX = type_registry.size;
     NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
 }
