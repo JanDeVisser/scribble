@@ -6,6 +6,7 @@
 
 #include <ctype.h>
 
+#include <error_or.h>
 #include <log.h>
 #include <sv.h>
 
@@ -18,8 +19,8 @@ typedef struct _location {
     size_t     column;
 } Location;
 
-#define LOC_SPEC "%.*s:%d:%d: "
-#define LOC_ARG(loc) loc.file.length, loc.file.ptr, loc.line, loc.column
+#define LOC_SPEC "%.*s:%zu:%zu: "
+#define LOC_ARG(loc) (int) loc.file.length, loc.file.ptr, loc.line, loc.column
 
 #define TOKENKINDS(S)   \
     S(TK_UNKNOWN)       \
@@ -129,6 +130,8 @@ typedef struct {
     Location   loc;
 } Token;
 
+ErrorOr(Token, Token)
+
 #define TOKEN_SPEC "%s %s [%.*s]:%zu: "
 #define TOKEN_ARG(t) TokenKind_name(t.kind), \
                      TokenCode_name(t.code), \
@@ -136,7 +139,7 @@ typedef struct {
                      t.text.ptr,             \
                      t.text.length
 
-typedef struct _source {
+    typedef struct _source {
     Location        loc;
     StringView      source;
     struct _source *prev;
@@ -154,16 +157,16 @@ extern char const *TokenCode_name(int code);
 #define token_matches_kind(t, k) ((t).kind == k)
 #define token_matches(t, k, c) (token_matches_kind((t), (k)) && (t).code == c)
 
-extern StringView lexer_source(Lexer *lexer);
-extern Location   lexer_current_location(Lexer *lexer);
-extern void       lexer_push_source(Lexer *lexer, StringView source, StringView name);
-extern void       lexer_pop_source(Lexer *lexer);
-extern void       lexer_advance_source(Lexer *lexer, size_t num);
-extern Token      lexer_peek(Lexer *lexer);
-extern Token      lexer_next(Lexer *lexer);
-extern Token      lexer_lex(Lexer *lexer);
-extern Token      lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...);
-extern bool       lexer_next_matches(Lexer *lexer, TokenKind kind, TokenCode code);
+extern StringView   lexer_source(Lexer *lexer);
+extern Location     lexer_current_location(Lexer *lexer);
+extern void         lexer_push_source(Lexer *lexer, StringView source, StringView name);
+extern void         lexer_pop_source(Lexer *lexer);
+extern void         lexer_advance_source(Lexer *lexer, size_t num);
+extern Token        lexer_peek(Lexer *lexer);
+extern Token        lexer_next(Lexer *lexer);
+extern Token        lexer_lex(Lexer *lexer);
+extern ErrorOrToken lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...);
+extern bool         lexer_next_matches(Lexer *lexer, TokenKind kind, TokenCode code);
 
 #define LEXER_LOC_ARG(lexer) LOC_ARG(lexer->sources->loc)
 
