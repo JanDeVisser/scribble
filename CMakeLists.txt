@@ -61,7 +61,7 @@ configure_file(
 
 # add the binary tree to the search path for include files
 # so that we will find config.h
-include_directories("${PROJECT_BINARY_DIR}")
+include_directories("src" "src/base" "src/scribble" "src/arch/arm64" "${PROJECT_BINARY_DIR}")
 
 add_subdirectory("src")
 add_subdirectory("rt")

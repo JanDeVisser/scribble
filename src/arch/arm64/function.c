@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <arch/arm64/arm64.h>
+#include <arm64.h>
 #include <hash.h>
 
 ARM64Function *arm64function_acreate(Allocator *allocator, IRFunction *function, size_t nsaa, size_t stack_depth)

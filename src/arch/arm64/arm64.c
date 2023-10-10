@@ -14,7 +14,7 @@
 #include <options.h>
 #include <process.h>
 
-#include <arch/arm64/arm64.h>
+#include <arm64.h>
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 SHARED_ALLOCATOR_IMPL(arm64)

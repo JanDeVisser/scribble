@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <arch/arm64/arm64.h>
+#include <arm64.h>
 #include <sv.h>
 
 #undef INTRINSIC_ENUM
