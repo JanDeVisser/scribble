@@ -99,5 +99,7 @@ extern StringView  sl_pop(StringList *sl, StringView sv);
 extern StringView  sl_join(StringList *sl, StringView sep);
 extern StringView  sl_front(StringList *sl);
 extern StringView  sl_back(StringList *sl);
+extern bool        sl_empty(StringList *sl);
+extern size_t      sl_size(StringList *sl);
 
 #endif /* __SV_H__ */

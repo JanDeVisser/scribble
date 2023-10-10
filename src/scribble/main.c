@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "sv.h"
 #include <arch/arm64/arm64.h>
 #include <binder.h>
 #include <config.h>
@@ -40,7 +41,7 @@ int main(int argc, char **argv)
         }
     }
     set_option(sv_from("scribble-dir"), sv_from(SCRIBBLE_DIR));
-    log_init(OPT_TRACE);
+    log_init();
     type_registry_init();
 
     ParserContext parse_result = parse((program_dir_or_file) ? program_dir_or_file : ".");

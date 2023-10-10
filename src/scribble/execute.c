@@ -320,7 +320,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             break;
         case FK_NATIVE: {
             Datum **args = allocate_array(Datum *, function->num_parameters);
-            trace("Preparing native call of '%.*s'", SV_ARG(function->native_name));
+            trace(CAT_EXECUTE, "Preparing native call of '%.*s'", SV_ARG(function->native_name));
             for (size_t ix = 0; ix < function->num_parameters; ++ix) {
                 args[ix] = datum_stack_pop(&ctx->stack);
             }
@@ -1089,10 +1089,11 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     ctx.execution_mode = EM_RUN;
     ctx.trace = false;
     if (OPT_DEBUG) {
-        for (OptionList *breakpoint = get_option_values(sv_from("breakpoint")); breakpoint; breakpoint = breakpoint->next) {
-            StringList components = sv_split(breakpoint->value, sv_from(":"));
-            StringView bp_index = (components.size > 1) ? components.strings[1] : sv_null();
-            StringView bp_function = (components.size > 0) ? components.strings[0] : sv_null();
+        StringList breakpoints = get_option_values(sv_from("breakpoint"));
+        for (size_t ix = 0; ix < sl_size(&breakpoints); ++ix) {
+            StringList components = sv_split(breakpoints.strings[ix], sv_from(":"));
+            StringView bp_index = (sl_size(&components) > 1) ? components.strings[1] : sv_null();
+            StringView bp_function = (!sl_empty(&components)) ? components.strings[0] : sv_null();
             set_breakpoint(&ctx, bp_function, bp_index);
         }
     }

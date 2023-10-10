@@ -25,6 +25,7 @@ StringList sl_acreate(Allocator *allocator)
 
 StringList sl_copy(StringList *sl)
 {
+    assert(sl);
     StringList ret = sl_acreate(sl->allocator);
     for (size_t ix = 0; ix < sl->size; ++ix) {
         sl_push(&ret, sl->strings[ix]);
@@ -34,6 +35,7 @@ StringList sl_copy(StringList *sl)
 
 StringList *sl_push(StringList *sl, StringView sv)
 {
+    assert(sl);
     if (sl->size >= sl->capacity) {
         size_t      newcap = (!sl->capacity) ? 16 : 2 * sl->capacity;
         StringView *newstrings = allocate_array(StringView, newcap);
@@ -59,7 +61,7 @@ StringList *sl_extend(StringList *sl, StringList *with)
 
 StringView sl_pop(StringList *sl, StringView sv)
 {
-    if (!sl->size) {
+    if (sl_empty(sl)) {
         return sv_null();
     }
     return sl->strings[sl->size--];
@@ -79,7 +81,7 @@ StringView sl_join(StringList *sl, StringView sep)
 
 StringView sl_front(StringList *sl)
 {
-    if (!sl || !sl->size) {
+    if (sl_empty(sl)) {
         return sv_null();
     }
     return sl->strings[0];
@@ -87,8 +89,18 @@ StringView sl_front(StringList *sl)
 
 StringView sl_back(StringList *sl)
 {
-    if (!sl || !sl->size) {
+    if (sl_empty(sl)) {
         return sv_null();
     }
     return sl->strings[sl->size - 1];
+}
+
+bool sl_empty(StringList *sl)
+{
+    return !sl || (sl->size == 0);
+}
+
+size_t sl_size(StringList *sl)
+{
+    return (sl) ? sl->size : 0;
 }

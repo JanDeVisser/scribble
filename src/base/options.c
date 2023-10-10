@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "sv.h"
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 #include <options.h>
@@ -29,16 +30,12 @@ StringView get_option(StringView option)
     return sv_null();
 }
 
-OptionList *get_option_values(StringView option)
+StringList get_option_values(StringView option)
 {
-    OptionList *ret = NULL;
+    StringList ret = sl_create();
     for (OptionList *entry = s_option_list_head; entry; entry = entry->next) {
         if (sv_eq(entry->option, option)) {
-            OptionList *return_entry = allocate_new(OptionList);
-            return_entry->option = option;
-            return_entry->value = entry->value;
-            return_entry->next = ret;
-            ret = return_entry;
+            sl_push(&ret, entry->value);
         }
     }
     return ret;

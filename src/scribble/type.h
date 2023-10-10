@@ -12,8 +12,7 @@
 #ifndef __TYPE_H__
 #define __TYPE_H__
 
-typedef void (*void_t)();
-typedef int  (*qsort_fnc_t)(void const *, void const *);
+typedef int (*qsort_fnc_t)(void const *, void const *);
 
 #define TYPEKINDS(S)   \
     S(PRIMITIVE, 0x00) \

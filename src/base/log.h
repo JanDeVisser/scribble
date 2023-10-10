@@ -19,11 +19,30 @@
 #elif defined(HAVE_C23_ATTRIBUTE_NORETURN)
 #define noreturn [[noreturn]]
 #else
-#define noreturn 
+#define noreturn
 #endif
 
-extern void          log_init(bool trace_on);
-extern void          trace(char const *msg, ...);
+#define TRACECATEGORIES(S) \
+    S(NONE)                \
+    S(LIB)                 \
+    S(MEM)                 \
+    S(SV)                  \
+    S(PARSE)               \
+    S(BIND)                \
+    S(IR)                  \
+    S(EXECUTE)             \
+    S(COMPILE)
+
+typedef enum trace_category {
+#undef TRACECATEGORY
+#define TRACECATEGORY(cat) CAT_##cat,
+    TRACECATEGORIES(TRACECATEGORY)
+#undef TRACECATEGORY
+        CAT_COUNT
+} TraceCategory;
+
+extern void          log_init();
+extern void          trace(TraceCategory category, char const *msg, ...);
 extern void          vtrace(char const *msg, va_list args);
 noreturn extern void fatal(char const *msg, ...);
 noreturn extern void vfatal(char const *msg, va_list args);

@@ -15,9 +15,9 @@ typedef struct _option_list {
     struct _option_list *next;
 } OptionList;
 
-extern void        set_option(StringView option, StringView value);
-extern StringView  get_option(StringView option);
-extern OptionList *get_option_values(StringView option);
+extern void       set_option(StringView option, StringView value);
+extern StringView get_option(StringView option);
+extern StringList get_option_values(StringView option);
 
 #define has_option(opt) (!sv_empty(get_option(sv_from(opt))))
 #define OPT_DEBUG (!sv_empty(get_option(sv_from("debug"))))

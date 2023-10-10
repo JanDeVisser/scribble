@@ -73,6 +73,7 @@ void parser_context_add_error(ParserContext *ctx, Token token, StringView msg)
         ctx->last_error->next = err;
         ctx->last_error = err;
     }
+    printf(LOC_SPEC SV_SPEC "\n", LOC_ARG(err->token.loc), SV_ARG(err->message));
 }
 
 bool parser_context_token_is_error(ParserContext *ctx, ErrorOrToken token_maybe)
@@ -682,34 +683,36 @@ SyntaxNode *parse_statement(ParserContext *ctx)
 
 SyntaxNode *parse_type(ParserContext *ctx)
 {
-    Token token = lexer_lex(ctx->lexer);
-    if (token.kind != TK_IDENTIFIER) {
-        parser_context_add_error(ctx, token, sv_from("Expected type name"));
+    if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
         return NULL;
     }
+    Token token = lexer_lex(ctx->lexer);
     return syntax_node_make(SNT_TYPE, token.text, token);
 }
 
 SyntaxNode *parse_param(ParserContext *ctx, StringView name)
 {
-    if (!parser_context_expect(ctx, TK_SYMBOL, ':')) {
+    Token token = lexer_lex(ctx->lexer);
+    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ':')) {
         return NULL;
     }
-    Token       token = lexer_lex(ctx->lexer);
+    SyntaxNode *type = parse_type(ctx);
+    if (!type) {
+        return NULL;
+    }
     SyntaxNode *param = syntax_node_make(SNT_PARAMETER, name, token);
-    param->parameter.parameter_type = parse_type(ctx);
+    param->parameter.parameter_type = type;
     return param;
 }
 
 SyntaxNode *parse_parameters(ParserContext *ctx, SyntaxNode *func)
 {
-    if (!parser_context_expect(ctx, TK_SYMBOL, '(')) {
+    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, '(')) {
         return NULL;
     }
-    Token       token = lexer_lex(ctx->lexer);
     SyntaxNode *last_param = NULL;
     while (true) {
-        token = lexer_lex(ctx->lexer);
+        Token token = lexer_next(ctx->lexer);
         switch (token.kind) {
         case TK_IDENTIFIER: {
             SyntaxNode *param = parse_param(ctx, token.text);
@@ -726,12 +729,14 @@ SyntaxNode *parse_parameters(ParserContext *ctx, SyntaxNode *func)
         case TK_SYMBOL: {
             switch (token.code) {
             case ')':
+                lexer_lex(ctx->lexer);
                 return func;
             case ',':
                 if (last_param == NULL) {
                     parser_context_add_error(ctx, token, sv_from("Expected parameter or ')'"));
                     return NULL;
                 }
+                lexer_lex(ctx->lexer);
                 break;
             default:
                 if (last_param == NULL) {
@@ -792,7 +797,10 @@ SyntaxNode *parse_function_decl(ParserContext *ctx)
 SyntaxNode *parse_function(ParserContext *ctx)
 {
     SyntaxNode *func = parse_function_decl(ctx);
-    Token       token = lexer_lex(ctx->lexer);
+    if (!func) {
+        return NULL;
+    }
+    Token token = lexer_lex(ctx->lexer);
     if (token_matches(token, TK_SYMBOL, '{')) {
         SyntaxNode *impl = syntax_node_make(SNT_FUNCTION_IMPL, func->name, token);
         func->function.function_impl = impl;
@@ -906,10 +914,13 @@ void parse_module(ParserContext *ctx, StringView buffer, StringView name)
         SyntaxNode *statement = NULL;
         if (token_matches(token, TK_KEYWORD, KW_FUNC)) {
             statement = parse_function(ctx);
+            if (statement) {
+                trace(CAT_PARSE, "Function '%.*s' parsed", SV_ARG(statement->name));
+            }
         } else if (token_matches(token, TK_KEYWORD, KW_STRUCT)) {
             statement = parse_struct_def(ctx);
         } else if (token_matches_kind(token, TK_END_OF_FILE)) {
-            break;
+            goto module_done;
         } else {
             parser_context_add_error(ctx, token, sv_printf("Only 'func', 'var', 'const', and 'struct' are allowed on the top level of files, '%.*s' is not", SV_ARG(token.text)));
             while (true) {
@@ -949,7 +960,7 @@ ParserContext parse(char const *dir_or_file)
     if (OPT_TRACE) {
         char cwd[256];
         getcwd(cwd, 256);
-        trace("CWD: %s dir: %s", cwd, dir_or_file);
+        trace(CAT_PARSE, "CWD: %s dir: %s", cwd, dir_or_file);
     }
     ParserContext ret = { 0 };
     Token         token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };

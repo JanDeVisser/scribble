@@ -132,12 +132,8 @@ typedef struct {
 
 ErrorOr(Token, Token)
 
-#define TOKEN_SPEC "%s %s [%.*s]:%zu: "
-#define TOKEN_ARG(t) TokenKind_name(t.kind), \
-                     TokenCode_name(t.code), \
-                     (int) t.text.length,    \
-                     t.text.ptr,             \
-                     t.text.length
+#define TOKEN_SPEC "%.*s:%zu:%zu: %s %s [%.*s]:%zu"
+#define TOKEN_ARG(t) (int) t.loc.file.length, t.loc.file.ptr, t.loc.line, t.loc.column, TokenKind_name(t.kind), TokenCode_name(t.code), (int) t.text.length, t.text.ptr, t.text.length
 
     typedef struct _source {
     Location        loc;
@@ -168,6 +164,7 @@ extern Token        lexer_lex(Lexer *lexer);
 extern ErrorOrToken lexer_expect(Lexer *lexer, TokenKind kind, TokenCode code, char const *msg, ...);
 extern bool         lexer_next_matches(Lexer *lexer, TokenKind kind, TokenCode code);
 
+#define TOKEN_LOC_ARG(token) LOC_ARG(token.loc)
 #define LEXER_LOC_ARG(lexer) LOC_ARG(lexer->sources->loc)
 
 #endif /* __LEXER_H__ */

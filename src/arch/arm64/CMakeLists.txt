@@ -1,0 +1,11 @@
+add_library(
+        scb_arm64
+        STATIC
+        arm64.c
+        assembly.c
+        code.c
+        context.c
+        function.c
+        generate.c
+        variable.c
+)

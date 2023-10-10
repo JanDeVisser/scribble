@@ -20,9 +20,10 @@ set(scribble_NAME Scribble)
 set(scribble_VERSION_MAJOR 1)
 set(scribble_VERSION_MINOR 0)
 
-#if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR} CACHE PATH "..." FORCE)
-#endif()
+# if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR} CACHE PATH "..." FORCE)
+
+# endif()
 set(scribble_DIR ${CMAKE_INSTALL_PREFIX})
 set(scribble_DATADIR ${CMAKE_INSTALL_PREFIX}/share)
 
@@ -36,7 +37,7 @@ check_c_source_compiles("
    {
      return 0;
    }
-"  HAVE_C23_ATTRIBUTE_NORETURN
+" HAVE_C23_ATTRIBUTE_NORETURN
 )
 
 check_c_source_compiles("
@@ -47,13 +48,13 @@ check_c_source_compiles("
    {
      return 0;
    }
-"  HAVE_LEGACY_ATTRIBUTE_NORETURN
+" HAVE_LEGACY_ATTRIBUTE_NORETURN
 )
 
 include(CheckStructHasMember)
 check_struct_has_member("struct dirent" d_namlen dirent.h HAVE_DIRENT_D_NAMLEN LANGUAGE C)
-  
-configure_file (
+
+configure_file(
   "${PROJECT_SOURCE_DIR}/config.h.in"
   "${PROJECT_BINARY_DIR}/config.h"
 )
@@ -67,6 +68,6 @@ add_subdirectory("rt")
 add_subdirectory("test")
 
 install(TARGETS scribble scribblert testlib sv_test
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib)
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib)

@@ -6,11 +6,10 @@
 
 #define HAVE_DLFCN_H
 
-#include <rt.h>
-#include <type.h>
+#include <sv.h>
 
-#ifndef __NATIVE_H__
-#define __NATIVE_H__
+#ifndef __RESOLVE_H__
+#define __RESOLVE_H__
 
 #ifdef HAVE_DLFCN_H
 typedef void *lib_handle_t;
@@ -20,7 +19,7 @@ typedef HMODULE lib_handle_t;
 typedef DWORD   resolve_error_t;
 #endif /* HAVE_DLFCN_H */
 
-#include <sv.h>
+typedef void (*void_t)();
 
 typedef struct function_handle {
     StringView              name;
@@ -47,6 +46,4 @@ void_t     resolve_resolve(Resolve *, StringView, StringView);
 bool       resolve_library(StringView);
 void_t     resolve_function(StringView);
 
-void native_call(StringView name, size_t argc, Datum **values, Datum *ret);
-
-#endif /* __NATIVE_H__ */
+#endif /* __RESOLVE_H__ */

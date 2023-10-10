@@ -644,7 +644,7 @@ BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 }
 
 BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{            
+{
     BoundNode *expr = NULL;
     TypeSpec   var_type = { VOID_ID, false };
     if (stmt->variable_decl.var_type != NULL && !resolve_type_node(stmt->variable_decl.var_type, &var_type)) {
@@ -660,8 +660,8 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     if (expr) {
         if (expr->type != BNT_COMPOUND_INITIALIZER) {
             if (var_type.type_id != VOID_ID && expr->typespec.type_id != var_type.type_id) {
-                fatal("Declaration type '%.*s' and expression type '%.*s' are different", 
-                    SV_ARG(typeid_name(var_type.type_id)), 
+                fatal("Declaration type '%.*s' and expression type '%.*s' are different",
+                    SV_ARG(typeid_name(var_type.type_id)),
                     SV_ARG(typeid_name(expr->typespec.type_id)));
             }
             if (var_type.type_id == VOID_ID) {
@@ -723,9 +723,9 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     }
 
     switch (stmt->type) {
-#define SYNTAXNODETYPE_ENUM(type)                                          \
-    case SNT_##type:                                                       \
-        trace("Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
+#define SYNTAXNODETYPE_ENUM(type)                                                    \
+    case SNT_##type:                                                                 \
+        trace(CAT_BIND, "Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
         return bind_##type(parent, stmt, ctx);
         SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM

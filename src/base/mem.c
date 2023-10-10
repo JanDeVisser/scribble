@@ -37,8 +37,8 @@ typedef struct {
     size_t ptr;
 } AllocatorState;
 
-const static size_t SLABS = 1024;
-const static size_t SLAB_SZ = 10 * 1024 * 1024;
+static size_t const SLABS = 1024;
+static size_t const SLAB_SZ = 10 * 1024 * 1024;
 
 #define MEM_IMPL
 #include <mem.h>
@@ -204,7 +204,7 @@ void *allocator_allocate(Allocator *alloc, size_t size)
         allocator_allocate_arena(alloc);
         ret = arena_allocate(alloc->current, size);
     }
-    trace("M:0x%08zx:%5zu:0x%08zx", (uint64_t) alloc, size, (uint64_t) ret);
+    trace(CAT_MEM, "M:0x%08zx:%5zu:0x%08zx", (uint64_t) alloc, size, (uint64_t) ret);
     assert(ret);
     return ret;
 }

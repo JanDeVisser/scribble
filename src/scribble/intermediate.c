@@ -592,7 +592,7 @@ void generate_WHILE(BoundNode *node, void *target)
 
 void generate_node(BoundNode *node, void *target)
 {
-    trace("Generating IR for %s node '" SV_SPEC "'", BoundNodeType_name(node->type), SV_ARG(node->name));
+    trace(CAT_IR, "Generating IR for %s node '" SV_SPEC "'", BoundNodeType_name(node->type), SV_ARG(node->name));
     switch (node->type) {
 #define BOUNDNODETYPE_ENUM(type) \
     case BNT_##type:             \

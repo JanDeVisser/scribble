@@ -16,9 +16,9 @@
 
 static void process_dump(Process *p)
 {
-    trace("Command: '%.*s' #arguments: %zu", SV_ARG(p->command), p->arguments.size);
+    trace(CAT_LIB, "Command: '%.*s' #arguments: %zu", SV_ARG(p->command), p->arguments.size);
     for (size_t ix = 0; ix < p->arguments.size; ++ix) {
-        trace("Arg #%zu: '%.*s'", ix, SV_ARG(p->arguments.strings[ix]));
+        trace(CAT_LIB, "Arg #%zu: '%.*s'", ix, SV_ARG(p->arguments.strings[ix]));
     }
 }
 
