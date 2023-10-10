@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "lexer.h"
-#include "sv.h"
+#include <lexer.h>
+#include <sv.h>
 
 #ifndef __PARSER_H__
 #define __PARSER_H__
@@ -63,7 +63,7 @@ typedef enum {
 } Operator;
 
 typedef struct operator_mapping {
-    Operator operator;
+    Operator  operator;
     bool      binary;
     TokenKind token_kind;
     TokenCode token_code;
@@ -139,14 +139,14 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *lhs;
             struct syntax_node *rhs;
-            Operator operator;
+            Operator            operator;
         } binary_expr;
         struct {
             struct syntax_node *argument;
         } arguments;
         struct {
             struct syntax_node *expression;
-            Operator operator;
+            Operator            operator;
         } assignment;
         struct {
             struct syntax_node *condition;
@@ -183,10 +183,32 @@ typedef struct syntax_node {
     };
 } SyntaxNode;
 
-extern size_t      next_index();
-extern char       *Operator_name(Operator op);
-extern char const *SyntaxNodeType_name(SyntaxNodeType type);
-extern SyntaxNode *parse(char const *dir_or_file);
+typedef enum scribble_error_kind {
+    SEK_SYNTAX,
+    SEK_SEMANTIC,
+} ScribbleErrorKind;
+
+typedef struct scribble_error {
+    ScribbleErrorKind      kind;
+    Token                  token;
+    StringView             message;
+    struct scribble_error *next;
+} ScribbleError;
+
+typedef struct parser_context {
+    Lexer         *lexer;
+    SyntaxNode    *program;
+    ScribbleError *first_error;
+    ScribbleError *last_error;
+    StringView     source_name;
+    bool           single_file;
+    char const    *current_file;
+} ParserContext;
+
+extern size_t        next_index();
+extern char         *Operator_name(Operator op);
+extern char const   *SyntaxNodeType_name(SyntaxNodeType type);
+extern ParserContext parse(char const *dir_or_file);
 
 #define SN_LOC_ARG(node) LOC_ARG(node->token.loc)
 

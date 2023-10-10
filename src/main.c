@@ -43,12 +43,18 @@ int main(int argc, char **argv)
     log_init(OPT_TRACE);
     type_registry_init();
 
-    SyntaxNode *program = parse((program_dir_or_file) ? program_dir_or_file : ".");
+    ParserContext parse_result = parse((program_dir_or_file) ? program_dir_or_file : ".");
+    if (parse_result.first_error) {
+        for (ScribbleError *err = parse_result.first_error; err; err = err->next) {
+            printf(LOC_SPEC SV_SPEC "\n", LOC_ARG(err->token.loc), SV_ARG(err->message));
+        }
+        exit(1);
+    }
     if (OPT_GRAPH) {
-        graph_program(program);
+        graph_program(parse_result.program);
         register_binding_observer(graph_ast);
     }
-    BoundNode *ast = bind(program);
+    BoundNode *ast = bind(parse_result.program);
     IRProgram  ir = generate(ast);
     MUST_VOID(Int, output_arm64(&ir));
 }
