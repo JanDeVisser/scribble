@@ -27,7 +27,7 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
         fatal("Can't do native calls with more than 8 parameters");
     }
     Trampoline t = { 0 };
-    t.fnc = resolve_function(name);
+    t.fnc = resolve_function(sv_cstr(name));
     if (!t.fnc) {
         fatal("Function '%.*s' not found", SV_ARG(name));
     }

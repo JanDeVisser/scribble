@@ -136,7 +136,7 @@ ErrorOrInt output_arm64(IRProgram *program)
         StringList ld_args = sl_acreate(get_allocator());
         sl_push(&ld_args, sv_from("-o"));
         sl_push(&ld_args, bin_name);
-        sl_push(&ld_args, sv_from("-lscribblebase"));
+        sl_push(&ld_args, sv_from("-lscb_base"));
         sl_push(&ld_args, sv_from("-lscribblert"));
         sl_push(&ld_args, sv_from("-lSystem"));
         sl_push(&ld_args, sv_from("-syslibroot"));

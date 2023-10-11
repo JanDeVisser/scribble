@@ -108,17 +108,19 @@ void generate_native(ARM64Context *ctx, ARM64Function *arm_function)
     assembly_push(ctx->assembly, "x0");
     assembly_push(ctx->assembly, "x1");
     assembly_add_text(ctx->assembly,
-        "adr    x0,str_%zu\n"
-        "mov    x1,#%d\n"
-        "bl     _resolve_function\n"
-        "cbz    x0,%.*s_$error\n"
+        "adrp   x0,str_%zu@PAGE\n"
+        "add    x0,x0,str_%zu@PAGEOFF\n"
+        "adrp   x16,_resolve_function@PAGE\n"
+        "add    x16,x16,_resolve_function@PAGEOFF\n"
+        "blr    x16\n"
+        "cbz    x0,__%.*s_$error\n"
         "mov    x16,x0",
-        str_id, function->native_name.length, SV_ARG(function->name));
+        str_id, str_id, SV_ARG(arm64function_label(arm_function)));
     assembly_pop(ctx->assembly, "x1");
     assembly_pop(ctx->assembly, "x0");
     assembly_add_instruction(ctx->assembly, "blr", "x16");
     arm64context_function_return(ctx);
-    assembly_add_label(ctx->assembly, sv_aprintf(ctx->allocator, "%.*s_$error", SV_ARG(function->name)));
+    assembly_add_label(ctx->assembly, sv_aprintf(ctx->allocator, "__%.*s_$error", SV_ARG(arm64function_label(arm_function))));
     assembly_add_instruction(ctx->assembly, "mov", "x0,#-1");
     arm64context_leave_function(ctx);
 }
@@ -356,6 +358,7 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
             }
         }
     }
+    arm_function->scribble.stack_depth = offset;
     if (function->kind == FK_SCRIBBLE) {
         arm_function->scribble.scope = allocator_alloc_new(ctx->allocator, ARM64Scope);
         ARM64Scope *scope = arm_function->scribble.scope;

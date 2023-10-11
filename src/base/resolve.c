@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include "sv.h"
 #define HAVE_DLFCN_H
 
 #include <limits.h>
@@ -398,8 +399,9 @@ bool resolve_library(StringView library)
     return resolve_open(resolve, library) != NULL;
 }
 
-void_t resolve_function(StringView func_name)
+void_t resolve_function(char const *func_name_cstr)
 {
+    StringView func_name = sv_from(func_name_cstr);
     Resolve   *resolve;
     StringView lib = sv_null();
     StringList lib_func = sv_asplit(get_allocator(), func_name, sv_from(":"));

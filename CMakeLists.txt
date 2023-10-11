@@ -63,11 +63,12 @@ configure_file(
 # so that we will find config.h
 include_directories("src" "src/base" "src/scribble" "src/arch/arm64" "${PROJECT_BINARY_DIR}")
 
+# add_compile_options(--save-temps)
 add_subdirectory("src")
 add_subdirectory("rt")
 add_subdirectory("test")
 
-install(TARGETS scribble scribblert testlib sv_test
+install(TARGETS scribble scb_base scribblert testlib sv_test
   ARCHIVE DESTINATION lib
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib)

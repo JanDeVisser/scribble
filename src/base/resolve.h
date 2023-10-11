@@ -44,6 +44,6 @@ void       resolve_free(void);
 LibHandle *resolve_open(Resolve *, StringView);
 void_t     resolve_resolve(Resolve *, StringView, StringView);
 bool       resolve_library(StringView);
-void_t     resolve_function(StringView);
+void_t     resolve_function(char const *);
 
 #endif /* __RESOLVE_H__ */

@@ -1,5 +1,8 @@
 func foo(bar: i32) : i32 -> "libtestlib:foo"
 
 func main() : i32 {
-    return foo(12);
+    putln("Calling native function foo(12):");
+    var f: i32 = foo(12);
+    fputs(1, "foo(12) returned: "); puti(f); endln();
+    return 0;
 }

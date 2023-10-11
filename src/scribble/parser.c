@@ -830,7 +830,7 @@ SyntaxNode *parse_function(ParserContext *ctx)
         if (!parser_context_expect(ctx, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING)) {
             return NULL;
         }
-        lexer_lex(ctx->lexer);
+        token = lexer_lex(ctx->lexer);
         func->function.function_impl = syntax_node_make(
             SNT_NATIVE_FUNCTION,
             (StringView) { token.text.ptr + 1, token.text.length - 2 },
