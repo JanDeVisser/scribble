@@ -198,11 +198,12 @@ static inline char const *v_reg(Register r)
 }
 
 typedef struct code {
-    Allocator     *allocator;
-    StringBuilder  prolog;
-    StringBuilder  code;
-    StringBuilder  epilog;
-    StringBuilder *active;
+    struct assembly *assembly;
+    StringBuilder    prolog;
+    StringBuilder    code;
+    StringBuilder    epilog;
+    StringBuilder   *active;
+    struct code     *next;
 } Code;
 
 typedef struct string_id {
@@ -214,14 +215,13 @@ typedef struct string_id {
 typedef struct assembly {
     Allocator       *allocator;
     StringView       name;
-    Code            *code;
+    Code            *functions;
     Code            *statik;
     Code            *active;
     StringBuilder    text;
     StringBuilder    data;
     bool             has_exports;
     bool             has_main;
-    bool             has_static;
     StringID        *strings;
     bool             registers[(int) REG_V31 + 1];
     bool             callee_saved[(int) REG_FP - (int) REG_X19];
@@ -424,19 +424,27 @@ typedef struct opcode_map {
 OPTIONAL(OpcodeMap)
 
 extern OpcodeMap             get_opcode_map(type_id type);
-extern Code                 *code_acreate(Allocator *allocator, StringView prolog, StringView epilog);
+extern Code                 *code_acreate(Assembly *assembly);
 extern void                  code_add_instruction(Code *code, char const *opcode, char const *arg_fmt, ...);
 extern void                  code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, va_list args);
 extern void                  code_add_text(Code *code, char const *text, ...);
 extern void                  code_vadd_text(Code *code, char const *text, va_list args);
 extern void                  code_add_label(Code *code, StringView label);
 extern void                  code_add_directive(Code *code, StringView directive, StringView args);
-extern void                  code_add_comment(Code *code, StringView comment);
+extern void                  code_add_comment(Code *code, char const *text, ...);
+extern void                  code_vadd_comment(Code *code, char const *text, va_list args);
+extern void                  code_copy_pointers(Code *code, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size);
+extern void                  code_copy_to_registers(Code *code, Register first, Register from_pointer, size_t from_offset, size_t size);
+extern void                  code_copy_from_registers(Code *code, Register to_pointer, size_t to_offset, Register r, size_t size);
+extern void                  code_copy_to_stack(Code *code, Register r, size_t size);
+extern void                  code_copy(Code *code, ValueLocation to_location, ValueLocation from_location);
+extern void                  code_push(Code *code, Register r);
+extern void                  code_pop(Code *code, Register r);
+extern void                  code_append_code(Code *code, Code *append);
 extern StringView            code_to_string(Code *code);
 extern bool                  code_empty(Code *code);
 extern bool                  code_has_text(Code *code);
-extern void                  code_enter_function(Code *code, StringView name, size_t stack_depth);
-extern void                  code_leave_function(Code *code, size_t stack_depth);
+extern void                  code_close_function(Code *code, StringView name, size_t stack_depth);
 extern void                  code_select_prolog(Code *code);
 extern void                  code_select_epilog(Code *code);
 extern void                  code_select_code(Code *code);
@@ -450,6 +458,7 @@ extern void                  assembly_add_comment(Assembly *assembly, char const
 extern void                  assembly_add_directive(Assembly *assembly, StringView directive, StringView args);
 extern size_t                assembly_add_string(Assembly *assembly, StringView str);
 extern void                  assembly_add_data(Assembly *assembly, StringView label, bool global, StringView type, bool is_static, StringView value);
+extern void                  assembly_append_code(Assembly *assembly, Code *code);
 extern StringView            assembly_to_string(Assembly *assembly);
 extern void                  assembly_syscall(Assembly *assembly, int id);
 extern void                  assembly_syscall1(Assembly *assembly, int id, uint64_t arg1);
@@ -462,14 +471,14 @@ extern bool                  assembly_has_static(Assembly *assembly);
 extern Code                 *assembly_static_initializer(Assembly *assembly);
 extern void                  assembly_select_code(Assembly *assembly);
 extern void                  assembly_select_static(Assembly *assembly);
-extern void                  assembly_enter_function(Assembly *assembly, StringView fnc, size_t stackdepth);
-extern void                  assembly_leave_function(Assembly *assembly, size_t stackdepth);
+extern void                  assembly_new_function(Assembly *assembly);
 extern void                  assembly_save_and_assemble(Assembly *assembly, StringView file_name);
-extern void                  assembly_push(Assembly *assembly, char const *reg);
-extern void                  assembly_pop(Assembly *assembly, char const *reg);
+extern void                  assembly_push(Assembly *assembly, Register r);
+extern void                  assembly_pop(Assembly *assembly, Register r);
 extern void                  assembly_copy_pointers(Assembly *assembly, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size);
 extern void                  assembly_copy_to_registers(Assembly *assembly, Register first, Register from_pointer, size_t from_offset, size_t size);
 extern void                  assembly_copy_from_registers(Assembly *assembly, Register to_pointer, size_t to_offset, Register r, size_t size);
+extern void                  assembly_copy_to_stack(Assembly *assembly, Register r, size_t size);
 extern void                  assembly_copy(Assembly *assembly, ValueLocation to_location, ValueLocation from_location);
 extern void                  assembly_write_char(Assembly *assembly, int fd, char ch);
 extern Register              assembly_allocate_register(Assembly *assembly);

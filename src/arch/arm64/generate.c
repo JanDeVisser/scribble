@@ -105,8 +105,8 @@ void generate_native(ARM64Context *ctx, ARM64Function *arm_function)
     assembly_add_text(ctx->assembly, ".global _resolve_function\n");
     size_t str_id = assembly_add_string(ctx->assembly, function->native_name);
     arm64context_enter_function(ctx, arm_function);
-    assembly_push(ctx->assembly, "x0");
-    assembly_push(ctx->assembly, "x1");
+    assembly_push(ctx->assembly, REG_X0);
+    assembly_push(ctx->assembly, REG_X1);
     assembly_add_text(ctx->assembly,
         "adrp   x0,str_%zu@PAGE\n"
         "add    x0,x0,str_%zu@PAGEOFF\n"
@@ -116,8 +116,8 @@ void generate_native(ARM64Context *ctx, ARM64Function *arm_function)
         "cbz    x0,__%.*s_$error\n"
         "mov    x16,x0",
         str_id, str_id, SV_ARG(arm64function_label(arm_function)));
-    assembly_pop(ctx->assembly, "x1");
-    assembly_pop(ctx->assembly, "x0");
+    assembly_pop(ctx->assembly, REG_X1);
+    assembly_pop(ctx->assembly, REG_X0);
     assembly_add_instruction(ctx->assembly, "blr", "x16");
     arm64context_function_return(ctx);
     assembly_add_label(ctx->assembly, sv_aprintf(ctx->allocator, "__%.*s_$error", SV_ARG(arm64function_label(arm_function))));
@@ -134,12 +134,13 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
     if (func->nsaa > 0) {
         assembly_add_instruction(ctx->assembly, "sub", "sp,sp,#%d", func->nsaa);
     }
+    Code *marshalling = code_acreate(ctx->assembly);
     for (size_t ix = 0; ix < func->num_parameters; ++ix) {
         ARM64Variable *param = func->parameters + ix;
         assert(param->kind == VK_PARAMETER);
         type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
         MUST_OPTIONAL(ValueLocation, arg_location, arm64context_pop_location(ctx))
-        assembly_add_comment(ctx->assembly, "Marshalling argument %.*s: %.*s from %.*s",
+        code_add_comment(marshalling, "Marshalling argument %.*s: %.*s from %.*s",
             SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
             SV_ARG(value_location_to_string(arg_location, ctx->allocator)));
         switch (param->parameter.method) {
@@ -149,7 +150,7 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
                 .kind = VLK_REGISTER,
                 .reg = param->parameter.reg,
             };
-            assembly_copy(ctx->assembly, param_location, arg_location);
+            code_copy(marshalling, param_location, arg_location);
         } break;
         case PPM_STACK: {
             ValueLocation param_location = {
@@ -157,21 +158,21 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
                 .kind = VLK_STACK,
                 .offset = param->parameter.nsaa_offset,
             };
-            assembly_copy(ctx->assembly, param_location, arg_location);
+            code_copy(marshalling, param_location, arg_location);
         } break;
         case PPM_POINTER: {
             switch (arg_location.kind) {
             case VLK_POINTER:
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                code_add_instruction(marshalling, "add", "%s,%s,%#ld",
                     x_reg(param->parameter.reg), x_reg(arg_location.pointer.reg), arg_location.pointer.offset);
                 break;
             case VLK_STACK:
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
-                    x_reg(param->parameter.reg), x_reg(REG_SP), arg_location.offset);
+                code_add_instruction(marshalling, "add", "%s,sp,%#ld",
+                    x_reg(param->parameter.reg), arg_location.offset);
                 break;
             case VLK_SYMBOL:
-                assembly_add_instruction(ctx->assembly, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
                 break;
             default:
                 UNREACHABLE();
@@ -181,25 +182,32 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
             Register r = assembly_allocate_register(ctx->assembly);
             switch (arg_location.kind) {
             case VLK_POINTER:
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
-                    x_reg(param->parameter.reg), x_reg(arg_location.pointer.reg), arg_location.pointer.offset);
+                code_add_instruction(marshalling, "add", "%s,%s,%#ld",
+                    x_reg(r), x_reg(arg_location.pointer.reg), arg_location.pointer.offset);
                 break;
             case VLK_STACK:
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                code_add_instruction(marshalling, "add", "%s,%s,%#ld",
                     x_reg(param->parameter.reg), reg(REG_SP), arg_location.offset);
                 break;
             case VLK_SYMBOL:
-                assembly_add_instruction(ctx->assembly, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
-                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(r), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(r), reg(param->parameter.reg), SV_ARG(arg_location.symbol));
                 break;
             default:
                 UNREACHABLE();
             }
-            assembly_add_instruction(ctx->assembly, "str", "%s,[sp,#%d]", x_reg(param->parameter.reg), param->parameter.nsaa_offset);
+            code_add_instruction(marshalling, "str", "%s,[sp,#%d]", x_reg(r), param->parameter.nsaa_offset);
             assembly_release_register(ctx->assembly, r);
         } break;
         }
     }
+    code_select_prolog(marshalling);
+    for (Register r = REG_X9; r <= REG_X16; ++r) {
+        if (ctx->assembly->registers[(int) r]) {
+            code_push(marshalling, r);
+        }
+    }
+    assembly_append_code(ctx->assembly, marshalling);
     switch (function->kind) {
     case FK_SCRIBBLE:
     case FK_NATIVE:
@@ -211,14 +219,19 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
     default:
         UNREACHABLE();
     }
+    for (Register r = REG_X15; r > REG_X8; --r) {
+        if (ctx->assembly->registers[(int) r]) {
+            assembly_pop(ctx->assembly, r);
+        }
+    }
+    if (op->call.discard_result) {
+        return;
+    }
     ValueLocation x0 = {
         .type = function->type.type_id,
         .kind = VLK_REGISTER,
         .reg = REG_X0,
     };
-    if (op->call.discard_result) {
-        return;
-    }
     Register      r = assembly_allocate_register(ctx->assembly);
     ValueLocation target = {
         .type = function->type.type_id,
@@ -405,7 +418,7 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
     arm_function->allocator = ctx->allocator;
     arm_function->function = function;
     arm_function->num_parameters = function->num_parameters;
-    size_t offset = 0;
+    int64_t offset = 0;
     if (arm_function->num_parameters) {
         arm_function->parameters = allocator_alloc_array(ctx->allocator, ARM64Variable, function->num_parameters);
         Register       ngrn = REG_X0;

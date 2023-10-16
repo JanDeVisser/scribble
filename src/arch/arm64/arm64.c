@@ -104,14 +104,14 @@ ErrorOrInt output_arm64(IRProgram *program)
         fatal("Could not create .scribble build directory");
     }
 
-    assembly_enter_function(main, sv_from("static_initializer"), 0);
+    assembly_new_function(main);
     for (Assembly *assembly = ctx->assemblies; assembly; assembly = assembly->next) {
         if (!assembly_has_static(assembly) || !assembly_has_exports(assembly)) {
             continue;
         }
         assembly_add_instruction(main, "bl", "static_%.*s", SV_ARG(assembly->name));
     }
-    assembly_leave_function(main, 0);
+    code_close_function(main->active, sv_from("static_initializer"), 0);
 
     StringList modules = sl_acreate(get_allocator());
     for (Assembly *assembly = ctx->assemblies; assembly; assembly = assembly->next) {

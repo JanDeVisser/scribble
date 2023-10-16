@@ -67,7 +67,7 @@ StringView arm64function_label(ARM64Function *function)
     }
     size_t hash = 0u;
     for (size_t ix = 0; ix < function->num_parameters; ++ix) {
-        hash ^= hashlong(function->function->type.type_id);
+        hash = (hash << 3) ^ hashlong(function->parameters[ix].var_decl.type.type_id);
     }
     return sv_aprintf(function->allocator, "%.*s_%zu", SV_ARG(function->function->name), hash % 4096);
 }

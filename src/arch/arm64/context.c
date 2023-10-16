@@ -29,7 +29,6 @@ void arm64context_set_stack_depth(ARM64Context *ctx, size_t depth)
     sd->value = depth;
     sd->next = ctx->stack_depths;
     ctx->stack_depths = sd;
-    assembly_add_comment(ctx->assembly, "Set stack depth to %zu", depth);
 }
 
 void arm64context_pop_stack_depth(ARM64Context *ctx)
@@ -37,12 +36,6 @@ void arm64context_pop_stack_depth(ARM64Context *ctx)
     assert(ctx->stack_depths);
     IntList *current = ctx->stack_depths;
     ctx->stack_depths = current->next;
-    if (!ctx->stack_depths) {
-        assembly_add_comment(ctx->assembly, "Stack depth popped. Was %zu, now empty", current->value);
-    } else {
-        assembly_add_comment(
-            ctx->assembly, "Stack depth popped. Was %zu, now %zu", current->value, ctx->stack_depths->value);
-    }
 }
 
 size_t arm64context_get_stack_depth(ARM64Context *ctx)
@@ -152,20 +145,12 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
     int64_t stack_depth = func->scribble.stack_depth;
     int64_t nsaa = func->nsaa;
     arm64context_set_stack_depth(ctx, stack_depth);
-    assembly_add_comment(ctx->assembly, "%.*s nsaa %ld stack depth %ld", arm64function_to_string(func),
-        nsaa, stack_depth);
-    assembly_add_directive(ctx->assembly, sv_from(".global"), arm64function_label(func));
-    assembly_add_label(ctx->assembly, arm64function_label(func));
+    assembly_new_function(ctx->assembly);
 
     // fp, lr, and sp have been set be the calling function
 
     // Copy parameters from registers to their spot in the stack.
     // @improve Do this lazily, i.e. when we need the registers
-    assembly_add_instruction(ctx->assembly, "stp", "fp,lr,[sp,#-16]!");
-    if (stack_depth) {
-        assembly_add_instruction(ctx->assembly, "sub", "sp,sp,#%d", stack_depth);
-    }
-    assembly_add_instruction(ctx->assembly, "mov", "fp,sp");
     for (size_t ix = 0; ix < func->num_parameters; ++ix) {
         ARM64Variable *param = func->parameters + ix;
         assert(param->kind == VK_PARAMETER);
@@ -242,14 +227,13 @@ void arm64context_function_return(ARM64Context *ctx)
 void arm64context_leave_function(ARM64Context *ctx)
 {
     assert(ctx->function);
-    assembly_add_label(ctx->assembly, sv_aprintf(ctx->allocator, "__%.*s__return", SV_ARG(arm64function_label(ctx->function))));
-    assembly_add_instruction(ctx->assembly, "mov", "sp,fp");
-    size_t depth = arm64context_get_stack_depth(ctx);
-    if (depth) {
-        assembly_add_instruction(ctx->assembly, "add", "sp,sp,#%ld", depth);
+
+    if (sv_eq_cstr(ctx->function->function->name, "main")) {
+        ctx->assembly->has_main = true;
     }
-    assembly_add_instruction(ctx->assembly, "ldp", "fp,lr,[sp],16");
-    assembly_add_instruction(ctx->assembly, "ret", "");
+    assembly_select_code(ctx->assembly);
+    StringView name = arm64function_label(ctx->function);
+    code_close_function(ctx->assembly->active, name, ctx->function->scribble.stack_depth);
     arm64context_pop_stack_depth(ctx);
     ctx->function = NULL;
 }
