@@ -11,6 +11,7 @@
 #include <options.h>
 
 #include <arm64.h>
+#include <stddef.h>
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
@@ -87,177 +88,6 @@ size_t arm64context_counter()
     return counter++;
 }
 
-void arm64context_zero_initialize(ARM64Context *ctx, type_id type, int offset)
-{
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE:
-        switch (typeid_builtin_type(type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case BIT_##dt:
-            INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
-        case BIT_POINTER:
-        case BIT_BOOL: {
-            OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
-            assert(opcode_map_maybe.has_value);
-            OpcodeMap *opcode_map = &opcode_map_maybe.value;
-            assembly_add_instruction(ctx->assembly, "mov", "%s0,%szr", opcode_map->reg_width, opcode_map->reg_width);
-            assembly_add_instruction(ctx->assembly, "str", "%s0,[fp,#%zu]", opcode_map->reg_width,
-                arm64context_get_stack_depth(ctx) - offset);
-        } break;
-        default:
-            NYI("zero_initialize of builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
-        }
-        break;
-    case TK_AGGREGATE: {
-        ExpressionType *et = type_registry_get_type_by_id(type);
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            TypeComponent *component = et->components.components + ix;
-            MUST(Size, size_t, field_offset, type_offsetof_index(et, ix));
-            arm64context_zero_initialize(ctx, component->type_id, offset - (int) field_offset);
-        }
-    } break;
-    case TK_ARRAY: {
-        // Arrays are not initialized now. Maybe that should be fixed
-        break;
-    }
-    default:
-        NYI("zero_initialize of type kind '%s'", TypeKind_name(typeid_kind(type)));
-    }
-}
-
-int arm64context_load_variable(ARM64Context *ctx, type_id type, size_t offset, int target)
-{
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
-        if (!opcode_map_maybe.has_value) {
-            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
-        }
-        OpcodeMap *opcode_map = &opcode_map_maybe.value;
-        assembly_add_comment(
-            ctx->assembly, "Loading variable: stack_depth %zu offset %zu", arm64context_get_stack_depth(ctx), offset);
-        if (typeid_sizeof(type) < 8) {
-            assembly_add_instruction(ctx->assembly, "mov", "x%d,xzr", target);
-        }
-        assembly_add_instruction(ctx->assembly, opcode_map->load_opcode, "%s%d,[fp,#%d]", opcode_map->reg_width, target,
-            arm64context_get_stack_depth(ctx) - offset);
-        return target + 1;
-    }
-    case TK_AGGREGATE: {
-        assembly_add_comment(ctx->assembly, "Loading composite variable: stack_depth %zu offset %zu",
-            arm64context_get_stack_depth(ctx), offset);
-        ExpressionType *et = type_registry_get_type_by_id(type);
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            TypeComponent *component_type = et->components.components + ix;
-            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-            target = arm64context_load_variable(ctx, component_type->type_id, offset + offset_of, target);
-        }
-        return target;
-    }
-    default:
-        fatal("Cannot load variables of kind '%s' yet", TypeKind_name(typeid_kind(type)));
-    }
-}
-
-int arm64context_store_variable(ARM64Context *ctx, type_id type, size_t offset, int from)
-{
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
-        if (!opcode_map_maybe.has_value) {
-            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
-        }
-        OpcodeMap *opcode_map = &opcode_map_maybe.value;
-        assembly_add_comment(ctx->assembly, "Storing to variable: stack_depth %zu offset %zu",
-            arm64context_get_stack_depth(ctx), offset);
-        assembly_add_instruction(ctx->assembly, opcode_map->store_opcode, "%s%d,[fp,#%ld]", opcode_map->reg_width, from,
-            arm64context_get_stack_depth(ctx) - offset);
-        return from + 1;
-    }
-    case TK_AGGREGATE: {
-        assembly_add_comment(ctx->assembly, "Storing composite variable: stack_depth %zu offset %zu",
-            arm64context_get_stack_depth(ctx), offset);
-        ExpressionType *et = type_registry_get_type_by_id(type);
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            TypeComponent *component_type = et->components.components + ix;
-            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-            from = arm64context_store_variable(ctx, component_type->type_id, offset + offset_of, from);
-        }
-        return from;
-    }
-    default:
-        fatal("Cannot store variables of kind '%s' yet", TypeKind_name(typeid_kind(type)));
-    }
-}
-
-int arm64context_push_value(ARM64Context *ctx, type_id type, int from)
-{
-    assembly_add_comment(ctx->assembly, "Pushing value of type '%.*s'", SV_ARG(typeid_name(type)));
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
-        if (!opcode_map_maybe.has_value) {
-            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
-        }
-        OpcodeMap *opcode_map = &opcode_map_maybe.value;
-        assembly_add_instruction(ctx->assembly, opcode_map->store_opcode, "%s%d,[sp,#-16]!", opcode_map->reg_width, from);
-        return from + 1;
-    }
-    case TK_AGGREGATE: {
-        if (type != STRING_ID) {
-            fatal("Cannot push values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
-        }
-        //        ExpressionType *et = type_registry_get_type_by_id(type);
-        //        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-        //            TypeComponent *component_type = et->components.components + ix;
-        //            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-        //            from = arm64context_push_value(ctx, component_type->type_id, from);
-        //        }
-        //        return from;
-        assembly_push(ctx->assembly, "x1");
-        assembly_push(ctx->assembly, "x0");
-        return from + 2;
-    }
-    default:
-        fatal("Cannot push values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
-    }
-}
-
-int arm64context_pop_value(ARM64Context *ctx, type_id type, int target)
-{
-    type = typeid_canonical_type_id(type);
-    assembly_add_comment(ctx->assembly, "Popping value of type '%.*s'", SV_ARG(typeid_name(type)));
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        OptionalOpcodeMap opcode_map_maybe = get_opcode_map(type);
-        if (!opcode_map_maybe.has_value) {
-            fatal("Cannot access values of variables of type '%.*s' yet", SV_ARG(typeid_name(type)));
-        }
-        OpcodeMap *opcode_map = &opcode_map_maybe.value;
-        assembly_add_instruction(ctx->assembly, opcode_map->load_opcode, "%s%d,[sp],#16", opcode_map->reg_width, target);
-        return target + 1;
-    }
-    case TK_AGGREGATE: {
-        if (type != STRING_ID) {
-            fatal("Cannot pop values of type '%.*s' yet", SV_ARG(typeid_name(type)));
-        }
-        //        ExpressionType *et = type_registry_get_type_by_id(type);
-        //        for (int ix = (int) et->components.num_components; ix >= 0; --ix) {
-        //            TypeComponent *component_type = et->components.components + ix;
-        //            MUST(Size, size_t, offset_of, type_offsetof_index(et, ix))
-        //            target = arm64context_pop_value(ctx, component_type->type_id, target);
-        //        }
-        //        return target;
-        assembly_pop(ctx->assembly, "x0");
-        assembly_pop(ctx->assembly, "x1");
-        return target + 2;
-    }
-    default:
-        fatal("Cannot pop values of kind '%s' yet", TypeKind_name(typeid_kind(type)));
-    }
-}
-
 void arm64context_define_static_storage(
     ARM64Context *ctx, StringView label, type_id type, bool global, long initial_value)
 {
@@ -319,10 +149,10 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
 {
     ctx->function = func;
     func->scribble.current_scope = func->scribble.scope;
-    size_t stack_depth = func->scribble.stack_depth;
-    size_t nsaa = func->scribble.nsaa;
+    int64_t stack_depth = func->scribble.stack_depth;
+    int64_t nsaa = func->nsaa;
     arm64context_set_stack_depth(ctx, stack_depth);
-    assembly_add_comment(ctx->assembly, "%.*s nsaa %zu stack depth %zu", arm64function_to_string(func),
+    assembly_add_comment(ctx->assembly, "%.*s nsaa %ld stack depth %ld", arm64function_to_string(func),
         nsaa, stack_depth);
     assembly_add_directive(ctx->assembly, sv_from(".global"), arm64function_label(func));
     assembly_add_label(ctx->assembly, arm64function_label(func));
@@ -339,59 +169,66 @@ void arm64context_enter_function(ARM64Context *ctx, ARM64Function *func)
     for (size_t ix = 0; ix < func->num_parameters; ++ix) {
         ARM64Variable *param = func->parameters + ix;
         assert(param->kind == VK_PARAMETER);
-        type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
-        switch (typeid_kind(type)) {
-        case TK_PRIMITIVE: {
-            switch (typeid_builtin_type(type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) case BIT_##dt:
-                INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
-            case BIT_POINTER:
-            case BIT_BOOL: {
-                switch (param->parameter.method) {
-                case PPM_REGISTER: {
-                    assembly_add_comment(ctx->assembly, "Register parameter %.*s: x%d -> %zu",
-                        SV_ARG(param->var_decl.name), param->parameter.where, param->parameter.offset);
-                    assembly_add_instruction(ctx->assembly, "str", "x%d,[fp,#%zu]", param->parameter.where,
-                        func->scribble.stack_depth - param->parameter.offset);
-                } break;
-                case PPM_STACK: {
-                    assembly_add_comment(ctx->assembly, "Stack parameter %.*s: nsaa %d -> %zu",
-                        SV_ARG(param->var_decl.name), param->parameter.where, param->parameter.offset);
-                    assembly_add_instruction(ctx->assembly, "ldr", "x9,[fp,#%d]", 16 + nsaa - param->parameter.where);
-                    assembly_add_instruction(ctx->assembly, "str", "x9,[fp,#%.*s]",
-                        func->scribble.stack_depth - param->parameter.offset);
-                } break;
-                }
-            } break;
-            default:
-                NYI("Builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
-            }
+        type_id       type = typeid_canonical_type_id(param->var_decl.type.type_id);
+        ValueLocation param_location = {
+            .type = type,
+            .kind = VLK_POINTER,
+            .pointer = {
+                .reg = REG_FP,
+                .offset = func->scribble.stack_depth - param->parameter.offset }
+        };
+        assembly_add_comment(ctx->assembly, "Unmarshalling parameter %.*s: %.*s -> offset %ld",
+            SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)), func->scribble.stack_depth - param->parameter.offset);
+        switch (param->parameter.method) {
+        case PPM_REGISTER: {
+            ValueLocation arg_location = {
+                .type = type,
+                .kind = VLK_REGISTER,
+                .reg = param->parameter.reg,
+            };
+            assembly_copy(ctx->assembly, param_location, arg_location);
         } break;
-        case TK_AGGREGATE:
-            switch (param->parameter.method) {
-            case PPM_REGISTER: {
-                size_t          reg = param->parameter.where;
-                ExpressionType *et = type_registry_get_type_by_id(type);
-                for (size_t cix = 0; cix < et->components.num_components; ++cix) {
-                    char const *reg_width = "w";
-                    if (typeid_sizeof(et->components.num_components) > 4) {
-                        reg_width = "x";
-                    }
-                    MUST(Size, size_t, offset_of, type_offsetof_index(et, cix))
-
-                    // FIXME BROKEN
-                    assembly_add_instruction(ctx->assembly, "str", "%s%.*s,[fp,#-%.*s]", reg_width, reg++,
-                        param->parameter.offset + offset_of);
+        case PPM_POINTER: {
+            ValueLocation arg_location = {
+                .type = type,
+                .kind = VLK_POINTER,
+                .pointer = {
+                    .reg = param->parameter.reg,
+                    .offset = 0,
                 }
-            } break;
-            case PPM_STACK:
-                break;
-            }
-            // Fall through:
+            };
+            assembly_add_comment(ctx->assembly, "Pointer parameter %.*s: %s -> %ld",
+                SV_ARG(param->var_decl.name), reg(param->parameter.reg), param->parameter.offset);
+            assembly_copy(ctx->assembly, param_location, arg_location);
+        } break;
+        case PPM_STACK: {
+            ValueLocation arg_location = {
+                .type = type,
+                .kind = VLK_STACK,
+                .offset = param->parameter.nsaa_offset + stack_depth + 16,
+            };
+            assembly_add_comment(ctx->assembly, "Stack parameter %.*s: %ld -> %ld",
+                SV_ARG(param->var_decl.name), param->parameter.nsaa_offset, param->parameter.offset);
+            assembly_copy(ctx->assembly, param_location, arg_location);
+        } break;
+        case PPM_POINTER_STACK: {
+            Register      r = assembly_allocate_register(ctx->assembly);
+            ValueLocation arg_location = {
+                .type = type,
+                .kind = VLK_POINTER,
+                .pointer = {
+                    .reg = r,
+                    .offset = 0,
+                }
+            };
+            assembly_add_comment(ctx->assembly, "Stacked pointer parameter %.*s: %ld -> %ld",
+                SV_ARG(param->var_decl.name), param->parameter.nsaa_offset, param->parameter.offset);
+            assembly_add_instruction(ctx->assembly, "ldr", "%s,[fp,#%d]", x_reg(r), param->parameter.nsaa_offset + stack_depth + 16);
+            assembly_copy(ctx->assembly, param_location, arg_location);
+            assembly_release_register(ctx->assembly, r);
+        } break;
         default:
-            NYI("Type '%.*s'", SV_ARG(typeid_name(type)));
+            UNREACHABLE();
         }
     }
 }
@@ -409,7 +246,7 @@ void arm64context_leave_function(ARM64Context *ctx)
     assembly_add_instruction(ctx->assembly, "mov", "sp,fp");
     size_t depth = arm64context_get_stack_depth(ctx);
     if (depth) {
-        assembly_add_instruction(ctx->assembly, "add", "sp,sp,#%zu", depth);
+        assembly_add_instruction(ctx->assembly, "add", "sp,sp,#%ld", depth);
     }
     assembly_add_instruction(ctx->assembly, "ldp", "fp,lr,[sp],16");
     assembly_add_instruction(ctx->assembly, "ret", "");
@@ -429,4 +266,42 @@ ARM64Function *arm64context_function_by_name(ARM64Context *ctx, StringView name)
         }
     }
     return NULL;
+}
+
+OptionalValueLocation arm64context_pop_location(ARM64Context *ctx)
+{
+    assert(ctx->function);
+    assert(ctx->function->function->kind == FK_SCRIBBLE);
+    ARM64Scope *scope = ctx->function->scribble.scope;
+    assert(scope);
+    if (!scope->expression_stack) {
+        return OptionalValueLocation_empty();
+    }
+    switch (scope->expression_stack->kind) {
+    case VLK_REGISTER: {
+        assembly_release_register(ctx->assembly, scope->expression_stack->reg);
+    } break;
+    default:
+        break;
+    }
+    OptionalValueLocation ret = OptionalValueLocation_create(*scope->expression_stack);
+    scope->expression_stack = scope->expression_stack->next;
+    return ret;
+}
+
+void arm64context_push_location(ARM64Context *ctx, ValueLocation entry)
+{
+    assert(ctx->function);
+    assert(ctx->function->function->kind == FK_SCRIBBLE);
+    ARM64Scope *scope = ctx->function->scribble.scope;
+    assert(scope);
+    ValueLocation *new_entry = allocate_new(ValueLocation);
+    memcpy(new_entry, &entry, sizeof(ValueLocation));
+    new_entry->next = scope->expression_stack;
+    scope->expression_stack = new_entry;
+}
+
+void arm64context_push_register(ARM64Context *ctx, type_id type, Register reg)
+{
+    arm64context_push_location(ctx, (ValueLocation) { .type = type, .kind = VLK_REGISTER, .reg = reg });
 }

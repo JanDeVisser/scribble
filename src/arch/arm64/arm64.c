@@ -19,46 +19,71 @@
 DECLARE_SHARED_ALLOCATOR(arm64)
 SHARED_ALLOCATOR_IMPL(arm64)
 
-OptionalOpcodeMap get_opcode_map(type_id type)
+OpcodeMap get_opcode_map(type_id type)
 {
-    OptionalOpcodeMap ret = { 0 };
-    ret.has_value = false;
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        ret.has_value = true;
-        ret.value.type = typeid_builtin_type(type);
-        uint16_t type_meta = type >> 16;
-        bool     un_signed = type_meta & 0x0100;
-        switch ((type >> 16) & 0x00FF) {
-        case 0x08:
-            ret.value.load_opcode = (un_signed) ? "ldrb" : "ldrsb";
-            ret.value.store_opcode = "strb";
-            ret.value.reg_width = "w";
-            break;
-        case 0x10:
-            ret.value.load_opcode = (un_signed) ? "ldrh" : "ldrsh";
-            ret.value.store_opcode = "strh";
-            ret.value.reg_width = "w";
-            break;
-        case 0x20:
-            ret.value.load_opcode = "ldr";
-            ret.value.store_opcode = "str";
-            ret.value.reg_width = "w";
-            break;
-        case 0x40:
-            ret.value.load_opcode = "ldr";
-            ret.value.store_opcode = "str";
-            ret.value.reg_width = "x";
-            break;
-        default:
-            ret.has_value = false;
-            break;
-        }
-    } break;
+    OpcodeMap ret = { 0 };
+    ret.type = type;
+    size_t sz = typeid_sizeof(type);
+    bool   un_signed = false;
+    if (typeid_kind(type) == TK_PRIMITIVE) {
+        BuiltinType builtin_type = typeid_builtin_type(type);
+        uint16_t    type_meta = type >> 16;
+        un_signed = type_meta & 0x0100;
+    }
+    switch (sz) {
+    case 0x01:
+        ret.load_opcode = (un_signed) ? "ldrb" : "ldrsb";
+        ret.store_opcode = "strb";
+        ret.reg_width = RW_32;
+        break;
+    case 0x02:
+        ret.load_opcode = (un_signed) ? "ldrh" : "ldrsh";
+        ret.store_opcode = "strh";
+        ret.reg_width = RW_32;
+        break;
+    case 0x04:
+        ret.load_opcode = "ldr";
+        ret.store_opcode = "str";
+        ret.reg_width = RW_32;
+        break;
     default:
+        ret.load_opcode = "ldr";
+        ret.store_opcode = "str";
+        ret.reg_width = RW_64;
         break;
     }
     return ret;
+}
+
+StringView value_location_to_string(ValueLocation loc, Allocator *allocator)
+{
+    StringBuilder sb = sb_acreate(allocator);
+    sb_append_cstr(&sb, ValueLocationKind_name(loc.kind));
+    sb_append_cstr(&sb, " ");
+    switch (loc.kind) {
+    case VLK_POINTER:
+        sb_printf(&sb, "[%s, #%d]", x_reg(loc.pointer.reg), loc.pointer.offset);
+        break;
+    case VLK_REGISTER:
+        sb_printf(&sb, "%s",
+            reg_with_width(loc.reg, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32));
+        break;
+    case VLK_REGISTER_RANGE:
+        sb_printf(&sb, "%s-%s",
+            reg_with_width(loc.range.start, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32),
+            reg_with_width(loc.range.end, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32));
+        break;
+    case VLK_STACK:
+        sb_printf(&sb, "[SP, #%ld]", loc.offset);
+        break;
+    case VLK_SYMBOL:
+        sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
+        break;
+    default:
+        UNREACHABLE();
+    }
+    sb_printf(&sb, " (%.*s, %zu)", SV_ARG(typeid_name(loc.type)), typeid_sizeof(loc.type));
+    return sb.view;
 }
 
 ErrorOrInt output_arm64(IRProgram *program)

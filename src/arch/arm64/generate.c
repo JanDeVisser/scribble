@@ -127,27 +127,103 @@ void generate_native(ARM64Context *ctx, ARM64Function *arm_function)
 
 void generate_CALL(ARM64Context *ctx, IROperation *op)
 {
-    ARM64Function *arm_function = arm64context_function_by_name(ctx, op->sv);
-    assert(arm_function);
-    IRFunction *function = arm_function->function;
+    ARM64Function *func = arm64context_function_by_name(ctx, op->sv);
+    assert(func);
+    IRFunction *function = func->function;
 
-    int target = 0;
-    for (size_t ix = 0; ix < arm_function->num_parameters; ++ix) {
-        ARM64Variable *var_decl = arm_function->parameters + ix;
-        target = arm64context_pop_value(ctx, var_decl->var_decl.type.type_id, target);
+    if (func->nsaa > 0) {
+        assembly_add_instruction(ctx->assembly, "sub", "sp,sp,#%d", func->nsaa);
+    }
+    for (size_t ix = 0; ix < func->num_parameters; ++ix) {
+        ARM64Variable *param = func->parameters + ix;
+        assert(param->kind == VK_PARAMETER);
+        type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
+        MUST_OPTIONAL(ValueLocation, arg_location, arm64context_pop_location(ctx))
+        assembly_add_comment(ctx->assembly, "Marshalling argument %.*s: %.*s from %.*s",
+            SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
+            SV_ARG(value_location_to_string(arg_location, ctx->allocator)));
+        switch (param->parameter.method) {
+        case PPM_REGISTER: {
+            ValueLocation param_location = {
+                .type = type,
+                .kind = VLK_REGISTER,
+                .reg = param->parameter.reg,
+            };
+            assembly_copy(ctx->assembly, param_location, arg_location);
+        } break;
+        case PPM_STACK: {
+            ValueLocation param_location = {
+                .type = type,
+                .kind = VLK_STACK,
+                .offset = param->parameter.nsaa_offset,
+            };
+            assembly_copy(ctx->assembly, param_location, arg_location);
+        } break;
+        case PPM_POINTER: {
+            switch (arg_location.kind) {
+            case VLK_POINTER:
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                    x_reg(param->parameter.reg), x_reg(arg_location.pointer.reg), arg_location.pointer.offset);
+                break;
+            case VLK_STACK:
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                    x_reg(param->parameter.reg), x_reg(REG_SP), arg_location.offset);
+                break;
+            case VLK_SYMBOL:
+                assembly_add_instruction(ctx->assembly, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                break;
+            default:
+                UNREACHABLE();
+            }
+        } break;
+        case PPM_POINTER_STACK: {
+            Register r = assembly_allocate_register(ctx->assembly);
+            switch (arg_location.kind) {
+            case VLK_POINTER:
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                    x_reg(param->parameter.reg), x_reg(arg_location.pointer.reg), arg_location.pointer.offset);
+                break;
+            case VLK_STACK:
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%#ld",
+                    x_reg(param->parameter.reg), reg(REG_SP), arg_location.offset);
+                break;
+            case VLK_SYMBOL:
+                assembly_add_instruction(ctx->assembly, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                assembly_add_instruction(ctx->assembly, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                break;
+            default:
+                UNREACHABLE();
+            }
+            assembly_add_instruction(ctx->assembly, "str", "%s,[sp,#%d]", x_reg(param->parameter.reg), param->parameter.nsaa_offset);
+            assembly_release_register(ctx->assembly, r);
+        } break;
+        }
     }
     switch (function->kind) {
     case FK_SCRIBBLE:
     case FK_NATIVE:
-        assembly_add_instruction(ctx->assembly, "bl", "%.*s", SV_ARG(arm64function_label(arm_function)));
+        assembly_add_instruction(ctx->assembly, "bl", "%.*s", SV_ARG(arm64function_label(func)));
         break;
     case FK_INTRINSIC:
-        generate_intrinsic_call(ctx, arm_function);
+        generate_intrinsic_call(ctx, func);
         break;
     default:
         UNREACHABLE();
     }
-    assembly_push(ctx->assembly, "x0");
+    ValueLocation x0 = {
+        .type = function->type.type_id,
+        .kind = VLK_REGISTER,
+        .reg = REG_X0,
+    };
+    Register      r = assembly_allocate_register(ctx->assembly);
+    ValueLocation target = {
+        .type = function->type.type_id,
+        .kind = VLK_REGISTER,
+        .reg = r,
+    };
+    assembly_copy(ctx->assembly, target, x0);
+    arm64context_push_location(ctx, target);
 }
 
 void generate_DECL_VAR(ARM64Context *ctx, IROperation *op)
@@ -177,14 +253,14 @@ void generate_JUMP(ARM64Context *ctx, IROperation *op)
 
 void generate_JUMP_F(ARM64Context *ctx, IROperation *op)
 {
-    assembly_pop(ctx->assembly, "x0");
-    assembly_add_instruction(ctx->assembly, "cbz", "x0,%.*s_%zu", SV_ARG(ctx->function->function->name), op->label);
+    MUST_OPTIONAL(ValueLocation, location, arm64context_pop_location(ctx));
+    assembly_add_instruction(ctx->assembly, "cbz", "%s,%.*s_%zu", reg(location.reg), SV_ARG(ctx->function->function->name), op->label);
 }
 
 void generate_JUMP_T(ARM64Context *ctx, IROperation *op)
 {
-    assembly_pop(ctx->assembly, "x0");
-    assembly_add_instruction(ctx->assembly, "cbnz", "x0,%.*s_%zu", SV_ARG(ctx->function->function->name), op->label);
+    MUST_OPTIONAL(ValueLocation, location, arm64context_pop_location(ctx));
+    assembly_add_instruction(ctx->assembly, "cbnz", "%s,%.*s_%zu", reg(location.reg), SV_ARG(ctx->function->function->name), op->label);
 }
 
 void generate_LABEL(ARM64Context *ctx, IROperation *op)
@@ -198,26 +274,27 @@ void generate_NEW_DATUM(ARM64Context *ctx, IROperation *op)
 
 void generate_OPERATOR(ARM64Context *ctx, IROperation *op)
 {
-    arm64context_pop_value(ctx, op->operator.lhs, 0);
-    arm64context_pop_value(ctx, op->operator.rhs, 1);
+    MUST_OPTIONAL(ValueLocation, lhs, arm64context_pop_location(ctx));
+    MUST_OPTIONAL(ValueLocation, rhs, arm64context_pop_location(ctx));
+    Register result = assembly_allocate_register(ctx->assembly);
     switch (op->operator.op) {
     case OP_ADD:
-        assembly_add_instruction(ctx->assembly, "add", "w0,w0,w1");
+        assembly_add_instruction(ctx->assembly, "add", "%s,%s,%s", w_reg(result), w_reg(lhs.reg), w_reg(rhs.reg));
         break;
     case OP_MULTIPLY:
-        assembly_add_instruction(ctx->assembly, "mul", "x0,x0,x1");
+        assembly_add_instruction(ctx->assembly, "mul", "%s,%s,%s", w_reg(result), w_reg(lhs.reg), w_reg(rhs.reg));
         break;
     default:
         NYI("Operator %s", Operator_name(op->operator.op));
     }
-    assembly_push(ctx->assembly, "x0");
+    arm64context_push_register(ctx, I32_ID, result);
 }
 
 void generate_POP_VAR(ARM64Context *ctx, IROperation *op)
 {
+    MUST_OPTIONAL(ValueLocation, location, arm64context_pop_location(ctx));
     ARM64Variable *var = arm64function_variable_by_name(ctx->function, op->sv);
-    arm64context_pop_value(ctx, var->var_decl.type.type_id, 0);
-    arm64variable_store_variable(var, ctx, 0);
+    arm64variable_store_variable(var, ctx, location);
 }
 
 void generate_POP_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
@@ -226,8 +303,9 @@ void generate_POP_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
 
 void generate_PUSH_BOOL_CONSTANT(ARM64Context *ctx, IROperation *op)
 {
-    assembly_add_instruction(ctx->assembly, "mov", "w0,#%d", (op->bool_value) ? 1 : 0);
-    assembly_push(ctx->assembly, "x0");
+    Register r = assembly_allocate_register(ctx->assembly);
+    assembly_add_instruction(ctx->assembly, "mov", "%s,#%d", w_reg(r), (op->bool_value) ? 1 : 0);
+    arm64context_push_register(ctx, BOOL_ID, r);
 }
 
 void generate_PUSH_FLOAT_CONSTANT(ARM64Context *ctx, IROperation *op)
@@ -236,13 +314,14 @@ void generate_PUSH_FLOAT_CONSTANT(ARM64Context *ctx, IROperation *op)
 
 void generate_PUSH_INT_CONSTANT(ARM64Context *ctx, IROperation *op)
 {
-    char reg_width = (BuiltinType_width(op->integer.type) < 64) ? 'w' : 'x';
+    Register      r = assembly_allocate_register(ctx->assembly);
+    RegisterWidth w = (BuiltinType_width(op->integer.type) < 64) ? RW_32 : RW_64;
     if (BuiltinType_is_unsigned(op->integer.type)) {
-        assembly_add_instruction(ctx->assembly, "mov", "%c0,#%zu", reg_width, op->integer.value.unsigned_value);
+        assembly_add_instruction(ctx->assembly, "mov", "%s,#%zu", reg_with_width(r, w), op->integer.value.unsigned_value);
     } else {
-        assembly_add_instruction(ctx->assembly, "mov", "%c0,#%ld", reg_width, op->integer.value.signed_value);
+        assembly_add_instruction(ctx->assembly, "mov", "%s,#%ld", reg_with_width(r, w), op->integer.value.signed_value);
     }
-    arm64context_push_value(ctx, type_registry_id_of_builtin_type(op->integer.type), 0);
+    arm64context_push_register(ctx, type_registry_id_of_builtin_type(op->integer.type), r);
 }
 
 void generate_PUSH_STRING_CONSTANT(ARM64Context *ctx, IROperation *op)
@@ -250,14 +329,20 @@ void generate_PUSH_STRING_CONSTANT(ARM64Context *ctx, IROperation *op)
     size_t str_id = assembly_add_string(ctx->assembly, op->sv);
     assembly_add_instruction(ctx->assembly, "adr", "x0,str_%zu", str_id);
     assembly_add_instruction(ctx->assembly, "mov", "x1,#%zu", op->sv.length);
-    arm64context_push_value(ctx, STRING_ID, 0);
+    // arm64context_push_value(ctx, STRING_ID, 0);
 }
 
 void generate_PUSH_VAR(ARM64Context *ctx, IROperation *op)
 {
+    Register       r = assembly_allocate_register(ctx->assembly);
     ARM64Variable *var = arm64function_variable_by_name(ctx->function, op->sv);
-    arm64variable_load_variable(var, ctx, 0);
-    arm64context_push_value(ctx, var->var_decl.type.type_id, 0);
+    ValueLocation  location = {
+         .type = var->var_decl.type.type_id,
+         .kind = VLK_REGISTER,
+         .reg = r,
+    };
+    arm64variable_load_variable(var, ctx, location);
+    arm64context_push_location(ctx, location);
 }
 
 void generate_PUSH_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
@@ -266,6 +351,13 @@ void generate_PUSH_VAR_COMPONENT(ARM64Context *ctx, IROperation *op)
 
 void generate_RETURN(ARM64Context *ctx, IROperation *op)
 {
+    MUST_OPTIONAL(ValueLocation, expr, arm64context_pop_location(ctx))
+    ValueLocation x0 = {
+        .type = ctx->function->function->type.type_id,
+        .kind = VLK_REGISTER,
+        .reg = REG_X0,
+    };
+    assembly_copy(ctx->assembly, x0, expr);
     arm64context_function_return(ctx);
 }
 
@@ -281,15 +373,19 @@ void generate_code(ARM64Context *ctx, ARM64Function *arm_function)
 {
     IRFunction *function = arm_function->function;
     assert(function->kind == FK_SCRIBBLE);
+    trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
     arm64context_enter_function(ctx, arm_function);
     for (size_t ix = 0; ix < function->scribble.num_operations; ++ix) {
         IROperation *op = function->scribble.operations + ix;
+        StringView   op_str = ir_operation_to_string(op, ctx->allocator);
+        trace(CAT_COMPILE, "%.*s", SV_ARG(op_str));
+        assembly_add_comment(ctx->assembly, "%.*s", SV_ARG(op_str));
         switch (op->operation) {
 #undef IR_OPERATION_TYPE
-#define IR_OPERATION_TYPE(t)                                   \
-    case IR_##t:                                               \
-        generate_##t(ctx, function->scribble.operations + ix); \
-        break;
+#define IR_OPERATION_TYPE(t)   \
+    case IR_##t: {             \
+        generate_##t(ctx, op); \
+    } break;
             IR_OPERATION_TYPES(IR_OPERATION_TYPE)
 #undef IR_OPERATION_TYPE
         default:
@@ -309,8 +405,8 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
     size_t offset = 0;
     if (arm_function->num_parameters) {
         arm_function->parameters = allocator_alloc_array(ctx->allocator, ARM64Variable, function->num_parameters);
-        size_t         ngrn = 0;
-        size_t         nsrn = 0;
+        Register       ngrn = REG_X0;
+        Register       nsrn = REG_V0;
         ARM64Variable *prev = NULL;
         for (size_t ix = 0; ix < function->num_parameters; ++ix) {
             ARM64Variable *arm_param = arm_function->parameters + ix;
@@ -321,43 +417,49 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
                 prev->next = arm_param;
             }
             prev = arm_param;
-            size_t sz = typeid_sizeof(ir_param->type.type_id);
-            offset += sz;
-            if (offset % 16)
-                offset += 16 - (offset % 16);
+            size_t sz = align_at(typeid_sizeof(ir_param->type.type_id), 8);
+            offset = align_at(offset + sz, 16);
             arm_param->parameter.offset = offset;
             type_id type = typeid_canonical_type_id(ir_param->type.type_id);
             switch (typeid_kind(type)) {
             case TK_PRIMITIVE: {
-                if (ngrn < 8) {
+                if (type == FLOAT_ID && nsrn < REG_V8) {
                     arm_param->parameter.method = PPM_REGISTER;
-                    arm_param->parameter.where = (type != FLOAT_ID) ? ngrn++ : nsrn++;
+                    arm_param->parameter.reg = nsrn++;
                     break;
                 }
-                arm_function->scribble.nsaa += sz;
+                if (type != FLOAT_ID && ngrn < REG_X8) {
+                    arm_param->parameter.method = PPM_REGISTER;
+                    arm_param->parameter.reg = ngrn++;
+                    break;
+                }
                 arm_param->parameter.method = PPM_STACK;
-                arm_param->parameter.where = arm_function->scribble.nsaa;
+                arm_param->parameter.nsaa_offset = arm_function->nsaa;
+                arm_function->nsaa += sz;
             } break;
             case TK_AGGREGATE: {
-                size_t size_in_double_words = typeid_sizeof(type) / 8;
-                if (sz % 8) {
-                    size_in_double_words++;
-                }
-                if (ngrn + size_in_double_words <= 8) {
+                size_t size_in_double_words = align_at(typeid_sizeof(type), 8);
+                if ((size_in_double_words <= 2) && (ngrn + size_in_double_words < REG_X8)) {
                     arm_param->parameter.method = PPM_REGISTER;
-                    arm_param->parameter.where = ngrn;
+                    arm_param->parameter.reg = ngrn;
                     ngrn += size_in_double_words;
                     break;
                 }
-                arm_function->scribble.nsaa += sz;
-                arm_param->parameter.method = PPM_STACK;
-                arm_param->parameter.where = arm_function->scribble.nsaa;
+                if (ngrn < 8) {
+                    arm_param->parameter.method = PPM_POINTER;
+                    arm_param->parameter.reg = ngrn++;
+                } else {
+                    arm_param->parameter.method = PPM_POINTER_STACK;
+                    arm_param->parameter.nsaa_offset = arm_function->nsaa;
+                    arm_function->nsaa += align_at(typeid_sizeof(PCHAR_ID), 8);
+                }
             } break;
             default:
                 NYI("generate arm function parameter for type kind '%s'", TypeKind_name(typeid_kind(type)));
             }
         }
     }
+
     arm_function->scribble.stack_depth = offset;
     if (function->kind == FK_SCRIBBLE) {
         arm_function->scribble.scope = allocator_alloc_new(ctx->allocator, ARM64Scope);
@@ -366,7 +468,7 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
         // Parameters are accessible in two ways:
         // - As an _array_ of ARM64Variables through ARM64Function.parameters
         // - As elements of a _linked list_ of ARM64Variables in the scope
-        // The linked list elements and array elementsare the same memory
+        // The linked list elements and array elements are the same memory
         // objects!
         scope->variables = arm_function->parameters;
         scope->depth = offset;
@@ -379,10 +481,7 @@ void generate_function_declaration(ARM64Context *ctx, size_t fnc_ix)
                 variable->kind = VK_LOCAL;
                 variable->next = scope->variables;
                 scope->variables = variable;
-                scope->depth += typeid_sizeof(variable->var_decl.type.type_id);
-                if (scope->depth % 16) {
-                    scope->depth += 16 - scope->depth % 16;
-                }
+                scope->depth = align_at(scope->depth + typeid_sizeof(variable->var_decl.type.type_id), 16);
                 variable->local_address.offset = scope->depth;
             } break;
             case IR_SCOPE_BEGIN: {

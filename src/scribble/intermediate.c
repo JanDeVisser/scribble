@@ -635,60 +635,73 @@ void ir_var_decl_print(IRVarDecl *var)
     release_allocator(as);
 }
 
-void ir_operation_print_prefix(IROperation *op, char const *prefix)
+static StringView _ir_operation_to_string(IROperation *op, char const *prefix, Allocator *allocator)
 {
-    printf("%1.1s %4zu %-20.20s  ", prefix, op->index, ir_operation_type_name(op->operation));
+    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    sb_printf(&sb, "%1.1s %4zu %-20.20s  ", prefix, op->index, ir_operation_type_name(op->operation));
     switch (op->operation) {
     case IR_CALL:
     case IR_POP_VAR:
     case IR_PUSH_VAR:
     case IR_PUSH_STRING_CONSTANT:
-        printf(SV_SPEC, SV_ARG(op->sv));
+        sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
         break;
     case IR_POP_VAR_COMPONENT:
     case IR_PUSH_VAR_COMPONENT:
-        printf(SV_SPEC ".%zu", SV_ARG(op->var_component.name), op->var_component.component);
+        sb_printf(&sb, SV_SPEC ".%zu", SV_ARG(op->var_component.name), op->var_component.component);
         break;
     case IR_DECL_VAR:
-        ir_var_decl_print(&op->var_decl);
+        sb_printf(&sb, "%.*s", SV_ARG(ir_var_decl_to_string(&op->var_decl, allocator)));
         break;
     case IR_PUSH_BOOL_CONSTANT:
-        printf("%s", (op->bool_value) ? "true" : "false");
+        sb_printf(&sb, "%s", (op->bool_value) ? "true" : "false");
         break;
     case IR_PUSH_FLOAT_CONSTANT:
-        printf("%f", op->double_value);
+        sb_printf(&sb, "%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
         if (BuiltinType_is_unsigned(op->integer.type)) {
-            printf("%" PRIu64 " [0x%08" PRIx64 "]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
+            sb_printf(&sb, "%" PRIu64 " [0x%08" PRIx64 "]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
         } else {
-            printf("%" PRIi64, op->integer.value.signed_value);
+            sb_printf(&sb, "%" PRIi64, op->integer.value.signed_value);
         }
         break;
     case IR_JUMP:
     case IR_JUMP_F:
     case IR_JUMP_T:
     case IR_LABEL:
-        printf("lbl_%zu", op->label);
+        sb_printf(&sb, "lbl_%zu", op->label);
         break;
     case IR_NEW_DATUM:
-        printf(SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
+        sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
         break;
     case IR_OPERATOR:
-        printf("%s(%.*s, %.*s)", Operator_name(op->operator.op), SV_ARG(typeid_name(op->operator.lhs)), SV_ARG(typeid_name(op->operator.rhs)));
+        sb_printf(&sb, "%s(%.*s, %.*s)", Operator_name(op->operator.op), SV_ARG(typeid_name(op->operator.lhs)), SV_ARG(typeid_name(op->operator.rhs)));
         break;
     case IR_RETURN:
-        printf("%s", (op->bool_value) ? "true" : "false");
+        sb_printf(&sb, "%s", (op->bool_value) ? "true" : "false");
         break;
     default:
         break;
     }
-    printf("\n");
+    return sb.view;
+}
+
+StringView ir_operation_to_string(IROperation *op, Allocator *allocator)
+{
+    return _ir_operation_to_string(op, "", allocator);
+}
+
+void ir_operation_print_prefix(IROperation *op, char const *prefix)
+{
+    StringView s = _ir_operation_to_string(op, prefix, get_allocator());
+    printf(SV_SPEC "\n", SV_ARG(s));
 }
 
 void ir_operation_print(IROperation *op)
 {
-    ir_operation_print_prefix(op, " ");
+    StringView s = _ir_operation_to_string(op, " ", get_allocator());
+    printf(SV_SPEC "\n", SV_ARG(s));
 }
 
 size_t ir_function_resolve_label(IRFunction *function, size_t label)

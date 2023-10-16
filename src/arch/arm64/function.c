@@ -7,7 +7,7 @@
 #include <arm64.h>
 #include <hash.h>
 
-ARM64Function *arm64function_acreate(Allocator *allocator, IRFunction *function, size_t nsaa, size_t stack_depth)
+ARM64Function *arm64function_acreate(Allocator *allocator, IRFunction *function, int64_t nsaa, int64_t stack_depth)
 {
     ARM64Function *ret = allocator_alloc_new(allocator, ARM64Function);
     ret->allocator = allocator;
@@ -17,34 +17,47 @@ ARM64Function *arm64function_acreate(Allocator *allocator, IRFunction *function,
     ret->scribble.stack_depth = stack_depth;
     if (nsaa % 16)
         nsaa += 16 - (nsaa % 16);
-    ret->scribble.nsaa = nsaa;
+    ret->nsaa = nsaa;
     return ret;
 }
 
 StringView arm64variable_to_string(ARM64Variable *var, Allocator *allocator)
 {
+    StringBuilder sb = sb_acreate(allocator);
+    sb_printf(&sb, "%s %.*s : %.*s, %zu ",
+        VariableKind_name(var->kind), SV_ARG(var->var_decl.name),
+        SV_ARG(typeid_name(var->var_decl.type.type_id)), typeid_sizeof(var->var_decl.type.type_id));
     switch (var->kind) {
     case VK_PARAMETER:
-        return sv_aprintf(allocator, "%.*s : %.*s (%s) %d => %d",
-            SV_ARG(var->var_decl.name),
-            SV_ARG(typeid_name(var->var_decl.type.type_id)),
-            var->parameter.where,
-            ParameterPassingMethod_name(var->parameter.method),
-            var->parameter.offset);
+        sb_printf(&sb, "@%ld, method %s: ", var->parameter.offset, ParameterPassingMethod_name(var->parameter.method));
+        switch (var->parameter.method) {
+        case PPM_REGISTER:
+            sb_printf(&sb, "%s", reg(var->parameter.reg));
+            break;
+        case PPM_STACK:
+            sb_printf(&sb, "[SP,%ld]", var->parameter.nsaa_offset);
+            break;
+        case PPM_POINTER:
+            sb_printf(&sb, "[%s]", x_reg(var->parameter.reg));
+            break;
+        case PPM_POINTER_STACK:
+            sb_printf(&sb, "[SP,%ld]", var->parameter.nsaa_offset);
+            break;
+        default:
+            UNREACHABLE();
+        }
+        break;
     case VK_LOCAL:
-        return sv_aprintf(allocator, "%.*s : %.*s => %d",
-            SV_ARG(var->var_decl.name),
-            SV_ARG(typeid_name(var->var_decl.type.type_id)),
-            var->parameter.offset);
+        sb_printf(&sb, "@%ld", var->local_address.offset);
+        break;
     case VK_GLOBAL:
     case VK_STATIC:
-        return sv_aprintf(allocator, "%.*s : %.*s => %.*s",
-            SV_ARG(var->var_decl.name),
-            SV_ARG(typeid_name(var->var_decl.type.type_id)),
-            SV_ARG(var->static_address.label));
+        sb_printf(&sb, "@%.*s", SV_ARG(var->static_address.label));
+        break;
     default:
         UNREACHABLE();
     }
+    return sb.view;
 }
 
 StringView arm64function_label(ARM64Function *function)
@@ -66,10 +79,10 @@ StringView arm64function_to_string(ARM64Function *function)
         ARM64Variable *param = function->parameters + ix;
         sl_push(&params, ir_var_decl_to_string(&param->var_decl, function->allocator));
     }
-    return sv_aprintf(function->allocator, "func %.*s(%.*s): %.*s [%d/%d]",
+    return sv_aprintf(function->allocator, "func %.*s(%.*s): %.*s [%ld/%ld]",
         SV_ARG(function->function->name), SV_ARG(sl_join(&params, sv_from(", "))),
         SV_ARG(typespec_to_string(function->function->type, function->allocator)),
-        function->scribble.nsaa, function->scribble.stack_depth);
+        function->nsaa, function->scribble.stack_depth);
 }
 
 ARM64Variable *arm64function_variable_by_name(ARM64Function *function, StringView name)

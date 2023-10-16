@@ -106,6 +106,7 @@ typedef struct ir_program {
 } IRProgram;
 
 extern char const *ir_operation_type_name(IROperationType optype);
+extern StringView  ir_operation_to_string(IROperation *op, Allocator *allocator);
 extern void        ir_operation_print_prefix(IROperation *op, char const *prefix);
 extern void        ir_operation_print(IROperation *op);
 extern StringView  ir_var_decl_to_string(IRVarDecl *var, Allocator *allocator);
