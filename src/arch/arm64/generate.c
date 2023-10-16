@@ -216,6 +216,9 @@ void generate_CALL(ARM64Context *ctx, IROperation *op)
         .kind = VLK_REGISTER,
         .reg = REG_X0,
     };
+    if (op->call.discard_result) {
+        return;
+    }
     Register      r = assembly_allocate_register(ctx->assembly);
     ValueLocation target = {
         .type = function->type.type_id,

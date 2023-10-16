@@ -598,7 +598,7 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
             ret->assignment.expression = expression;
         } break;
         case '(': {
-            ret = syntax_node_make(SNT_FUNCTION_CALL, name, token);
+            ret = syntax_node_make(SNT_PROCEDURE_CALL, name, token);
             parse_arguments(ctx, ret, '(', ')');
         } break;
         case ':': {

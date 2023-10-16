@@ -61,6 +61,10 @@ typedef struct ir_operation {
         StringView sv;
         IRVarDecl  var_decl;
         struct {
+            StringView name;
+            bool       discard_result;
+        } call;
+        struct {
             Operator op;
             type_id  lhs;
             type_id  rhs;

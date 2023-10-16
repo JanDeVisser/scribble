@@ -116,6 +116,7 @@ typedef struct bound_node {
         struct {
             struct bound_node *function;
             struct bound_node *argument;
+            bool               discard_result;
         } call;
         struct {
             struct bound_node *argument;

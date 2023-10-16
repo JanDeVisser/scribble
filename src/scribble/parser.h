@@ -63,7 +63,7 @@ typedef enum {
 } Operator;
 
 typedef struct operator_mapping {
-    Operator  operator;
+    Operator operator;
     bool      binary;
     TokenKind token_kind;
     TokenCode token_code;
@@ -91,6 +91,7 @@ typedef struct operator_mapping {
     S(NAME)                 \
     S(NATIVE_FUNCTION)      \
     S(PARAMETER)            \
+    S(PROCEDURE_CALL)       \
     S(PROGRAM)              \
     S(RETURN)               \
     S(STRING)               \
@@ -139,14 +140,14 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *lhs;
             struct syntax_node *rhs;
-            Operator            operator;
+            Operator operator;
         } binary_expr;
         struct {
             struct syntax_node *argument;
         } arguments;
         struct {
             struct syntax_node *expression;
-            Operator            operator;
+            Operator operator;
         } assignment;
         struct {
             struct syntax_node *condition;

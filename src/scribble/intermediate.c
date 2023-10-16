@@ -299,7 +299,8 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
     }
     IROperation op;
     op.operation = IR_CALL;
-    op.sv = node->name;
+    op.call.name = node->name;
+    op.call.discard_result = node->call.discard_result;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -641,6 +642,8 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix, A
     sb_printf(&sb, "%1.1s %4zu %-20.20s  ", prefix, op->index, ir_operation_type_name(op->operation));
     switch (op->operation) {
     case IR_CALL:
+        sb_printf(&sb, SV_SPEC, SV_ARG(op->call.name));
+        break;
     case IR_POP_VAR:
     case IR_PUSH_VAR:
     case IR_PUSH_STRING_CONSTANT:

@@ -350,6 +350,7 @@ BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
     ret->name = stmt->name;
     ret->call.function = fnc;
+    ret->call.discard_result = false;
     ret->typespec = fnc->typespec;
     bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
     return ret;
@@ -437,6 +438,22 @@ BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     ret->name = stmt->name;
     ret->typespec = param_type;
     ret->variable_decl.init_expr = NULL;
+    return ret;
+}
+
+BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
+    if (!fnc) {
+        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
+    ret->name = stmt->name;
+    ret->call.function = fnc;
+    ret->call.discard_result = true;
+    ret->typespec = fnc->typespec;
+    bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
     return ret;
 }
 
