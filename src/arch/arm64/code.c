@@ -11,13 +11,13 @@
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
-Code *code_acreate(Assembly *assembly)
+Code *code_create(ARM64Function *function)
 {
-    Code *ret = allocator_alloc_new(assembly->allocator, Code);
-    ret->assembly = assembly;
-    ret->prolog = sb_acreate(assembly->allocator);
-    ret->code = sb_acreate(assembly->allocator);
-    ret->epilog = sb_acreate(assembly->allocator);
+    Code *ret = allocate_new(Code);
+    ret->function = function;
+    ret->prolog = sb_acreate(get_allocator());
+    ret->code = sb_acreate(get_allocator());
+    ret->epilog = sb_acreate(get_allocator());
     code_select_code(ret);
     return ret;
 }
@@ -32,7 +32,7 @@ void code_add_instruction(Code *code, char const *opcode, char const *arg_fmt, .
 
 void code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, va_list args)
 {
-    StringView opcode_sv = sv_aprintf(code->assembly->allocator, "\t%s\t%s", opcode, arg_fmt);
+    StringView opcode_sv = sv_aprintf(get_allocator(), "\t%s\t%s", opcode, arg_fmt);
     assert(sv_is_cstr(opcode_sv));
     code_vadd_text(code, opcode_sv.ptr, args);
 }
@@ -49,13 +49,13 @@ void code_vadd_text(Code *code, char const *text, va_list args)
 {
     StringView txt = sv_from(text);
     if (strchr(text, '%')) {
-        txt = sv_avprintf(code->assembly->allocator, text, args);
+        txt = sv_avprintf(get_allocator(), text, args);
     }
     txt = sv_strip(txt);
     if (sv_empty(txt)) {
         return;
     }
-    StringList lines = sv_asplit(code->assembly->allocator, txt, sv_from("\n"));
+    StringList lines = sv_asplit(get_allocator(), txt, sv_from("\n"));
     for (size_t ix = 0; ix < lines.size; ++ix) {
         StringView line = lines.strings[ix];
         if (sv_empty(line)) {
@@ -70,7 +70,7 @@ void code_vadd_text(Code *code, char const *text, va_list args)
             sb_printf(code->active, "%.*s\n", SV_ARG(line));
             continue;
         }
-        StringList parts = sv_asplit_by_whitespace(code->assembly->allocator, line);
+        StringList parts = sv_asplit_by_whitespace(get_allocator(), line);
         if (parts.size > 0) {
             StringView l = sl_join(&parts, sv_from("\t"));
             sb_printf(code->active, "\t%.*s\n", SV_ARG(l));
@@ -83,12 +83,27 @@ void code_add_label(Code *code, StringView label)
     sb_printf(code->active, "%.*s:\n", SV_ARG(label));
 }
 
-void code_add_directive(Code *code, StringView directive, StringView args)
+void code_add_directive(Code *code, char const *directive, char const *args)
 {
-    if (sv_eq_cstr(directive, ".global")) {
-        code->assembly->has_exports = true;
+    assert(directive && *directive);
+    if (*directive == '.') {
+        ++directive;
+        assert(*directive);
     }
-    sb_printf(code->active, "%.*s\t%.*s\n", SV_ARG(directive), SV_ARG(args));
+    sb_printf(code->active, ".%s\t%s\n", directive, args);
+}
+
+void code_add_export(Code *code, StringView function_name)
+{
+    if (code->function) {
+        code->function->assembly->has_exports = true;
+    }
+    code_add_directive(code, ".global", sv_cstr(function_name));
+}
+
+void code_add_import(Code *code, StringView function_name)
+{
+    code_add_directive(code, ".global", sv_cstr(function_name));
 }
 
 void code_add_comment(Code *code, char const *text, ...)
@@ -101,8 +116,8 @@ void code_add_comment(Code *code, char const *text, ...)
 
 void code_vadd_comment(Code *code, char const *fmt, va_list args)
 {
-    StringView comment = sv_avprintf(code->assembly->allocator, fmt, args);
-    StringList sl = sv_asplit(code->assembly->allocator, comment, sv_from("\n"));
+    StringView comment = sv_avprintf(get_allocator(), fmt, args);
+    StringList sl = sv_asplit(get_allocator(), comment, sv_from("\n"));
     for (size_t ix = 0; ix < sl.size; ++ix) {
         sb_printf(code->active, "\t// %.*s\n", SV_ARG(sl.strings[ix]));
     }
@@ -115,7 +130,7 @@ void code_append_code(Code *code, Code *append)
 
 StringView code_to_string(Code *code)
 {
-    StringBuilder ret = sb_acreate(code->assembly->allocator);
+    StringBuilder ret = sb_acreate(get_allocator());
     if (!sv_empty(code->prolog.view)) {
         sb_append_sv(&ret, code->prolog.view);
         sb_append_cstr(&ret, "\n");
@@ -141,7 +156,7 @@ bool code_has_text(Code *code)
 void code_close_function(Code *code, StringView name, size_t stack_depth)
 {
     code_select_prolog(code);
-    code_add_directive(code, sv_from(".global"), name);
+    code_add_directive(code, ".global", sv_cstr(name));
     code_add_label(code, name);
     code_add_instruction(code, "stp", "fp,lr,[sp,#-16]!");
     if (stack_depth > 0) {
@@ -151,7 +166,7 @@ void code_close_function(Code *code, StringView name, size_t stack_depth)
     Register regs[2];
     int      r = 0;
     for (int ix = 0; ix < (int) REG_FP - (int) REG_X19; ++ix) {
-        if (code->assembly->callee_saved[ix]) {
+        if (code->function->scribble.callee_saved[ix]) {
             regs[r] = REG_X19 + ix;
             r = 1 - r;
             if (r == 0) {
@@ -164,10 +179,10 @@ void code_close_function(Code *code, StringView name, size_t stack_depth)
     }
 
     code_select_epilog(code);
-    code_add_label(code, sv_aprintf(code->assembly->allocator, "__%.*s__return", SV_ARG(name)));
+    code_add_label(code, sv_aprintf(get_allocator(), "__%.*s__return", SV_ARG(name)));
     r = 0;
     for (int ix = (int) REG_FP - (int) REG_X19 - 1; ix >= 0; --ix) {
-        if (code->assembly->callee_saved[ix]) {
+        if (code->function->scribble.callee_saved[ix]) {
             regs[r] = REG_X19 + ix;
             r = 1 - r;
             if (r == 0) {
@@ -204,8 +219,8 @@ void code_select_code(Code *code)
 
 void code_copy_pointers(Code *code, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size)
 {
-    Register t1 = assembly_allocate_register(code->assembly);
-    Register t2 = assembly_allocate_register(code->assembly);
+    Register t1 = arm64function_allocate_register(code->function);
+    Register t2 = arm64function_allocate_register(code->function);
     size_t   remaining = size;
     while (remaining >= 16) {
         code_add_instruction(code, "ldp", "%s,%s,[%s,#%zu]",
@@ -243,8 +258,8 @@ void code_copy_pointers(Code *code, Register to_pointer, size_t to_offset, Regis
         remaining -= 1;
     }
     assert(!remaining);
-    assembly_release_register(code->assembly, t1);
-    assembly_release_register(code->assembly, t2);
+    arm64function_release_register(code->function, t1);
+    arm64function_release_register(code->function, t2);
 }
 
 void code_copy_to_registers(Code *code, Register r, Register from_pointer, size_t from_offset, size_t size)
@@ -301,8 +316,8 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);
     code_add_comment(code, "copy %.*s to %.*s",
-        SV_ARG(value_location_to_string(from_location, code->assembly->allocator)),
-        SV_ARG(value_location_to_string(to_location, code->assembly->allocator)));
+        SV_ARG(value_location_to_string(from_location, get_allocator())),
+        SV_ARG(value_location_to_string(to_location, get_allocator())));
     switch (to_location.kind) {
     case VLK_POINTER: {
         switch (from_location.kind) {
@@ -323,12 +338,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_pointers(code, to_location.pointer.reg, to_location.pointer.offset, REG_SP, from_location.offset, sz);
         } break;
         case VLK_SYMBOL: {
-            Register pointer = assembly_allocate_register(code->assembly);
+            Register pointer = arm64function_allocate_register(code->function);
             code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
             code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
                 x_reg(pointer), x_reg(pointer), SV_ARG(from_location.symbol));
             code_copy_pointers(code, to_location.pointer.reg, to_location.pointer.offset, pointer, 0, sz);
-            assembly_release_register(code->assembly, pointer);
+            arm64function_release_register(code->function, pointer);
         } break;
         default:
             UNREACHABLE();
@@ -359,12 +374,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 reg(from_location.pointer.reg), from_location.offset);
         } break;
         case VLK_SYMBOL: {
-            Register pointer = assembly_allocate_register(code->assembly);
+            Register pointer = arm64function_allocate_register(code->function);
             code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
             code_add_instruction(code, opcode_map.load_opcode, "%s,[%s,%.*s@PAGEOFF]",
                 reg_with_width(to_location.reg, opcode_map.reg_width),
                 x_reg(pointer), SV_ARG(from_location.symbol));
-            assembly_release_register(code->assembly, pointer);
+            arm64function_release_register(code->function, pointer);
         } break;
         default:
             UNREACHABLE();
@@ -394,12 +409,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_to_registers(code, to_location.range.start, REG_SP, from_location.offset, sz);
         } break;
         case VLK_SYMBOL: {
-            Register pointer = assembly_allocate_register(code->assembly);
+            Register pointer = arm64function_allocate_register(code->function);
             code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
             code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
                 x_reg(pointer), x_reg(pointer), SV_ARG(from_location.symbol));
             code_copy_to_registers(code, to_location.range.start, pointer, 0, sz);
-            assembly_release_register(code->assembly, pointer);
+            arm64function_release_register(code->function, pointer);
         } break;
         default:
             UNREACHABLE();
@@ -424,19 +439,19 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_pointers(code, REG_SP, to_location.offset, REG_SP, from_location.offset, sz);
         } break;
         case VLK_SYMBOL: {
-            Register pointer = assembly_allocate_register(code->assembly);
+            Register pointer = arm64function_allocate_register(code->function);
             code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
             code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
                 x_reg(pointer), x_reg(pointer), SV_ARG(from_location.symbol));
             code_copy_pointers(code, REG_SP, to_location.offset, pointer, 0, sz);
-            assembly_release_register(code->assembly, pointer);
+            arm64function_release_register(code->function, pointer);
         } break;
         default:
             UNREACHABLE();
         }
     } break;
     case VLK_SYMBOL: {
-        Register to_pointer = assembly_allocate_register(code->assembly);
+        Register to_pointer = arm64function_allocate_register(code->function);
         code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(to_pointer), SV_ARG(to_location.symbol));
         code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
             x_reg(to_pointer), x_reg(to_pointer), SV_ARG(to_location.symbol));
@@ -457,17 +472,17 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_pointers(code, to_pointer, 0, REG_SP, from_location.offset, sz);
         } break;
         case VLK_SYMBOL: {
-            Register from_pointer = assembly_allocate_register(code->assembly);
+            Register from_pointer = arm64function_allocate_register(code->function);
             code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(from_pointer), SV_ARG(from_location.symbol));
             code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
                 x_reg(from_pointer), x_reg(from_pointer), SV_ARG(from_location.symbol));
             code_copy_pointers(code, to_pointer, 0, from_pointer, 0, sz);
-            assembly_release_register(code->assembly, from_pointer);
+            arm64function_release_register(code->function, from_pointer);
         } break;
         default:
             UNREACHABLE();
         }
-        assembly_release_register(code->assembly, to_pointer);
+        arm64function_release_register(code->function, to_pointer);
     } break;
     default:
         UNREACHABLE();

@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include <binder.h>
+#include <da.h>
 #include <sv.h>
 #include <type.h>
 
@@ -76,6 +77,8 @@ typedef struct ir_operation {
     };
 } IROperation;
 
+DA(IROperation)
+
 typedef enum ir_function_kind {
     FK_SCRIBBLE = 0,
     FK_NATIVE,
@@ -83,30 +86,33 @@ typedef enum ir_function_kind {
 } IRFunctionKind;
 
 typedef struct ir_function {
-    struct ir_program *program;
-    IRFunctionKind     kind;
-    StringView         name;
-    size_t             num_parameters;
-    IRVarDecl         *parameters;
-    TypeSpec           type;
+    struct ir_module *module;
+    IRFunctionKind    kind;
+    StringView        name;
+    size_t            num_parameters;
+    IRVarDecl        *parameters;
+    TypeSpec          type;
     union {
-        struct {
-            size_t       cap_operations;
-            size_t       num_operations;
-            IROperation *operations;
-        } scribble;
-        StringView native_name;
-        Intrinsic  intrinsic;
+        DA_IROperation operations;
+        StringView     native_name;
+        Intrinsic      intrinsic;
     };
 } IRFunction;
 
+DA(IRFunction)
+
+typedef struct ir_module {
+    struct ir_program *program;
+    StringView         name;
+    int                $static;
+    DA_IRFunction      functions;
+} IRModule;
+
+DA(IRModule)
+
 typedef struct ir_program {
     StringView  name;
-    int         main;
-    int         $static;
-    size_t      cap_functions;
-    size_t      num_functions;
-    IRFunction *functions;
+    DA_IRModule modules;
 } IRProgram;
 
 extern char const *ir_operation_type_name(IROperationType optype);
@@ -119,6 +125,8 @@ extern void        ir_function_list(IRFunction *function, size_t mark);
 extern StringView  ir_function_to_string(IRFunction *function, Allocator *allocator);
 extern void        ir_function_print(IRFunction *function);
 extern size_t      ir_function_resolve_label(IRFunction *function, size_t label);
+extern void        ir_module_list(IRModule *module, bool header);
+extern IRFunction *ir_module_function_by_name(IRModule *module, StringView name);
 extern void        ir_program_list(IRProgram program);
 extern IRFunction *ir_program_function_by_name(IRProgram *program, StringView name);
 extern IRProgram   generate(BoundNode *program);

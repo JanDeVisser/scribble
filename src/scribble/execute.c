@@ -684,7 +684,7 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
             } else {
                 bp->index = 1;
                 if (sv_not_empty(bp_index)) {
-                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->scribble.num_operations) {
+                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->operations.num) {
                         printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
                         bp->function = NULL;
                     }
@@ -726,7 +726,7 @@ void debugger_help()
 
 bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
 {
-    ir_operation_print(function->scribble.operations + ix);
+    ir_operation_print(function->operations.elements + ix);
     while (true) {
         Command command = get_command();
         switch (command.command) {
@@ -846,11 +846,11 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         ir_function_print(function);
         printf("\n");
     }
-    while (ix < function->scribble.num_operations) {
-        ctx->index = function->scribble.operations[ix].index;
+    while (ix < function->operations.num) {
+        ctx->index = function->operations.elements[ix].index;
         if (ctx->execution_mode & (EM_RUN_TO_RETURN | EM_CONTINUE | EM_STEP_OVER)) {
             for (size_t bp = 0; bp < ctx->num_breakpoints; ++bp) {
-                if (function == ctx->breakpoints[bp].function && function->scribble.operations[ix].index == ctx->breakpoints[bp].index) {
+                if (function == ctx->breakpoints[bp].function && function->operations.elements[ix].index == ctx->breakpoints[bp].index) {
                     ctx->execution_mode = EM_SINGLE_STEP;
                 }
             }
@@ -865,9 +865,9 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             }
         }
         if (ctx->trace) {
-            ir_operation_print(function->scribble.operations + ix);
+            ir_operation_print(function->operations.elements + ix);
         }
-        switch (function->scribble.operations[ix].operation) {
+        switch (function->operations.elements[ix].operation) {
         case IR_SCOPE_BEGIN: {
             Scope *new_scope = allocate(sizeof(Scope));
             new_scope->enclosing = ctx->scope;
@@ -880,7 +880,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             ix += 1;
         } break;
         default: {
-            NextInstructionPointer pointer = execute_operation(ctx, function->scribble.operations + ix);
+            NextInstructionPointer pointer = execute_operation(ctx, function->operations.elements + ix);
             switch (pointer.type) {
             case NIT_RELATIVE:
                 ix += pointer.pointer;
@@ -892,7 +892,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ix = 0;
                 break;
             case NIT_RETURN:
-                ix = function->scribble.num_operations;
+                ix = function->operations.num;
                 if (ctx->execution_mode == EM_RUN_TO_RETURN) {
                     ctx->execution_mode = EM_SINGLE_STEP;
                 }
@@ -907,7 +907,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             case NIT_EXCEPTION:
                 printf("Exception caught: %s\n", pointer.exception);
                 printf("\nInstruction:\n");
-                ir_operation_print(function->scribble.operations + ix);
+                ir_operation_print(function->operations.elements + ix);
                 printf("\nCall stack:\n");
                 call_stack_dump(&ctx->call_stack);
                 if (ctx->stack.top) {
@@ -1080,7 +1080,8 @@ FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRFunction *intrinsic)
 
 int execute(IRProgram program /*, int argc, char **argv*/)
 {
-    assert(program.main >= 0);
+    IRFunction *main = ir_program_function_by_name(&program, sv_from("main"));
+    assert(main);
     Scope root_scope = { 0 };
     root_scope.program = &program;
     ExecutionContext ctx = { 0 };
@@ -1097,17 +1098,20 @@ int execute(IRProgram program /*, int argc, char **argv*/)
             set_breakpoint(&ctx, bp_function, bp_index);
         }
     }
-    if (program.$static >= 0) {
-        if (OPT_STATIC && OPT_DEBUG) {
-            ctx.execution_mode = EM_SINGLE_STEP;
+    for (size_t ix = 0; ix < program.modules.num; ++ix) {
+        IRModule *module = program.modules.elements + ix;
+        if (module->$static >= 0) {
+            if (OPT_STATIC && OPT_DEBUG) {
+                ctx.execution_mode = EM_SINGLE_STEP;
+            }
+            execute_function(&ctx, module->functions.elements + module->$static);
+            ctx.execution_mode = EM_RUN;
         }
-        execute_function(&ctx, (IRFunction *) (program.functions + program.$static));
-        ctx.execution_mode = EM_RUN;
     }
     if (OPT_DEBUG) {
         ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
     }
-    execute_function(&ctx, (IRFunction *) (program.functions + program.main));
+    execute_function(&ctx, main);
     Datum *d = datum_stack_pop(&ctx.stack);
     if (datum_is_integer(d)) {
         return (int) datum_signed_integer_value(d);

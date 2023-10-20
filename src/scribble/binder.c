@@ -130,6 +130,12 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
         }
     } break;
     case BNT_PROGRAM: {
+        for (BoundNode *module = node->program.modules; module; module = module->next) {
+            BoundNode *n = bound_node_find_here(module, type, name);
+            if (n) {
+                return n;
+            }
+        }
         if (type == BNT_FUNCTION) {
             for (BoundNode *n = node->program.intrinsics; n; n = n->next) {
                 assert(n->type == BNT_INTRINSIC);

@@ -88,9 +88,10 @@ StringView value_location_to_string(ValueLocation loc, Allocator *allocator)
 
 ErrorOrInt output_arm64(IRProgram *program)
 {
-    ARM64Context *ctx = generate_arm64(program, get_allocator());
+    ARM64Context *ctx = generate_arm64(program);
     Assembly     *main = NULL;
-    for (Assembly *assembly = ctx->assemblies; assembly; assembly = assembly->next) {
+    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+        Assembly *assembly = ctx->assemblies.elements + ix;
         if (assembly_has_main(assembly)) {
             main = assembly;
             break;
@@ -104,19 +105,32 @@ ErrorOrInt output_arm64(IRProgram *program)
         fatal("Could not create .scribble build directory");
     }
 
+#if 0
     assembly_new_function(main);
-    for (Assembly *assembly = ctx->assemblies; assembly; assembly = assembly->next) {
+    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+        Assembly *assembly = ctx->assemblies.elements + ix;
+        size_t      fnc_ix = da_append_ARM64Function(
+            &main->functions,
+            (ARM64Function) {
+                     .assembly = assembly,
+                     .function = function,
+                     .scope.kind = SK_FUNCTION,
+                     .scope.up = &assembly->scope,
+            });
+        ARM64Function *arm_function = assembly->functions.elements + fnc_ix;
         if (!assembly_has_static(assembly) || !assembly_has_exports(assembly)) {
             continue;
         }
         assembly_add_instruction(main, "bl", "static_%.*s", SV_ARG(assembly->name));
     }
     code_close_function(main->active, sv_from("static_initializer"), 0);
+#endif
 
     StringList modules = sl_acreate(get_allocator());
-    for (Assembly *assembly = ctx->assemblies; assembly; assembly = assembly->next) {
+    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+        Assembly *assembly = ctx->assemblies.elements + ix;
         if (assembly_has_exports(assembly)) {
-            StringView bare_file_name = assembly->name;
+            StringView bare_file_name = assembly->module->name;
             int        slash = sv_last(bare_file_name, '/');
             if (slash > 0) {
                 bare_file_name = sv_lchop(bare_file_name, slash + 1);

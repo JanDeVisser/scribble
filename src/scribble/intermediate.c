@@ -34,16 +34,6 @@ IRVarDecl *allocate_parameters(size_t num)
     return (IRVarDecl *) array_allocate(sizeof(IRVarDecl), num);
 }
 
-IROperation *allocate_operations(size_t num)
-{
-    return (IROperation *) array_allocate(sizeof(IROperation), num);
-}
-
-IRFunction *allocate_functions(size_t num)
-{
-    return allocate_array(IRFunction, num);
-}
-
 unsigned int next_label()
 {
     return s_label++;
@@ -66,14 +56,7 @@ char const *ir_operation_type_name(IROperationType optype)
 void ir_function_add_operation(IRFunction *fnc, IROperation op)
 {
     assert(fnc->kind == FK_SCRIBBLE);
-    if (fnc->scribble.num_operations == fnc->scribble.cap_operations - 1) {
-        IROperation *new_operations = allocate_operations(2 * fnc->scribble.cap_operations);
-        memcpy(new_operations, fnc->scribble.operations, fnc->scribble.cap_operations * sizeof(IROperation));
-        fnc->scribble.operations = new_operations;
-        fnc->scribble.cap_operations *= 2;
-    }
-    op.index = fnc->scribble.num_operations + 1;
-    fnc->scribble.operations[fnc->scribble.num_operations++] = op;
+    da_append_IROperation(&fnc->operations, op);
 }
 
 void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
@@ -256,21 +239,17 @@ void generate_FOR(BoundNode *node, void *target)
 
 void generate_FUNCTION(BoundNode *node, void *target)
 {
-    IRProgram *program = (IRProgram *) target;
-    if (program->num_functions == program->cap_functions - 1) {
-        IRFunction *new_functions = allocate_functions(2 * program->cap_functions);
-        memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
-        program->functions = new_functions;
-        program->cap_functions *= 2;
-    }
-    if (sv_eq_cstr(node->name, "main")) {
-        program->main = (int) program->num_functions;
-    }
-    IRFunction *fnc = (IRFunction *) &program->functions[program->num_functions++];
-    fnc->program = program;
-    fnc->kind = (node->function.function_impl->type == BNT_NATIVE_FUNCTION) ? FK_NATIVE : FK_SCRIBBLE;
-    fnc->type = node->typespec;
-    fnc->name = node->name;
+    IRModule *module = (IRModule *) target;
+    size_t    fnc_ix = da_append_IRFunction(
+        &module->functions,
+        (IRFunction) {
+               .module = module,
+               .kind = (node->function.function_impl->type == BNT_NATIVE_FUNCTION) ? FK_NATIVE : FK_SCRIBBLE,
+               .name = node->name,
+               .type = node->typespec,
+        });
+
+    IRFunction *fnc = module->functions.elements + fnc_ix;
     for (BoundNode *param = node->function.parameter; param; param = param->next) {
         ++fnc->num_parameters;
     }
@@ -307,8 +286,7 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
 void generate_FUNCTION_IMPL(BoundNode *node, void *target)
 {
     IRFunction *fnc = (IRFunction *) target;
-    fnc->scribble.cap_operations = 256;
-    fnc->scribble.operations = allocate_operations(256);
+    da_resize_IROperation(&fnc->operations, 256);
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
         generate_node(stmt, target);
     }
@@ -348,7 +326,6 @@ void generate_INTEGER(BoundNode *node, void *target)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
-    ExpressionType *et = type_registry_get_type_by_id(node->typespec.type_id);
     op.integer.type = typeid_builtin_type(typeid_canonical_type_id(node->typespec.type_id));
     if (BuiltinType_is_unsigned(op.integer.type)) {
         op.integer.value.unsigned_value = strtoul(node->name.ptr, NULL, 10);
@@ -361,19 +338,18 @@ void generate_INTEGER(BoundNode *node, void *target)
 
 void generate_INTRINSIC(BoundNode *node, void *target)
 {
-    IRProgram *program = (IRProgram *) target;
-    if (program->num_functions == program->cap_functions - 1) {
-        IRFunction *new_functions = allocate_functions(2 * program->cap_functions);
-        memcpy(new_functions, program->functions, program->cap_functions * sizeof(IRFunction));
-        program->functions = new_functions;
-        program->cap_functions *= 2;
-    }
-    IRFunction *intrinsic = program->functions + program->num_functions++;
-    intrinsic->program = program;
-    intrinsic->kind = FK_INTRINSIC;
-    intrinsic->type = node->typespec;
-    intrinsic->name = node->name;
-    intrinsic->intrinsic = node->intrinsic.intrinsic;
+    IRModule *module = (IRModule *) target;
+    size_t    fnc_ix = da_append_IRFunction(
+        &module->functions,
+        (IRFunction) {
+               .module = module,
+               .kind = FK_INTRINSIC,
+               .name = node->name,
+               .type = node->typespec,
+               .intrinsic = node->intrinsic.intrinsic,
+        });
+
+    IRFunction *intrinsic = module->functions.elements + fnc_ix;
     for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
         ++intrinsic->num_parameters;
     }
@@ -409,8 +385,16 @@ void generate_LOOP(BoundNode *node, void *target)
 
 void generate_MODULE(BoundNode *node, void *target)
 {
+    IRProgram *program = (IRProgram *) target;
+    size_t     mod_ix = da_append_IRModule(
+        &program->modules,
+        (IRModule) {
+                .program = program,
+                .name = node->name,
+                .$static = -1,
+        });
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
-        generate_node(stmt, target);
+        generate_node(stmt, program->modules.elements + mod_ix);
     }
 }
 
@@ -433,18 +417,27 @@ void generate_PARAMETER(BoundNode *node, void *target)
 void generate_PROGRAM(BoundNode *node, void *target)
 {
     IRProgram *program = (IRProgram *) target;
-    program->$static = (int) program->num_functions++;
-    IRFunction *statik = (IRFunction *) &program->functions[program->$static];
-    statik->kind = FK_SCRIBBLE;
-    statik->type = (TypeSpec) { .type_id = VOID_ID, .optional = false };
-    statik->name = sv_from("$static");
-    statik->scribble.cap_operations = 256;
-    statik->scribble.operations = allocate_operations(256);
+    assert(program->modules.num == 0 && program->modules.cap > 0);
+    size_t builtin_ix = da_append_IRModule(
+        &program->modules,
+        (IRModule) {
+            .program = program,
+            .name = sv_from("$builtin"),
+        });
+    IRModule *builtin = program->modules.elements + builtin_ix;
+    da_resize_IRFunction(&builtin->functions, 256);
+
+    builtin->$static = (int) da_append_IRFunction(&builtin->functions,
+        (IRFunction) {
+            .kind = FK_SCRIBBLE,
+            .type = (TypeSpec) { .type_id = VOID_ID, .optional = false },
+            .name = sv_from("$static") });
+    IRFunction *statik = builtin->functions.elements + builtin->$static;
     for (BoundNode *type = node->program.types; type; type = type->next) {
         generate_node(type, statik);
     }
     for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
-        generate_node(intrinsic, target);
+        generate_node(intrinsic, builtin);
     }
     for (BoundNode *module = node->program.modules; module; module = module->next) {
         generate_node(module, target);
@@ -609,10 +602,7 @@ IRProgram generate(BoundNode *program)
 {
     IRProgram ret = { 0 };
     ret.name = program->name;
-    ret.main = -1;
-    ret.$static = -1;
-    ret.cap_functions = 256;
-    ret.functions = allocate_functions(256);
+    da_resize_IRModule(&ret.modules, 8);
     generate_node(program, &ret);
     if (has_option("list-ir")) {
         ir_program_list(ret);
@@ -710,8 +700,8 @@ void ir_operation_print(IROperation *op)
 size_t ir_function_resolve_label(IRFunction *function, size_t label)
 {
     assert(function && function->kind == FK_SCRIBBLE);
-    for (size_t ix = 0; ix < function->scribble.num_operations; ++ix) {
-        if (function->scribble.operations[ix].operation == IR_LABEL && function->scribble.operations[ix].label == label) {
+    for (size_t ix = 0; ix < function->operations.num; ++ix) {
+        if (function->operations.elements[ix].operation == IR_LABEL && function->operations.elements[ix].label == label) {
             return ix;
         }
     }
@@ -755,14 +745,14 @@ void ir_function_list(IRFunction *function, size_t mark)
     printf("--------------------------------------------\n");
     switch (function->kind) {
     case FK_SCRIBBLE: {
-        for (size_t ix = 0; ix < function->scribble.num_operations; ++ix) {
-            if (function->scribble.operations[ix].operation == IR_LABEL) {
-                printf("lbl_%zu:\n", function->scribble.operations[ix].label);
+        for (size_t ix = 0; ix < function->operations.num; ++ix) {
+            if (function->operations.elements[ix].operation == IR_LABEL) {
+                printf("lbl_%zu:\n", function->operations.elements[ix].label);
             }
             if (ix == mark) {
-                ir_operation_print_prefix(function->scribble.operations + ix, ">");
+                ir_operation_print_prefix(function->operations.elements + ix, ">");
             } else {
-                ir_operation_print(function->scribble.operations + ix);
+                ir_operation_print(function->operations.elements + ix);
             }
         }
     } break;
@@ -778,22 +768,46 @@ void ir_function_list(IRFunction *function, size_t mark)
     printf("\n");
 }
 
+void ir_module_list(IRModule *module, bool header)
+{
+    if (header) {
+        printf("Module " SV_SPEC "\n", SV_ARG(module->name));
+        printf("============================================\n\n");
+    }
+    for (size_t fix = 0; fix < module->functions.num; ++fix) {
+        if (module->functions.elements[fix].kind == FK_SCRIBBLE) {
+            ir_function_list(module->functions.elements + fix, (size_t) -1);
+        }
+    }
+}
+
+IRFunction *ir_module_function_by_name(IRModule *module, StringView name)
+{
+    for (size_t fix = 0; fix < module->functions.num; ++fix) {
+        if (sv_eq(module->functions.elements[fix].name, name)) {
+            return module->functions.elements + fix;
+        }
+    }
+    return NULL;
+}
+
 void ir_program_list(IRProgram program)
 {
     printf("Program " SV_SPEC "\n", SV_ARG(program.name));
     printf("============================================\n\n");
-    for (size_t ix = 0; ix < program.num_functions; ++ix) {
-        if (program.functions[ix].kind == FK_SCRIBBLE) {
-            ir_function_list((IRFunction *) program.functions + ix, (size_t) -1);
-        }
+    for (size_t ix = 0; ix < program.modules.num; ++ix) {
+        IRModule *module = program.modules.elements + ix;
+        ir_module_list(module, program.modules.num > 1);
     }
 }
 
 IRFunction *ir_program_function_by_name(IRProgram *program, StringView name)
 {
-    for (size_t ix = 0; ix < program->num_functions; ++ix) {
-        if (sv_eq(program->functions[ix].name, name)) {
-            return program->functions + ix;
+    for (size_t ix = 0; ix < program->modules.num; ++ix) {
+        IRModule   *module = program->modules.elements + ix;
+        IRFunction *fnc = ir_module_function_by_name(module, name);
+        if (fnc) {
+            return fnc;
         }
     }
     return NULL;

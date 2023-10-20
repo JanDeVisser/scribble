@@ -15,7 +15,7 @@ add_library(
         sl.c
         sv.c
         threadonce.h
-)
+        da.h)
 
 add_executable(
         sv_test
