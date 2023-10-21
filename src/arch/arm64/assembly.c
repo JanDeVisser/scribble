@@ -103,14 +103,13 @@ void assembly_save_and_assemble(Assembly *assembly, StringView bare_file_name)
 {
     StringView asm_file = sv_aprintf(get_allocator(), "%.*s.s", SV_ARG(bare_file_name));
     StringView obj_file = sv_aprintf(get_allocator(), "%.*s.o", SV_ARG(bare_file_name));
-    FILE      *s = fopen(sv_cstr(asm_file), "w+");
-    if (!s) {
-        fatal("Could not open assembly file %.*s: %s", SV_ARG(asm_file), strerror(errno));
-    }
     StringView asm_text = assembly_to_string(assembly);
     if (!assembly_has_exports(assembly)) {
-        fclose(s);
         return;
+    }
+    FILE *s = fopen(sv_cstr(asm_file), "w+");
+    if (!s) {
+        fatal("Could not open assembly file %.*s: %s", SV_ARG(asm_file), strerror(errno));
     }
     if (fwrite(sv_cstr(asm_text), 1, asm_text.length, s) != asm_text.length) {
         fatal("Could not write assembly text to %.*s: %s", SV_ARG(asm_file), strerror(ferror(s)));
