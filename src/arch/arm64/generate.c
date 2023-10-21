@@ -129,7 +129,7 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
 {
     ARM64Function *called_function = arm64context_function_by_name(calling_function->assembly->ctx, op->sv);
     assert(called_function);
-    arm64function_marshall_arguments(called_function);
+    arm64function_marshall_arguments(calling_function, called_function);
     switch (called_function->function->kind) {
     case FK_SCRIBBLE:
     case FK_NATIVE:
@@ -141,7 +141,7 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
     default:
         UNREACHABLE();
     }
-    arm64function_marshall_return(calling_function, op->call.discard_result);
+    arm64function_marshall_return(calling_function, called_function, op->call.discard_result);
 }
 
 void generate_DECL_VAR(ARM64Function *function, IROperation *op)
@@ -288,10 +288,21 @@ void generate_RETURN(ARM64Function *function, IROperation *op)
 
 void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
 {
+    ARM64Scope *scope = function->scribble.current_scope;
+    assert(scope);
+    ARM64Scope *new_scope = (scope->current) ? scope->current->next : scope->scopes;
+    assert(new_scope);
+    assert(new_scope->operation == op);
+    scope->current = new_scope;
+    function->scribble.current_scope = new_scope;
 }
 
 void generate_SCOPE_END(ARM64Function *function, IROperation *op)
 {
+    ARM64Scope *scope = function->scribble.current_scope;
+    assert(scope);
+    scope->current = NULL;
+    function->scribble.current_scope = scope->up;
 }
 
 void generate_code(ARM64Function *arm_function)
@@ -299,6 +310,7 @@ void generate_code(ARM64Function *arm_function)
     IRFunction *function = arm_function->function;
     assert(function->kind == FK_SCRIBBLE);
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
+    arm_function->scribble.current_scope = &arm_function->scope;
     arm64function_enter(arm_function);
     for (size_t ix = 0; ix < function->operations.num; ++ix) {
         IROperation *op = function->operations.elements + ix;
@@ -335,6 +347,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             size_t var_ix = da_append_ARM64Variable(
                 &arm_function->scope.variables,
                 (ARM64Variable) {
+                    .function = arm_function,
                     .kind = VK_PARAMETER,
                     .var_decl = *ir_param,
                     .parameter.offset = offset,
@@ -378,52 +391,49 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                 NYI("generate arm function parameter for type kind '%s'", TypeKind_name(typeid_kind(type)));
             }
         }
-
+    }
+    arm_function->scope.depth = offset;
+    if (function->kind == FK_SCRIBBLE) {
         arm_function->scope.depth = offset;
-        if (function->kind == FK_SCRIBBLE) {
-            arm_function->scope.depth = offset;
-            ARM64Scope *scope = allocate_new(ARM64Scope);
-            scope->kind = SK_BLOCK;
-            scope->operation = NULL;
-            scope->up = &arm_function->scope;
-            scope->next = NULL;
-            scope->current = NULL;
-            for (size_t op_ix = 0; op_ix < function->operations.num; ++op_ix) {
-                IROperation *op = function->operations.elements + op_ix;
-                switch (op->operation) {
-                case IR_DECL_VAR: {
-                    size_t var_ix = da_append_ARM64Variable(
-                        &scope->variables,
-                        (ARM64Variable) {
-                            .kind = VK_LOCAL,
-                            .var_decl = op->var_decl,
-                        });
-                    ARM64Variable *variable = arm_function->scope.variables.elements + var_ix;
-                    scope->depth += (int64_t) align_at(typeid_sizeof(variable->var_decl.type.type_id), 16);
-                    variable->local_address.offset = scope->depth;
-                } break;
-                case IR_SCOPE_BEGIN: {
-                    ARM64Scope *new_scope = allocate_new(ARM64Scope);
-                    new_scope->kind = SK_BLOCK;
-                    new_scope->operation = op;
-                    new_scope->up = scope;
-                    if (scope->current) {
-                        scope->current->next = new_scope;
-                    } else {
-                        scope->scopes = new_scope;
-                    }
-                    scope->current = new_scope;
-                    scope = new_scope;
-                } break;
-                case IR_SCOPE_END: {
-                    assert(scope->up);
-                    scope = scope->up;
-                } break;
-                default:
-                    break;
+        ARM64Scope *scope = &arm_function->scope;
+        for (size_t op_ix = 0; op_ix < function->operations.num; ++op_ix) {
+            IROperation *op = function->operations.elements + op_ix;
+            switch (op->operation) {
+            case IR_DECL_VAR: {
+                size_t var_ix = da_append_ARM64Variable(
+                    &scope->variables,
+                    (ARM64Variable) {
+                        .function = arm_function,
+                        .kind = VK_LOCAL,
+                        .var_decl = op->var_decl,
+                    });
+                ARM64Variable *variable = scope->variables.elements + var_ix;
+                scope->depth += (int64_t) align_at(typeid_sizeof(variable->var_decl.type.type_id), 16);
+                variable->local_address.offset = scope->depth;
+            } break;
+            case IR_SCOPE_BEGIN: {
+                ARM64Scope *new_scope = allocate_new(ARM64Scope);
+                new_scope->kind = SK_BLOCK;
+                new_scope->operation = op;
+                new_scope->up = scope;
+                if (scope->current) {
+                    scope->current->next = new_scope;
+                } else {
+                    scope->scopes = new_scope;
                 }
+                scope->current = new_scope;
+                scope = new_scope;
+            } break;
+            case IR_SCOPE_END: {
+                assert(scope->up);
+                scope->current = NULL;
+                scope = scope->up;
+            } break;
+            default:
+                break;
             }
         }
+        scope->current = NULL;
     }
 }
 

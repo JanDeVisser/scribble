@@ -56,6 +56,7 @@ char const *ir_operation_type_name(IROperationType optype)
 void ir_function_add_operation(IRFunction *fnc, IROperation op)
 {
     assert(fnc->kind == FK_SCRIBBLE);
+    op.index = fnc->operations.num + 1;
     da_append_IROperation(&fnc->operations, op);
 }
 
@@ -286,10 +287,15 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
 void generate_FUNCTION_IMPL(BoundNode *node, void *target)
 {
     IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
     da_resize_IROperation(&fnc->operations, 256);
+    op.operation = IR_SCOPE_BEGIN;
+    ir_function_add_operation(fnc, op);
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
         generate_node(stmt, target);
     }
+    op.operation = IR_SCOPE_END;
+    ir_function_add_operation(fnc, op);
 }
 
 void generate_IF(BoundNode *node, void *target)
@@ -422,7 +428,7 @@ void generate_PROGRAM(BoundNode *node, void *target)
         &program->modules,
         (IRModule) {
             .program = program,
-            .name = sv_from("$builtin"),
+            .name = sv_printf("$%.*s_builtins", SV_ARG(program->name)),
         });
     IRModule *builtin = program->modules.elements + builtin_ix;
     da_resize_IRFunction(&builtin->functions, 256);

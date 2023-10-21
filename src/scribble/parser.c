@@ -979,6 +979,7 @@ ParserContext parse(char const *dir_or_file)
             closedir(dir);
             return ret;
         }
+        fatal("Could not open directory '%s'", dir_or_file);
     }
 
     struct dirent *dp;

@@ -390,17 +390,17 @@ void arm64function_leave(ARM64Function *function)
     // arm64context_pop_stack_depth(ctx);
 }
 
-void arm64function_marshall_arguments(ARM64Function *function)
+void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function)
 {
-    if (function->nsaa > 0) {
-        arm64function_add_instruction(function, "sub", "sp,sp,#%d", function->nsaa);
+    if (called_function->nsaa > 0) {
+        arm64function_add_instruction(calling_function, "sub", "sp,sp,#%d", called_function->nsaa);
     }
-    Code *marshalling = code_create(function);
-    for (size_t ix = 0; ix < function->scope.variables.num; ++ix) {
-        ARM64Variable *param = function->scope.variables.elements + ix;
+    Code *marshalling = code_create(calling_function);
+    for (size_t ix = 0; ix < called_function->scope.variables.num; ++ix) {
+        ARM64Variable *param = called_function->scope.variables.elements + ix;
         assert(param->kind == VK_PARAMETER);
         type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
-        MUST_OPTIONAL(ValueLocation, arg_location, arm64function_pop_location(function))
+        MUST_OPTIONAL(ValueLocation, arg_location, arm64function_pop_location(calling_function))
         code_add_comment(marshalling, "Marshalling argument %.*s: %.*s from %.*s",
             SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
             SV_ARG(value_location_to_string(arg_location, get_allocator())));
@@ -440,7 +440,7 @@ void arm64function_marshall_arguments(ARM64Function *function)
             }
         } break;
         case PPM_POINTER_STACK: {
-            Register r = arm64function_allocate_register(function);
+            Register r = arm64function_allocate_register(calling_function);
             switch (arg_location.kind) {
             case VLK_POINTER:
                 code_add_instruction(marshalling, "add", "%s,%s,%#ld",
@@ -458,40 +458,40 @@ void arm64function_marshall_arguments(ARM64Function *function)
                 UNREACHABLE();
             }
             code_add_instruction(marshalling, "str", "%s,[sp,#%d]", x_reg(r), param->parameter.nsaa_offset);
-            arm64function_release_register(function, r);
+            arm64function_release_register(calling_function, r);
         } break;
         }
     }
     code_select_prolog(marshalling);
     for (Register r = REG_X9; r <= REG_X16; ++r) {
-        if (function->scribble.registers[(int) r]) {
+        if (calling_function->scribble.registers[(int) r]) {
             code_push(marshalling, r);
         }
     }
-    arm64function_append_code(function, marshalling);
+    arm64function_append_code(calling_function, marshalling);
 }
 
-void arm64function_marshall_return(ARM64Function *function, bool discard_result)
+void arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result)
 {
     for (Register r = REG_X15; r > REG_X8; --r) {
-        if (function->scribble.registers[(int) r]) {
-            arm64function_pop(function, r);
+        if (calling_function->scribble.registers[(int) r]) {
+            arm64function_pop(calling_function, r);
         }
     }
     if (discard_result) {
         return;
     }
     ValueLocation x0 = {
-        .type = function->function->type.type_id,
+        .type = called_function->function->type.type_id,
         .kind = VLK_REGISTER,
         .reg = REG_X0,
     };
-    Register      r = arm64function_allocate_register(function);
+    Register      r = arm64function_allocate_register(calling_function);
     ValueLocation target = {
-        .type = function->function->type.type_id,
+        .type = called_function->function->type.type_id,
         .kind = VLK_REGISTER,
         .reg = r,
     };
-    arm64function_copy(function, target, x0);
-    arm64function_push_location(function, target);
+    arm64function_copy(calling_function, target, x0);
+    arm64function_push_location(calling_function, target);
 }

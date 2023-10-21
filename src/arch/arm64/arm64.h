@@ -500,8 +500,8 @@ extern void                  arm64function_push_register(ARM64Function *function
 extern void                  arm64function_enter(ARM64Function *func);
 extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);
-extern void                  arm64function_marshall_arguments(ARM64Function *function);
-extern void                  arm64function_marshall_return(ARM64Function *function, bool discard_result);
+extern void                  arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function);
+extern void                  arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result);
 extern StringView            arm64variable_to_string(ARM64Variable *var);
 extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
 extern void                  arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_location);
