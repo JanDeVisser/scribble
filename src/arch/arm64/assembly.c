@@ -89,6 +89,10 @@ StringView assembly_to_string(Assembly *assembly)
             code_append_code(assembly->code, code);
         }
     }
+    if (code_empty(assembly->code)) {
+        assembly->has_exports = false;
+        return sv_null();
+    }
 
     code_select_epilog(assembly->code);
     code_append_code(assembly->code, assembly->data);
@@ -104,6 +108,10 @@ void assembly_save_and_assemble(Assembly *assembly, StringView bare_file_name)
         fatal("Could not open assembly file %.*s: %s", SV_ARG(asm_file), strerror(errno));
     }
     StringView asm_text = assembly_to_string(assembly);
+    if (!assembly_has_exports(assembly)) {
+        fclose(s);
+        return;
+    }
     if (fwrite(sv_cstr(asm_text), 1, asm_text.length, s) != asm_text.length) {
         fatal("Could not write assembly text to %.*s: %s", SV_ARG(asm_file), strerror(ferror(s)));
     }

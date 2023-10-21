@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <error_or.h>
+#include <fn.h>
 #include <io.h>
 #include <lexer.h>
 #include <log.h>
@@ -952,7 +953,7 @@ module_done:
 void parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
 {
     MUST(Char, char *, buffer, read_file_at(dir_fd, file))
-    parse_module(ctx, sv_from(buffer), sv_copy_cstr_with_allocator(file, get_allocator()));
+    parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
 }
 
 ParserContext parse(char const *dir_or_file)
@@ -964,7 +965,7 @@ ParserContext parse(char const *dir_or_file)
     }
     ParserContext ret = { 0 };
     Token         token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
-    ret.program = syntax_node_make(SNT_PROGRAM, sv_from(dir_or_file), token);
+    ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(sv_from(dir_or_file)), token);
     ret.source_name = sv_copy_cstr_with_allocator(dir_or_file, get_allocator());
 
     DIR *dir = opendir(dir_or_file);

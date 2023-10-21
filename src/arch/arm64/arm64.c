@@ -11,6 +11,7 @@
 
 #include <allocate.h>
 #include <error_or.h>
+#include <fn.h>
 #include <options.h>
 #include <process.h>
 
@@ -128,20 +129,11 @@ ErrorOrInt output_arm64(IRProgram *program)
 
     StringList modules = sl_acreate(get_allocator());
     for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
-        Assembly *assembly = ctx->assemblies.elements + ix;
+        Assembly  *assembly = ctx->assemblies.elements + ix;
+        StringView bare_file_name = fn_barename(assembly->module->name);
+        bare_file_name = sv_aprintf(get_allocator(), ".scribble/%.*s", SV_ARG(bare_file_name));
+        assembly_save_and_assemble(assembly, bare_file_name);
         if (assembly_has_exports(assembly)) {
-            StringView bare_file_name = assembly->module->name;
-            int        slash = sv_last(bare_file_name, '/');
-            if (slash > 0) {
-                bare_file_name = sv_lchop(bare_file_name, slash + 1);
-            }
-            int dot = sv_last(bare_file_name, '.');
-            if (dot > 0) {
-                bare_file_name = sv_rchop(bare_file_name, bare_file_name.length - dot);
-            }
-            bare_file_name = sv_aprintf(get_allocator(), ".scribble/%.*s", SV_ARG(bare_file_name));
-
-            assembly_save_and_assemble(assembly, bare_file_name);
             if (!has_option("keep-assembly")) {
                 unlink(sv_cstr(sv_aprintf(get_allocator(), "%.*s.s", SV_ARG(bare_file_name))));
             }

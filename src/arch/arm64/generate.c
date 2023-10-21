@@ -493,10 +493,12 @@ ARM64Context *generate_arm64(IRProgram *program)
             (Assembly) {
                    .ctx = ctx,
                    .module = module,
-                   .code = code_create(NULL),
-                   .data = code_create(NULL),
                    .scope.kind = SK_STATIC,
                    .scope.up = &ctx->scope,
+                   .code = code_create(NULL),
+                   .data = code_create(NULL),
+                   .has_exports = false,
+                   .has_main = false,
             });
         initialize_assembly(ctx->assemblies.elements + obj_ix);
         generate_assembly(ctx->assemblies.elements + obj_ix);
