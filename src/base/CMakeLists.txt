@@ -3,7 +3,9 @@ include_directories(.)
 add_library(
         scb_base
         STATIC
+        da.h
         error_or.c
+        fn.c
         hash.c
         io.c
         log.c
@@ -15,7 +17,7 @@ add_library(
         sl.c
         sv.c
         threadonce.h
-        da.h)
+)
 
 add_executable(
         sv_test
