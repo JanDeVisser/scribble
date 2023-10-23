@@ -684,7 +684,7 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
             } else {
                 bp->index = 1;
                 if (sv_not_empty(bp_index)) {
-                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->operations.num) {
+                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->operations.size) {
                         printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
                         bp->function = NULL;
                     }
@@ -846,7 +846,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         ir_function_print(function);
         printf("\n");
     }
-    while (ix < function->operations.num) {
+    while (ix < function->operations.size) {
         ctx->index = function->operations.elements[ix].index;
         if (ctx->execution_mode & (EM_RUN_TO_RETURN | EM_CONTINUE | EM_STEP_OVER)) {
             for (size_t bp = 0; bp < ctx->num_breakpoints; ++bp) {
@@ -892,7 +892,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ix = 0;
                 break;
             case NIT_RETURN:
-                ix = function->operations.num;
+                ix = function->operations.size;
                 if (ctx->execution_mode == EM_RUN_TO_RETURN) {
                     ctx->execution_mode = EM_SINGLE_STEP;
                 }
@@ -1098,7 +1098,7 @@ int execute(IRProgram program /*, int argc, char **argv*/)
             set_breakpoint(&ctx, bp_function, bp_index);
         }
     }
-    for (size_t ix = 0; ix < program.modules.num; ++ix) {
+    for (size_t ix = 0; ix < program.modules.size; ++ix) {
         IRModule *module = program.modules.elements + ix;
         if (module->$static >= 0) {
             if (OPT_STATIC && OPT_DEBUG) {

@@ -14,6 +14,7 @@ add_library(
         resolve.c
         process.c
         options.c
+        sb.c
         sl.c
         sv.c
         threadonce.h

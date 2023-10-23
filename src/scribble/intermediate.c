@@ -11,6 +11,10 @@
 #include <intermediate.h>
 #include <options.h>
 
+DA_IMPL(IROperation)
+DA_IMPL(IRFunction);
+DA_IMPL(IRModule);
+
 typedef struct intermediate {
     union {
         struct {
@@ -56,7 +60,7 @@ char const *ir_operation_type_name(IROperationType optype)
 void ir_function_add_operation(IRFunction *fnc, IROperation op)
 {
     assert(fnc->kind == FK_SCRIBBLE);
-    op.index = fnc->operations.num + 1;
+    op.index = fnc->operations.size + 1;
     da_append_IROperation(&fnc->operations, op);
 }
 
@@ -423,7 +427,7 @@ void generate_PARAMETER(BoundNode *node, void *target)
 void generate_PROGRAM(BoundNode *node, void *target)
 {
     IRProgram *program = (IRProgram *) target;
-    assert(program->modules.num == 0 && program->modules.cap > 0);
+    assert(program->modules.size == 0 && program->modules.cap > 0);
     size_t builtin_ix = da_append_IRModule(
         &program->modules,
         (IRModule) {
@@ -616,25 +620,25 @@ IRProgram generate(BoundNode *program)
     return ret;
 }
 
-StringView ir_var_decl_to_string(IRVarDecl *var, Allocator *allocator)
+StringView ir_var_decl_to_string(IRVarDecl *var)
 {
-    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    StringBuilder sb = sb_create();
     sb_printf(&sb, SV_SPEC ": ", SV_ARG(var->name));
-    sb_append_sv(&sb, typespec_to_string(var->type, allocator));
+    sb_append_sv(&sb, typespec_to_string(var->type));
     return sb.view;
 }
 
 void ir_var_decl_print(IRVarDecl *var)
 {
     AllocatorState as = save_allocator();
-    StringView     s = ir_var_decl_to_string(var, get_allocator());
+    StringView     s = ir_var_decl_to_string(var);
     printf(SV_SPEC, SV_ARG(s));
     release_allocator(as);
 }
 
-static StringView _ir_operation_to_string(IROperation *op, char const *prefix, Allocator *allocator)
+static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
 {
-    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    StringBuilder sb = sb_create();
     sb_printf(&sb, "%1.1s %4zu %-20.20s  ", prefix, op->index, ir_operation_type_name(op->operation));
     switch (op->operation) {
     case IR_CALL:
@@ -650,7 +654,7 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix, A
         sb_printf(&sb, SV_SPEC ".%zu", SV_ARG(op->var_component.name), op->var_component.component);
         break;
     case IR_DECL_VAR:
-        sb_printf(&sb, "%.*s", SV_ARG(ir_var_decl_to_string(&op->var_decl, allocator)));
+        sb_printf(&sb, "%.*s", SV_ARG(ir_var_decl_to_string(&op->var_decl)));
         break;
     case IR_PUSH_BOOL_CONSTANT:
         sb_printf(&sb, "%s", (op->bool_value) ? "true" : "false");
@@ -686,27 +690,27 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix, A
     return sb.view;
 }
 
-StringView ir_operation_to_string(IROperation *op, Allocator *allocator)
+StringView ir_operation_to_string(IROperation *op)
 {
-    return _ir_operation_to_string(op, "", allocator);
+    return _ir_operation_to_string(op, "");
 }
 
 void ir_operation_print_prefix(IROperation *op, char const *prefix)
 {
-    StringView s = _ir_operation_to_string(op, prefix, get_allocator());
+    StringView s = _ir_operation_to_string(op, prefix);
     printf(SV_SPEC "\n", SV_ARG(s));
 }
 
 void ir_operation_print(IROperation *op)
 {
-    StringView s = _ir_operation_to_string(op, " ", get_allocator());
+    StringView s = _ir_operation_to_string(op, " ");
     printf(SV_SPEC "\n", SV_ARG(s));
 }
 
 size_t ir_function_resolve_label(IRFunction *function, size_t label)
 {
     assert(function && function->kind == FK_SCRIBBLE);
-    for (size_t ix = 0; ix < function->operations.num; ++ix) {
+    for (size_t ix = 0; ix < function->operations.size; ++ix) {
         if (function->operations.elements[ix].operation == IR_LABEL && function->operations.elements[ix].label == label) {
             return ix;
         }
@@ -714,25 +718,25 @@ size_t ir_function_resolve_label(IRFunction *function, size_t label)
     fatal("Label '%d' not found in function '" SV_SPEC "'", label, SV_ARG(function->name));
 }
 
-StringView ir_function_to_string(IRFunction *function, Allocator *allocator)
+StringView ir_function_to_string(IRFunction *function)
 {
-    StringBuilder sb = sb_acreate((allocator) ? allocator : get_allocator());
+    StringBuilder sb = sb_create();
     sb_printf(&sb, SV_SPEC "(", SV_ARG(function->name));
-    StringList params = sl_acreate(sb.allocator);
+    StringList params = sl_create();
     for (size_t ix = 0; ix < function->num_parameters; ++ix) {
         IRVarDecl *param = function->parameters + ix;
-        sl_push(&params, ir_var_decl_to_string(param, sb.allocator));
+        sl_push(&params, ir_var_decl_to_string(param));
     }
     sb_append_sv(&sb, sl_join(&params, sv_from(", ")));
     sb_append_cstr(&sb, ") -> ");
-    sb_append_sv(&sb, typespec_to_string(function->type, sb.allocator));
+    sb_append_sv(&sb, typespec_to_string(function->type));
     return sb.view;
 }
 
 void ir_function_print(IRFunction *function)
 {
     AllocatorState as = save_allocator();
-    StringView     s = ir_function_to_string(function, get_allocator());
+    StringView     s = ir_function_to_string(function);
     printf(SV_SPEC, SV_ARG(s));
     release_allocator(as);
 }
@@ -751,7 +755,7 @@ void ir_function_list(IRFunction *function, size_t mark)
     printf("--------------------------------------------\n");
     switch (function->kind) {
     case FK_SCRIBBLE: {
-        for (size_t ix = 0; ix < function->operations.num; ++ix) {
+        for (size_t ix = 0; ix < function->operations.size; ++ix) {
             if (function->operations.elements[ix].operation == IR_LABEL) {
                 printf("lbl_%zu:\n", function->operations.elements[ix].label);
             }
@@ -780,7 +784,7 @@ void ir_module_list(IRModule *module, bool header)
         printf("Module " SV_SPEC "\n", SV_ARG(module->name));
         printf("============================================\n\n");
     }
-    for (size_t fix = 0; fix < module->functions.num; ++fix) {
+    for (size_t fix = 0; fix < module->functions.size; ++fix) {
         if (module->functions.elements[fix].kind == FK_SCRIBBLE) {
             ir_function_list(module->functions.elements + fix, (size_t) -1);
         }
@@ -789,7 +793,7 @@ void ir_module_list(IRModule *module, bool header)
 
 IRFunction *ir_module_function_by_name(IRModule *module, StringView name)
 {
-    for (size_t fix = 0; fix < module->functions.num; ++fix) {
+    for (size_t fix = 0; fix < module->functions.size; ++fix) {
         if (sv_eq(module->functions.elements[fix].name, name)) {
             return module->functions.elements + fix;
         }
@@ -801,15 +805,15 @@ void ir_program_list(IRProgram program)
 {
     printf("Program " SV_SPEC "\n", SV_ARG(program.name));
     printf("============================================\n\n");
-    for (size_t ix = 0; ix < program.modules.num; ++ix) {
+    for (size_t ix = 0; ix < program.modules.size; ++ix) {
         IRModule *module = program.modules.elements + ix;
-        ir_module_list(module, program.modules.num > 1);
+        ir_module_list(module, program.modules.size > 1);
     }
 }
 
 IRFunction *ir_program_function_by_name(IRProgram *program, StringView name)
 {
-    for (size_t ix = 0; ix < program->modules.num; ++ix) {
+    for (size_t ix = 0; ix < program->modules.size; ++ix) {
         IRModule   *module = program->modules.elements + ix;
         IRFunction *fnc = ir_module_function_by_name(module, name);
         if (fnc) {

@@ -9,10 +9,11 @@
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
+DA_IMPL(ARM64Variable)
+
 StringView arm64variable_to_string(ARM64Variable *var)
 {
-    StringBuilder sb = sb_acreate(get_allocator());
-    sb_printf(&sb, "%s %.*s : %.*s, %zu ",
+    StringBuilder sb = sb_createf("%s %.*s : %.*s, %zu ",
         VariableKind_name(var->kind), SV_ARG(var->var_decl.name),
         SV_ARG(typeid_name(var->var_decl.type.type_id)), typeid_sizeof(var->var_decl.type.type_id));
     switch (var->kind) {

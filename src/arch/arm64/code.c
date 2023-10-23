@@ -15,9 +15,9 @@ Code *code_create(ARM64Function *function)
 {
     Code *ret = allocate_new(Code);
     ret->function = function;
-    ret->prolog = sb_acreate(get_allocator());
-    ret->code = sb_acreate(get_allocator());
-    ret->epilog = sb_acreate(get_allocator());
+    ret->prolog = sb_create();
+    ret->code = sb_create();
+    ret->epilog = sb_create();
     code_select_code(ret);
     return ret;
 }
@@ -32,7 +32,7 @@ void code_add_instruction(Code *code, char const *opcode, char const *arg_fmt, .
 
 void code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, va_list args)
 {
-    StringView opcode_sv = sv_aprintf(get_allocator(), "\t%s\t%s", opcode, arg_fmt);
+    StringView opcode_sv = sv_printf("\t%s\t%s", opcode, arg_fmt);
     assert(sv_is_cstr(opcode_sv));
     code_vadd_text(code, opcode_sv.ptr, args);
 }
@@ -49,13 +49,13 @@ void code_vadd_text(Code *code, char const *text, va_list args)
 {
     StringView txt = sv_from(text);
     if (strchr(text, '%')) {
-        txt = sv_avprintf(get_allocator(), text, args);
+        txt = sv_vprintf(text, args);
     }
     txt = sv_strip(txt);
     if (sv_empty(txt)) {
         return;
     }
-    StringList lines = sv_asplit(get_allocator(), txt, sv_from("\n"));
+    StringList lines = sv_split(txt, sv_from("\n"));
     for (size_t ix = 0; ix < lines.size; ++ix) {
         StringView line = lines.strings[ix];
         if (sv_empty(line)) {
@@ -70,7 +70,7 @@ void code_vadd_text(Code *code, char const *text, va_list args)
             sb_printf(code->active, "%.*s\n", SV_ARG(line));
             continue;
         }
-        StringList parts = sv_asplit_by_whitespace(get_allocator(), line);
+        StringList parts = sv_split_by_whitespace(line);
         if (parts.size > 0) {
             StringView l = sl_join(&parts, sv_from("\t"));
             sb_printf(code->active, "\t%.*s\n", SV_ARG(l));
@@ -116,8 +116,8 @@ void code_add_comment(Code *code, char const *text, ...)
 
 void code_vadd_comment(Code *code, char const *fmt, va_list args)
 {
-    StringView comment = sv_avprintf(get_allocator(), fmt, args);
-    StringList sl = sv_asplit(get_allocator(), comment, sv_from("\n"));
+    StringView comment = sv_vprintf(fmt, args);
+    StringList sl = sv_split(comment, sv_from("\n"));
     for (size_t ix = 0; ix < sl.size; ++ix) {
         sb_printf(code->active, "\t// %.*s\n", SV_ARG(sl.strings[ix]));
     }
@@ -130,7 +130,7 @@ void code_append_code(Code *code, Code *append)
 
 StringView code_to_string(Code *code)
 {
-    StringBuilder ret = sb_acreate(get_allocator());
+    StringBuilder ret = sb_create();
     if (!sv_empty(code->prolog.view)) {
         sb_append_sv(&ret, code->prolog.view);
         sb_append_cstr(&ret, "\n");
@@ -179,7 +179,7 @@ void code_close_function(Code *code, StringView name, size_t stack_depth)
     }
 
     code_select_epilog(code);
-    code_add_label(code, sv_aprintf(get_allocator(), "__%.*s__return", SV_ARG(name)));
+    code_add_label(code, sv_printf("__%.*s_return", SV_ARG(name)));
     r = 0;
     for (int ix = (int) REG_FP - (int) REG_X19 - 1; ix >= 0; --ix) {
         if (code->function->scribble.callee_saved[ix]) {

@@ -116,13 +116,13 @@ typedef struct ir_program {
 } IRProgram;
 
 extern char const *ir_operation_type_name(IROperationType optype);
-extern StringView  ir_operation_to_string(IROperation *op, Allocator *allocator);
+extern StringView  ir_operation_to_string(IROperation *op);
 extern void        ir_operation_print_prefix(IROperation *op, char const *prefix);
 extern void        ir_operation_print(IROperation *op);
-extern StringView  ir_var_decl_to_string(IRVarDecl *var, Allocator *allocator);
+extern StringView  ir_var_decl_to_string(IRVarDecl *var);
 extern void        ir_var_decl_print(IRVarDecl *var);
 extern void        ir_function_list(IRFunction *function, size_t mark);
-extern StringView  ir_function_to_string(IRFunction *function, Allocator *allocator);
+extern StringView  ir_function_to_string(IRFunction *function);
 extern void        ir_function_print(IRFunction *function);
 extern size_t      ir_function_resolve_label(IRFunction *function, size_t label);
 extern void        ir_module_list(IRModule *module, bool header);

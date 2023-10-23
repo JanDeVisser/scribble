@@ -27,14 +27,14 @@ Process *process_create_sl(StringView cmd, StringList *args)
     Process *p = allocate_new(Process);
     p->command = cmd;
     p->arguments = sl_copy(args);
-    p->out = sb_acreate(get_allocator());
-    p->err = sb_acreate(get_allocator());
+    p->out = sb_create();
+    p->err = sb_create();
     return p;
 }
 
 Process *process_vcreate(StringView cmd, va_list args)
 {
-    StringList sl_args = sl_acreate(get_allocator());
+    StringList sl_args = sl_create();
     for (char const *arg = va_arg(args, char const *); arg; arg = va_arg(args, char const *)) {
         sl_push(&sl_args, sv_copy_cstr(arg));
     }
@@ -59,7 +59,8 @@ ErrorOrInt process_execute(Process *p)
         argv[ix + 1] = (char *) sv_cstr(p->arguments.strings[ix]);
     }
     argv[sz + 1] = NULL;
-    printf("[CMD] %.*s %.*s\n", SV_ARG(p->command), SV_ARG(sl_join(&p->arguments, sv_from(" "))));
+    StringView args = sl_join(&p->arguments, sv_from(" "));
+    printf("[CMD] %.*s %.*s\n", SV_ARG(p->command), SV_ARG(args));
 
     int filedes[2];
     if (pipe(filedes) == -1) {

@@ -58,7 +58,7 @@ OpcodeMap get_opcode_map(type_id type)
 
 StringView value_location_to_string(ValueLocation loc, Allocator *allocator)
 {
-    StringBuilder sb = sb_acreate(allocator);
+    StringBuilder sb = sb_create();
     sb_append_cstr(&sb, ValueLocationKind_name(loc.kind));
     sb_append_cstr(&sb, " ");
     switch (loc.kind) {
@@ -91,7 +91,17 @@ ErrorOrInt output_arm64(IRProgram *program)
 {
     ARM64Context *ctx = generate_arm64(program);
     Assembly     *main = NULL;
-    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+
+#ifdef IS_APPLE
+    StringView sdk_path = { 0 }; // "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk";
+    if (sv_empty(sdk_path)) {
+        Process *p = process_create(sv_from("xcrun"), "-sdk", "macosx", "--show-sdk-path");
+        MUST_VOID(Int, process_execute(p))
+        sdk_path = sv_strip(p->out.view);
+    }
+#endif
+
+    for (size_t ix = 0; ix < ctx->assemblies.size; ++ix) {
         Assembly *assembly = ctx->assemblies.elements + ix;
         if (assembly_has_main(assembly)) {
             main = assembly;
@@ -108,7 +118,7 @@ ErrorOrInt output_arm64(IRProgram *program)
 
 #if 0
     assembly_new_function(main);
-    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+    for (size_t ix = 0; ix < ctx->assemblies.size; ++ix) {
         Assembly *assembly = ctx->assemblies.elements + ix;
         size_t      fnc_ix = da_append_ARM64Function(
             &main->functions,
@@ -127,19 +137,20 @@ ErrorOrInt output_arm64(IRProgram *program)
     code_close_function(main->active, sv_from("static_initializer"), 0);
 #endif
 
-    StringList modules = sl_acreate(get_allocator());
-    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+    StringList modules = sl_create();
+    for (size_t ix = 0; ix < ctx->assemblies.size; ++ix) {
         Assembly  *assembly = ctx->assemblies.elements + ix;
         StringView bare_file_name = fn_barename(assembly->module->name);
-        bare_file_name = sv_aprintf(get_allocator(), ".scribble/%.*s", SV_ARG(bare_file_name));
+        bare_file_name = sv_printf(".scribble/%.*s", SV_ARG(bare_file_name));
         assembly_save_and_assemble(assembly, bare_file_name);
         if (assembly_has_exports(assembly)) {
             if (!has_option("keep-assembly")) {
-                unlink(sv_cstr(sv_aprintf(get_allocator(), "%.*s.s", SV_ARG(bare_file_name))));
+                StringView asm_file = sv_printf("%.*s.s", SV_ARG(bare_file_name));
+                unlink(sv_cstr(asm_file));
+                sv_free(asm_file);
             }
-            StringBuilder obj_file = sb_acreate(get_allocator());
-            sb_printf(&obj_file, "%.*s.o", SV_ARG(bare_file_name));
-            sl_push(&modules, obj_file.view);
+            StringView obj_file = sv_printf("%.*s.o", SV_ARG(bare_file_name));
+            sl_push(&modules, obj_file);
         }
     }
 
@@ -157,14 +168,7 @@ ErrorOrInt output_arm64(IRProgram *program)
         }
 
 #ifdef IS_APPLE
-        StringView sdk_path = { 0 }; // "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk";
-        if (sv_empty(sdk_path)) {
-            Process *p = process_create(sv_from("xcrun"), "-sdk", "macosx", "--show-sdk-path");
-            MUST_VOID(Int, process_execute(p))
-            sdk_path = sv_strip(p->out.view);
-        }
-
-        StringList ld_args = sl_acreate(get_allocator());
+        StringList ld_args = sl_create();
         sl_push(&ld_args, sv_from("-o"));
         sl_push(&ld_args, bin_name);
         sl_push(&ld_args, sv_from("-lscb_base"));
@@ -176,7 +180,7 @@ ErrorOrInt output_arm64(IRProgram *program)
         sl_push(&ld_args, sv_from("_start"));
         sl_push(&ld_args, sv_from("-arch"));
         sl_push(&ld_args, sv_from("arm64"));
-        sl_push(&ld_args, sv_aprintf(get_allocator(), "-L%.*s/lib", SV_ARG(scribble_dir)));
+        sl_push(&ld_args, sv_printf("-L%.*s/lib", SV_ARG(scribble_dir)));
         sl_extend(&ld_args, &modules);
 
         //        std::vector<std::string> ld_args = { "-o", config.main(), "-loblrt",
@@ -190,7 +194,7 @@ ErrorOrInt output_arm64(IRProgram *program)
             fatal("ld failed with exit code %d", ld_result);
         }
 #elif defined(IS_LINUX)
-        StringList ld_args = sl_acreate(get_allocator());
+        StringList ld_args = sl_create();
         sl_push(&ld_args, sv_from("-o"));
         sl_push(&ld_args, bin_name);
         sl_push(&ld_args, sv_from("-lscribblert"));
@@ -198,7 +202,7 @@ ErrorOrInt output_arm64(IRProgram *program)
         sl_push(&ld_args, sv_from("_start"));
         sl_push(&ld_args, sv_from("-A"));
         sl_push(&ld_args, sv_from("aarch64"));
-        sl_push(&ld_args, sv_aprintf(get_allocator(), "-L%.*s/lib", SV_ARG(scribble_dir)));
+        sl_push(&ld_args, sv_printf("-L%.*s/lib", SV_ARG(scribble_dir)));
         sl_extend(&ld_args, &modules);
         MUST(Int, int, ld_result, execute_sl(sv_from("ld"), &ld_args))
         if (ld_result) {
@@ -206,9 +210,8 @@ ErrorOrInt output_arm64(IRProgram *program)
         }
 #endif
         if (has_option("run-binary")) {
-            StringBuilder run_cmd = sb_acreate(get_allocator());
-            sb_printf(&run_cmd, "./%s", bin_name);
-            ErrorOrInt exit_code_or_error = execute(run_cmd.view);
+            StringView run_cmd = sv_printf("./%s", bin_name);
+            ErrorOrInt exit_code_or_error = execute(run_cmd);
             if (ErrorOrInt_is_error(exit_code_or_error)) {
                 Error e = exit_code_or_error.error;
                 ERROR(Int, ProcessError, e.code, "Program execution failed: %s", Error_to_string(e));

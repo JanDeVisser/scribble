@@ -169,7 +169,7 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
         type_registry.capacity = new_cap;
     }
     ExpressionType *type = type_registry.types[type_registry.size];
-    type->name = sv_copy_with_allocator(name, get_allocator());
+    type->name = sv_copy(name);
     type->type_id = type_registry.size | (kind << 28);
     NEXT_CUSTOM_IX = ++type_registry.size;
     RETURN(TypeID, type->type_id);
@@ -244,17 +244,17 @@ StringView typespec_name(TypeSpec typespec)
     return et->name;
 }
 
-StringView typespec_to_string(TypeSpec typespec, Allocator *allocator)
+StringView typespec_to_string(TypeSpec typespec)
 {
     ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
     assert(et);
-    return sv_aprintf(allocator, SV_SPEC "%s [0x%08x]", SV_ARG(et->name), (typespec.optional) ? "?" : "", typespec.type_id);
+    return sv_printf("%.*s%s", SV_ARG(et->name), typespec.optional ? "?" : "");
 }
 
 void typespec_print(FILE *f, TypeSpec typespec)
 {
     AllocatorState as = save_allocator();
-    StringView     s = typespec_to_string(typespec, get_allocator());
+    StringView     s = typespec_to_string(typespec);
     fprintf(f, SV_SPEC, SV_ARG(s));
     release_allocator(as);
 }
@@ -453,13 +453,13 @@ ErrorOrTypeID type_set_struct_components(type_id struct_id, size_t num, TypeComp
     struct_type->components.components = allocate_array(TypeComponent, num);
     for (size_t ix = 0; ix < num; ++ix) {
         struct_type->components.components[ix].kind = components[ix].kind;
-        struct_type->components.components[ix].name = sv_copy_with_allocator(components[ix].name, get_allocator());
+        struct_type->components.components[ix].name = sv_copy(components[ix].name);
         switch (components[ix].kind) {
         case CK_TYPE: {
             struct_type->components.components[ix].type_id = components[ix].type_id;
         } break;
         case CK_TEMPLATE_PARAM: {
-            struct_type->components.components[ix].param = sv_copy_with_allocator(components[ix].param, get_allocator());
+            struct_type->components.components[ix].param = sv_copy(components[ix].param);
         } break;
         default:
             UNREACHABLE();
@@ -487,7 +487,7 @@ ErrorOrTypeID type_set_template_parameters(type_id template_id, size_t num, Temp
     type->num_parameters = num;
     type->template_parameters = allocate_array(TemplateParameter, num);
     for (size_t ix = 0; ix < num; ++ix) {
-        type->template_parameters[ix].name = sv_copy_with_allocator(parameters[ix].name, get_allocator());
+        type->template_parameters[ix].name = sv_copy(parameters[ix].name);
         type->template_parameters[ix].type = parameters[ix].type;
     }
     RETURN(TypeID, type->type_id);
@@ -599,7 +599,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         }
     }
 
-    StringBuilder name = sb_acreate(get_allocator());
+    StringBuilder name = sb_create();
     sb_printf(&name, SV_SPEC "<", SV_ARG(template_type->name));
     char *comma = "";
     for (size_t ix = 0; ix < num; ++ix) {
@@ -708,7 +708,7 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
         }
     }
 
-    StringBuilder name = sb_acreate(get_allocator());
+    StringBuilder name = sb_create();
     char         *comma = "";
     sb_append_cstr(&name, "<");
     for (size_t ix = 0; ix < num; ++ix) {

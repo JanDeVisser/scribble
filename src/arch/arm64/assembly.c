@@ -15,6 +15,8 @@
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
+DA_IMPL(Assembly)
+
 size_t label_reserve_id()
 {
     static size_t id = 0;
@@ -30,9 +32,9 @@ size_t assembly_add_string(Assembly *assembly, StringView str)
     }
     size_t id = label_reserve_id();
     code_add_directive(assembly->code, ".align", "2");
-    code_add_label(assembly->code, sv_aprintf(get_allocator(), "str_%zu"));
+    code_add_label(assembly->code, sv_printf("str_%zu"));
     // .asciz  may need to be .string
-    code_add_directive(assembly->code, ".asciz", sv_cstr(sv_aprintf(get_allocator(), "\"%.*s\"", SV_ARG(str))));
+    code_add_directive(assembly->code, ".asciz", sv_cstr(sv_printf("\"%.*s\"", SV_ARG(str))));
     StringID *sid = allocate_new(StringID);
     sid->string = str;
     sid->id = id;
@@ -72,7 +74,7 @@ StringView assembly_to_string(Assembly *assembly)
     code_add_import(assembly->code, sv_from("_resolve_function"));
 
     code_select_code(assembly->code);
-    for (size_t ix = 0; ix < assembly->functions.num; ++ix) {
+    for (size_t ix = 0; ix < assembly->functions.size; ++ix) {
         ARM64Function *function = assembly->functions.elements + ix;
         Code          *code = NULL;
         switch (function->function->kind) {
@@ -101,8 +103,8 @@ StringView assembly_to_string(Assembly *assembly)
 
 void assembly_save_and_assemble(Assembly *assembly, StringView bare_file_name)
 {
-    StringView asm_file = sv_aprintf(get_allocator(), "%.*s.s", SV_ARG(bare_file_name));
-    StringView obj_file = sv_aprintf(get_allocator(), "%.*s.o", SV_ARG(bare_file_name));
+    StringView asm_file = sv_printf("%.*s.s", SV_ARG(bare_file_name));
+    StringView obj_file = sv_printf("%.*s.o", SV_ARG(bare_file_name));
     StringView asm_text = assembly_to_string(assembly);
     if (!assembly_has_exports(assembly)) {
         return;
@@ -130,7 +132,7 @@ bool assembly_has_main(Assembly *assembly)
 
 ARM64Function *assembly_function_by_name(Assembly *assembly, StringView name)
 {
-    for (size_t ix = 0; ix < assembly->functions.num; ++ix) {
+    for (size_t ix = 0; ix < assembly->functions.size; ++ix) {
         if (sv_eq(assembly->functions.elements[ix].function->name, name)) {
             return assembly->functions.elements + ix;
         }

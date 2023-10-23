@@ -14,8 +14,8 @@ static OptionList *s_option_list_head;
 void set_option(StringView option, StringView value)
 {
     OptionList *entry = allocate_new(OptionList);
-    entry->option = sv_copy_with_allocator(option, get_allocator());
-    entry->value = sv_copy_with_allocator(value, get_allocator());
+    entry->option = sv_copy(option);
+    entry->value = sv_copy(value);
     entry->next = s_option_list_head;
     s_option_list_head = entry;
 }

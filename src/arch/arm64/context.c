@@ -42,12 +42,12 @@ void arm64context_define_static_storage(ARM64Context *ctx, StringView label, typ
             NYI("Defining static storage for builtin type '%s'", BuiltinType_name(typeid_builtin_type(type)));
         }
         assembly_add_data(
-            ctx->assembly, label, global, static_type, true, sv_aprintf(ctx->allocator, "%ld", initial_value));
+ctx->assembly, label, global, static_type, true, sv_printf("%ld", initial_value));
     } break;
     case TK_AGGREGATE:
     case TK_ARRAY: {
         size_t sz = typeid_sizeof(type);
-        assembly_add_data(ctx->assembly, label, global, sv_from(".space"), true, sv_aprintf(ctx->allocator, "%zu", sz));
+assembly_add_data(ctx->assembly, label, global, sv_from(".space"), true, sv_printf("%zu", sz));
     } break;
     default:
         NYI("Defining static storage for type '%s'", typeid_name(type));
@@ -74,7 +74,7 @@ void arm64context_load_immediate(ARM64Context *ctx, type_id type, uint64_t value
 
 ARM64Function *arm64context_function_by_name(ARM64Context *ctx, StringView name)
 {
-    for (size_t ix = 0; ix < ctx->assemblies.num; ++ix) {
+    for (size_t ix = 0; ix < ctx->assemblies.size; ++ix) {
         ARM64Function *function = assembly_function_by_name(ctx->assemblies.elements + ix, name);
         if (function) {
             return function;

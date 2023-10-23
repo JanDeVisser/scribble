@@ -10,17 +10,19 @@
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
+DA_IMPL(ARM64Function)
+
 StringView arm64function_label(ARM64Function *function)
 {
     if (sv_empty(function->label)) {
-        if (!function->scope.variables.num || sv_eq_cstr(function->function->name, "main")) {
+        if (!function->scope.variables.size || sv_eq_cstr(function->function->name, "main")) {
             function->label = function->function->name;
         } else {
             size_t hash = 0u;
-            for (size_t ix = 0; ix < function->scope.variables.num; ++ix) {
+            for (size_t ix = 0; ix < function->scope.variables.size; ++ix) {
                 hash = (hash << 3) ^ hashlong(function->scope.variables.elements[ix].var_decl.type.type_id);
             }
-            function->label = sv_aprintf(get_allocator(), "%.*s_%zu", SV_ARG(function->function->name), hash % 4096);
+            function->label = sv_printf("%.*s_%zu", SV_ARG(function->function->name), hash % 4096);
         }
     }
     return function->label;
@@ -28,14 +30,14 @@ StringView arm64function_label(ARM64Function *function)
 
 StringView arm64function_to_string(ARM64Function *function)
 {
-    StringList params = sl_acreate(get_allocator());
-    for (size_t ix = 0; ix < function->scope.variables.num; ++ix) {
+    StringList params = sl_create();
+    for (size_t ix = 0; ix < function->scope.variables.size; ++ix) {
         ARM64Variable *param = function->scope.variables.elements + ix;
-        sl_push(&params, ir_var_decl_to_string(&param->var_decl, get_allocator()));
+        sl_push(&params, ir_var_decl_to_string(&param->var_decl));
     }
-    return sv_aprintf(get_allocator(), "func %.*s(%.*s): %.*s [%ld/%ld]",
+    return sv_printf("func %.*s(%.*s): %.*s [%ld/%ld]",
         SV_ARG(function->function->name), SV_ARG(sl_join(&params, sv_from(", "))),
-        SV_ARG(typespec_to_string(function->function->type, get_allocator())),
+        SV_ARG(typespec_to_string(function->function->type)),
         function->nsaa, function->scope.depth);
 }
 
@@ -44,7 +46,7 @@ ARM64Variable *arm64function_variable_by_name(ARM64Function *function, StringVie
     assert(function->function->kind == FK_SCRIBBLE);
     assert(function->scribble.current_scope);
     for (ARM64Scope *scope = function->scribble.current_scope; scope; scope = scope->up) {
-        for (size_t ix = 0; ix < scope->variables.num; ++ix) {
+        for (size_t ix = 0; ix < scope->variables.size; ++ix) {
             ARM64Variable *var = scope->variables.elements + ix;
             if (sv_eq(var->var_decl.name, name)) {
                 return var;
@@ -259,7 +261,7 @@ void arm64function_enter(ARM64Function *function)
 
     // Copy parameters from registers to their spot in the stack.
     // @improve Do this lazily, i.e. when we need the registers
-    for (size_t ix = 0; ix < function->scope.variables.num; ++ix) {
+    for (size_t ix = 0; ix < function->scope.variables.size; ++ix) {
         ARM64Variable *param = function->scope.variables.elements + ix;
         assert(param->kind == VK_PARAMETER);
         type_id       type = typeid_canonical_type_id(param->var_decl.type.type_id);
@@ -366,7 +368,7 @@ void arm64function_leave(ARM64Function *function)
     }
 
     code_select_epilog(function->scribble.code);
-    code_add_label(function->scribble.code, sv_aprintf(get_allocator(), "__%.*s__return", SV_ARG(name)));
+    code_add_label(function->scribble.code, sv_printf("__%.*s__return", SV_ARG(name)));
     r = 0;
     for (int ix = (int) REG_FP - (int) REG_X19 - 1; ix >= 0; --ix) {
         if (function->scribble.code->function->scribble.callee_saved[ix]) {
@@ -396,7 +398,7 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
         arm64function_add_instruction(calling_function, "sub", "sp,sp,#%d", called_function->nsaa);
     }
     Code *marshalling = code_create(calling_function);
-    for (size_t ix = 0; ix < called_function->scope.variables.num; ++ix) {
+    for (size_t ix = 0; ix < called_function->scope.variables.size; ++ix) {
         ARM64Variable *param = called_function->scope.variables.elements + ix;
         assert(param->kind == VK_PARAMETER);
         type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);

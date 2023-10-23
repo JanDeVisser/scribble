@@ -5,70 +5,15 @@
  */
 
 #include <ctype.h>
-#include <stdint.h>
 
 #include <allocate.h>
 #include <sv.h>
 
 DECLARE_SHARED_ALLOCATOR(sv)
-SHARED_ALLOCATOR_IMPL(sv)
 
-#define BLOCKSIZES(S) S(32) S(64) S(128) S(256) S(512) S(1024) S(2048) S(4096) S(8192) S(16384)
-
-#undef BLOCKSIZE
-#define BLOCKSIZE(size) static char *fl_##size = NULL;
-BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-
-char *allocate_for_length(size_t length, size_t *capacity, Allocator *allocator)
-{
-    if (!allocator) {
-        allocator = get_allocator();
-    }
-    char  *ret = NULL;
-    size_t cap = (!capacity || !*capacity) ? 32 : *capacity;
-    while (cap < length)
-        cap *= 2;
-    switch (cap) {
-#define BLOCKSIZE(size)                         \
-    case size: {                                \
-        if (fl_##size) {                        \
-            ret = fl_##size;                    \
-            fl_##size = *((char **) fl_##size); \
-        }                                       \
-    } break;
-        BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-    default:
-        break;
-    }
-    if (!ret) {
-        ret = allocator_allocate(allocator, cap);
-    }
-    if (capacity) {
-        *capacity = cap;
-    }
-    return ret;
-}
-
-void free_buffer(char *buffer, size_t capacity)
-{
-    if (capacity) {
-        trace(CAT_SV, "F:0x%08zx:%5zu", (uint64_t) buffer, capacity);
-        switch (capacity) {
-#undef BLOCKSIZE
-#define BLOCKSIZE(size)                  \
-    case size:                           \
-        *((char **) buffer) = fl_##size; \
-        fl_##size = buffer;              \
-        break;
-            BLOCKSIZES(BLOCKSIZE)
-#undef BLOCKSIZE
-        default:
-            break;
-        }
-    }
-}
+char  *allocate_for_length(size_t length, size_t *capacity);
+size_t buffer_capacity(char const *buffer);
+void   free_buffer(char *buffer);
 
 StringView sv_from(char const *s)
 {
@@ -91,7 +36,15 @@ StringView sv_copy(StringView sv)
 
 StringView sv_copy_chars(char const *ptr, size_t len)
 {
-    return sv_copy_chars_with_allocator(ptr, len, NULL);
+    if (!ptr || !len) {
+        return sv_null();
+    }
+    StringView ret = { 0 };
+    ret.ptr = allocate_for_length(len + 1, NULL);
+    ret.length = len;
+    memcpy((char *) ret.ptr, ptr, len);
+    ((char *) ret.ptr)[ret.length] = 0;
+    return ret;
 }
 
 StringView sv_copy_cstr(char const *s)
@@ -103,39 +56,9 @@ StringView sv_copy_cstr(char const *s)
     return sv_copy_chars(s, len);
 }
 
-StringView sv_copy_with_allocator(StringView sv, Allocator *allocator)
-{
-    if (sv_empty(sv)) {
-        return sv;
-    }
-    return sv_copy_chars_with_allocator(sv.ptr, sv.length, allocator);
-}
-
-StringView sv_copy_chars_with_allocator(char const *ptr, size_t len, Allocator *allocator)
-{
-    if (!ptr || !len) {
-        return sv_null();
-    }
-    StringView ret = { 0 };
-    ret.ptr = allocate_for_length(len, NULL, allocator);
-    ret.length = len;
-    memcpy((char *) ret.ptr, ptr, len);
-    ((char *) ret.ptr)[ret.length] = 0;
-    return ret;
-}
-
-StringView sv_copy_cstr_with_allocator(char const *s, Allocator *allocator)
-{
-    size_t len = strlen(s);
-    if (!s || !len) {
-        return sv_null();
-    }
-    return sv_copy_chars_with_allocator(s, len, allocator);
-}
-
 void sv_free(StringView sv)
 {
-    free_buffer((char *) sv.ptr, sv.capacity);
+    free_buffer((char *) sv.ptr);
 }
 
 StringView sv_null()
@@ -144,43 +67,19 @@ StringView sv_null()
     return ret;
 }
 
-StringView sv_aprintf(Allocator *allocator, char const *fmt, ...)
-{
-    va_list args;
-
-    va_start(args, fmt);
-    StringView ret = sv_avprintf(allocator, fmt, args);
-    va_end(args);
-    return ret;
-}
-
-StringView sv_avprintf(Allocator *allocator, char const *fmt, va_list args)
-{
-    StringView ret = { 0 };
-    va_list    args2;
-    va_copy(args2, args);
-    size_t len = vsnprintf(NULL, 0, fmt, args2);
-    va_end(args2);
-    ret.ptr = allocate_for_length(len + 1, &ret.capacity, allocator);
-    vsnprintf((char *) ret.ptr, len + 1, fmt, args);
-    trace(CAT_SV, "S:0x%08zx:%5zu:%.60s", (uint64_t) ret.ptr, len, ret.ptr);
-    ret.length = len;
-    return ret;
-}
-
 StringView sv_printf(char const *fmt, ...)
 {
     va_list args;
-
     va_start(args, fmt);
-    StringView ret = sv_avprintf(get_allocator(), fmt, args);
+    StringView ret = sv_vprintf(fmt, args);
     va_end(args);
     return ret;
 }
 
 StringView sv_vprintf(char const *fmt, va_list args)
 {
-    return sv_avprintf(get_allocator(), fmt, args);
+    StringBuilder builder = sb_vcreatef(fmt, args);
+    return builder.view;
 }
 
 bool sv_empty(StringView sv)
@@ -201,7 +100,7 @@ size_t sv_length(StringView sv)
 bool sv_is_cstr(StringView sv)
 {
     bool ret = sv.ptr && (sv.ptr[sv.length] == 0);
-    if (!ret && (sv.capacity > sv.length)) {
+    if (!ret && (buffer_capacity(sv.ptr) > sv.length)) {
         char *ptr = (char *) sv.ptr;
         ptr[sv.length] = '\0';
         ret = true;
@@ -214,7 +113,7 @@ char const *sv_cstr(StringView sv)
     if (sv_is_cstr(sv)) {
         return sv.ptr;
     } else {
-        char *cstr = allocate_for_length(sv.length + 1, NULL, NULL);
+        char *cstr = allocate_for_length(sv.length + 1, NULL);
         memcpy(cstr, sv.ptr, sv.length);
         cstr[sv.length] = '\0';
         return cstr;
@@ -313,7 +212,7 @@ int sv_last(StringView sv, char ch)
 {
     for (int ix = 0; ix < sv.length; ++ix) {
         if (*(sv.ptr + (sv.length - ix - 1)) == ch)
-            return sv.length - ix - 1;
+            return (int) sv.length - ix - 1;
     }
     return -1;
 }
@@ -338,10 +237,9 @@ StringView sv_substring(StringView sv, size_t at, size_t len)
     return (StringView) { sv.ptr + at, len };
 }
 
-StringList sv_asplit(Allocator *allocator, StringView sv, StringView sep)
+StringList sv_split(StringView sv, StringView sep)
 {
-    StringList  ret = sl_acreate(allocator);
-    size_t      ix = 0;
+    StringList  ret = sl_create();
     char const *ptr = sv.ptr;
     char const *component_start = sv.ptr;
     while (true) {
@@ -360,19 +258,9 @@ StringList sv_asplit(Allocator *allocator, StringView sv, StringView sep)
     UNREACHABLE();
 }
 
-StringList sv_split(StringView sv, StringView sep)
-{
-    return sv_asplit(get_allocator(), sv, sep);
-}
-
 StringList sv_split_by_whitespace(StringView sv)
 {
-    return sv_asplit_by_whitespace(get_allocator(), sv);
-}
-
-StringList sv_asplit_by_whitespace(Allocator *allocator, StringView sv)
-{
-    StringList  ret = sl_acreate(allocator);
+    StringList  ret = sl_create();
     char const *current = NULL;
     for (size_t ix = 0; ix < sv.length; ++ix) {
         if (isspace(sv.ptr[ix]) && current) {
@@ -437,101 +325,6 @@ bool sv_tolong(StringView sv, long *result, StringView *tail)
     }
     mem_release(state);
     return ret;
-}
-
-static void sb_reallocate(StringBuilder *sb, size_t new_len)
-{
-    char  *ret = NULL;
-    size_t new_cap = (sb->view.capacity) ? sb->view.capacity : 32;
-    while (new_cap < new_len)
-        new_cap *= 2;
-    if (new_cap <= sb->view.capacity) {
-        return;
-    }
-    size_t current_cap = sb->view.capacity;
-    ret = allocate_for_length(new_len, &sb->view.capacity, sb->allocator);
-    if (sb->view.ptr) {
-        memcpy(ret, sb->view.ptr, sb->view.capacity);
-        free_buffer((char *) sb->view.ptr, current_cap);
-    }
-    sb->view.ptr = ret;
-}
-
-StringBuilder sb_create()
-{
-    return sb_acreate(get_allocator());
-}
-
-StringBuilder sb_acreate(Allocator *allocator)
-{
-    StringBuilder sb = { 0 };
-    sb.allocator = allocator;
-    return sb;
-}
-
-StringBuilder sb_copy_chars(char const *ptr, size_t len)
-{
-    StringBuilder sb = sb_create();
-    sb.view.ptr = allocate_for_length(len + 1, &sb.view.capacity, sb.allocator);
-    if (len > 0) {
-        memcpy((char *) sb.view.ptr, ptr, len);
-        sb.view.length = len;
-    }
-    return sb;
-}
-
-StringBuilder sb_copy_sv(StringView sv)
-{
-    return sb_copy_chars(sv.ptr, sv.length + 1);
-}
-
-StringBuilder sb_copy_cstr(char const *s)
-{
-    return sb_copy_chars(s, strlen(s) + 1);
-}
-
-void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
-{
-    sb_reallocate(sb, sb->view.length + len + 1);
-    char *p = (char *) sb->view.ptr;
-    memcpy(p + sb->view.length, ptr, len);
-    sb->view.length += len;
-    p[sb->view.length] = '\0';
-    trace(CAT_SV, "B:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
-}
-
-void sb_append_sv(StringBuilder *sb, StringView sv)
-{
-    sb_append_chars(sb, sv.ptr, sv.length);
-}
-
-void sb_append_cstr(StringBuilder *sb, char const *s)
-{
-    sb_append_chars(sb, s, strlen(s));
-}
-
-void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
-{
-    va_list args2;
-    va_copy(args2, args);
-    size_t len = vsnprintf(NULL, 0, fmt, args2);
-    va_end(args2);
-    sb_reallocate(sb, sb->view.length + len + 1);
-    vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args);
-    sb->view.length += len;
-    trace(CAT_SV, "B:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, sb->view.capacity, sb->view.ptr);
-}
-
-void sb_printf(StringBuilder *sb, char const *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    sb_vprintf(sb, fmt, args);
-}
-
-StringView sb_view(StringBuilder *sb)
-{
-    return sb->view;
 }
 
 #ifdef SV_TEST

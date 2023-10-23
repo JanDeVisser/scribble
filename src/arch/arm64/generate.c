@@ -120,7 +120,7 @@ void generate_native(ARM64Function *function)
     arm64function_pop(function, REG_X0);
     arm64function_add_instruction(function, "blr", "x16");
     arm64function_return(function);
-    arm64function_add_label(function, sv_aprintf(get_allocator(), "__%.*s_$error", SV_ARG(arm64function_label(function))));
+    arm64function_add_label(function, sv_printf("__%.*s_$error", SV_ARG(arm64function_label(function))));
     arm64function_add_instruction(function, "mov", "x0,#-1");
     arm64function_leave(function);
 }
@@ -189,7 +189,7 @@ void generate_JUMP_T(ARM64Function *function, IROperation *op)
 void generate_LABEL(ARM64Function *function, IROperation *op)
 {
     arm64function_add_label(function,
-        sv_aprintf(get_allocator(), "%.*s_%zu",
+        sv_printf("%.*s_%zu",
             SV_ARG(arm64function_label(function)), op->label));
 }
 
@@ -312,9 +312,9 @@ void generate_code(ARM64Function *arm_function)
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
     arm_function->scribble.current_scope = &arm_function->scope;
     arm64function_enter(arm_function);
-    for (size_t ix = 0; ix < function->operations.num; ++ix) {
+    for (size_t ix = 0; ix < function->operations.size; ++ix) {
         IROperation *op = function->operations.elements + ix;
-        StringView   op_str = ir_operation_to_string(op, get_allocator());
+        StringView   op_str = ir_operation_to_string(op);
         trace(CAT_COMPILE, "%.*s", SV_ARG(op_str));
         arm64function_add_comment(arm_function, "%.*s", SV_ARG(op_str));
         switch (op->operation) {
@@ -396,7 +396,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
     if (function->kind == FK_SCRIBBLE) {
         arm_function->scope.depth = offset;
         ARM64Scope *scope = &arm_function->scope;
-        for (size_t op_ix = 0; op_ix < function->operations.num; ++op_ix) {
+        for (size_t op_ix = 0; op_ix < function->operations.size; ++op_ix) {
             IROperation *op = function->operations.elements + op_ix;
             switch (op->operation) {
             case IR_DECL_VAR: {
@@ -441,8 +441,8 @@ void initialize_assembly(Assembly *assembly)
 {
     IRModule *module = assembly->module;
 
-    da_resize_ARM64Function(&assembly->functions, module->functions.num);
-    for (size_t ix = 0; ix < module->functions.num; ++ix) {
+    da_resize_ARM64Function(&assembly->functions, module->functions.size);
+    for (size_t ix = 0; ix < module->functions.size; ++ix) {
         IRFunction *function = module->functions.elements + ix;
         size_t      fnc_ix = da_append_ARM64Function(
             &assembly->functions,
@@ -462,7 +462,7 @@ void initialize_assembly(Assembly *assembly)
 
 void generate_assembly(Assembly *assembly)
 {
-    for (size_t ix = 0; ix < assembly->functions.num; ++ix) {
+    for (size_t ix = 0; ix < assembly->functions.size; ++ix) {
         ARM64Function *function = assembly->functions.elements + ix;
         switch (function->function->kind) {
         case FK_SCRIBBLE: {
@@ -485,8 +485,8 @@ ARM64Context *generate_arm64(IRProgram *program)
     ctx->program = program;
     ctx->scope.kind = SK_GLOBAL;
     ctx->scope.up = NULL;
-    da_resize_Assembly(&ctx->assemblies, program->modules.num);
-    for (size_t ix = 0; ix < program->modules.num; ++ix) {
+    da_resize_Assembly(&ctx->assemblies, program->modules.size);
+    for (size_t ix = 0; ix < program->modules.size; ++ix) {
         IRModule *module = program->modules.elements + ix;
         size_t    obj_ix = da_append_Assembly(
             &ctx->assemblies,

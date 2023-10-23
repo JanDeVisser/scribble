@@ -404,7 +404,7 @@ void_t resolve_function(char const *func_name_cstr)
     StringView func_name = sv_from(func_name_cstr);
     Resolve   *resolve;
     StringView lib = sv_null();
-    StringList lib_func = sv_asplit(get_allocator(), func_name, sv_from(":"));
+    StringList lib_func = sv_split(func_name, sv_from(":"));
 
     resolve = resolve_get();
     assert(resolve);

@@ -11,39 +11,31 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <da.h>
 #include <mem.h>
 
 typedef struct string_view {
     char const *ptr;
     size_t      length;
-    size_t      capacity;
 } StringView;
 
+DA_ELEMENTS(StringView, strings)
+typedef DA_StringView StringList;
+
 typedef struct string_builder {
-    Allocator *allocator;
     StringView view;
 } StringBuilder;
 
-typedef struct string_list {
-    Allocator  *allocator;
-    size_t      size;
-    size_t      capacity;
-    StringView *strings;
-} StringList;
+DA(StringBuilder)
 
 extern StringView  sv_null();
 extern void        sv_free(StringView sv);
-extern StringView  sv_from(char const *s);
 extern StringView  sv_copy(StringView sv);
 extern StringView  sv_copy_chars(char const *ptr, size_t len);
 extern StringView  sv_copy_cstr(char const *s);
-extern StringView  sv_copy_with_allocator(StringView sv, Allocator *allocator);
-extern StringView  sv_copy_chars_with_allocator(char const *ptr, size_t len, Allocator *allocator);
-extern StringView  sv_copy_cstr_with_allocator(char const *s, Allocator *allocator);
-extern StringView  sv_aprintf(Allocator *allocator, char const *fmt, ...);
-extern StringView  sv_avprintf(Allocator *allocator, char const *fmt, va_list args);
 extern StringView  sv_printf(char const *fmt, ...);
 extern StringView  sv_vprintf(char const *fmt, va_list args);
+extern StringView  sv_from(char const *s);
 extern bool        sv_empty(StringView sv);
 extern bool        sv_not_empty(StringView sv);
 extern size_t      sv_length(StringView sv);
@@ -62,10 +54,8 @@ extern int         sv_first(StringView sv, char ch);
 extern int         sv_last(StringView sv, char ch);
 extern int         sv_find(StringView sv, StringView sub);
 extern StringView  sv_substring(StringView sv, size_t at, size_t len);
-extern StringList  sv_asplit(Allocator *allocator, StringView sv, StringView sep);
 extern StringList  sv_split(StringView sv, StringView sep);
 extern StringList  sv_split_by_whitespace(StringView sv);
-extern StringList  sv_asplit_by_whitespace(Allocator *allocator, StringView sv);
 extern StringView  sv_strip(StringView sv);
 
 #define SV_SPEC "%.*s"
@@ -76,7 +66,8 @@ extern StringView  sv_strip(StringView sv);
 #define SV_ARG_LALIGN(sv, width) (int) sv.length, sv.ptr, (int) (width - sv.length), ""
 
 extern StringBuilder sb_create();
-extern StringBuilder sb_acreate(Allocator *allocator);
+extern StringBuilder sb_createf(char const *fmt, ...);
+extern StringBuilder sb_vcreatef(char const *fmt, va_list args);
 extern StringBuilder sb_copy_chars(char const *ptr, size_t len);
 extern StringBuilder sb_copy_cstr(char const *s);
 extern StringBuilder sb_copy_sv(StringView sv);
@@ -91,7 +82,6 @@ extern StringView    sb_view(StringBuilder *sb);
 #define SB_ARG(sb) (int) (sb).view.length, (sb).view.ptr
 
 extern StringList  sl_create();
-extern StringList  sl_acreate(Allocator *allocator);
 extern StringList  sl_copy(StringList *sl);
 extern StringList *sl_push(StringList *sl, StringView sv);
 extern StringList *sl_extend(StringList *sl, StringList *with);

@@ -565,7 +565,7 @@ void datum_print(Datum *d)
 
 StringView datum_sprint(Datum *d)
 {
-    StringBuilder sb = sb_acreate(get_allocator());
+    StringBuilder sb = sb_create();
     switch (datum_kind(d)) {
     case TK_PRIMITIVE: {
         switch (typeid_builtin_type(d->type)) {

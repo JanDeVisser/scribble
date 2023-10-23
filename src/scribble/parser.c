@@ -324,7 +324,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             parse_arguments(ctx, call, '(', ')');
             return call;
         } else {
-            StringBuilder sb = sb_acreate(get_allocator());
+            StringBuilder sb = sb_create();
             SyntaxNode   *var = syntax_node_make(SNT_VARIABLE, token.text, token);
             SyntaxNode  **name_part = &var->variable.names;
             while (true) {
@@ -964,9 +964,9 @@ ParserContext parse(char const *dir_or_file)
         trace(CAT_PARSE, "CWD: %s dir: %s", cwd, dir_or_file);
     }
     ParserContext ret = { 0 };
-    Token         token = { sv_from(dir_or_file), TK_PROGRAM, TC_NONE };
-    ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(sv_from(dir_or_file)), token);
-    ret.source_name = sv_copy_cstr_with_allocator(dir_or_file, get_allocator());
+    ret.source_name = sv_copy_cstr(dir_or_file);
+    Token token = { ret.source_name, TK_PROGRAM, TC_NONE };
+    ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(ret.source_name), token);
 
     DIR *dir = opendir(dir_or_file);
     if (dir == NULL) {

@@ -226,7 +226,7 @@ extern ExpressionType    *typeid_canonical_type(type_id type);
 extern void               type_registry_init();
 extern bool               typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);
 extern StringView         typespec_name(TypeSpec typespec);
-extern StringView         typespec_to_string(TypeSpec typespec, Allocator *allocator);
+extern StringView         typespec_to_string(TypeSpec typespec);
 extern void               typespec_print(FILE *f, TypeSpec typespec);
 extern bool               type_is_concrete(ExpressionType *type);
 extern bool               typeid_is_concrete(type_id type);
