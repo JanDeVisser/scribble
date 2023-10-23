@@ -377,6 +377,7 @@ typedef struct arm64_function {
     union {
         struct {
             ARM64Scope *current_scope;
+            int64_t     stack_depth;
             Code       *code;
             bool        registers[(int) REG_V31 + 1];
             bool        callee_saved[(int) REG_FP - (int) REG_X19];

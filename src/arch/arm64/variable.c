@@ -60,7 +60,7 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->function->scope.depth - variable->local_address.offset }
+                .offset = variable->function->scribble.stack_depth - variable->local_address.offset }
         };
         arm64function_copy(variable->function, to_location, from_location);
     } break;
@@ -95,7 +95,7 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->function->scope.depth - variable->local_address.offset }
+                .offset = variable->function->scribble.stack_depth - variable->local_address.offset }
         };
         arm64function_copy(variable->function, to_location, from_location);
     } break;

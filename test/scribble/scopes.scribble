@@ -1,0 +1,13 @@
+func main() : i32 {
+    var x: i32 = 4;
+    {
+        var x: i32 = 5;
+        puti(x); endln();
+        {
+            var y: i32 = 6;
+            puti(y); endln();
+        }
+    }
+    puti(x); endln();
+    return 0;
+}

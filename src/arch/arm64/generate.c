@@ -9,7 +9,7 @@
 #include <sv.h>
 
 #undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) static void generate_##i(ARM64Function *intrinsic);
+#define INTRINSIC_ENUM(i) static void generate_##i(ARM64Function *caller, ARM64Function *intrinsic);
 __attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
 #undef INTRINSIC_ENUM
 
@@ -19,13 +19,13 @@ __attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
 #undef IR_OPERATION_TYPE
 
         static void generate_code(ARM64Function *arm_function);
-static void generate_intrinsic_call(ARM64Function *arm_function);
+static void generate_intrinsic_call(ARM64Function *caller, ARM64Function *intrinsic);
 static void generate_native(ARM64Function *arm_function);
 static void generate_function_declaration(ARM64Function *arm_function, IRFunction *function);
 
 DECLARE_SHARED_ALLOCATOR(arm64)
 
-void generate_ALLOC(ARM64Function *intrinsic)
+void generate_ALLOC(ARM64Function *caller, ARM64Function *intrinsic)
 {
     // syscall SYS_mmap
     arm64function_add_text(intrinsic,
@@ -38,59 +38,59 @@ void generate_ALLOC(ARM64Function *intrinsic)
     arm64function_syscall(intrinsic, SYSCALL_MMAP);
 }
 
-void generate_ENDLN(ARM64Function *intrinsic)
+void generate_ENDLN(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_write_char(intrinsic, 1, '\n');
+    arm64function_write_char(caller, 1, '\n');
 }
 
-void generate_CLOSE(ARM64Function *intrinsic)
+void generate_CLOSE(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_syscall(intrinsic, SYSCALL_CLOSE);
+    arm64function_syscall(caller, SYSCALL_CLOSE);
 }
 
-void generate_FPUTS(ARM64Function *intrinsic)
+void generate_FPUTS(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_syscall(intrinsic, SYSCALL_WRITE);
+    arm64function_syscall(caller, SYSCALL_WRITE);
 }
 
-void generate_OPEN(ARM64Function *intrinsic)
+void generate_OPEN(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_add_instruction(intrinsic, "bl", "scribble$open");
+    arm64function_add_instruction(caller, "bl", "scribble$open");
 }
 
-void generate_PUTI(ARM64Function *intrinsic)
+void generate_PUTI(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_add_instruction(intrinsic, "bl", "putint");
+    arm64function_add_instruction(caller, "bl", "putint");
 }
 
-void generate_PUTLN(ARM64Function *intrinsic)
+void generate_PUTLN(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_add_instruction(intrinsic, "mov", "x2,x1");
-    arm64function_add_instruction(intrinsic, "mov", "x1,x0");
-    arm64function_add_instruction(intrinsic, "mov", "x0,#0x01");
-    arm64function_syscall(intrinsic, SYSCALL_WRITE);
-    arm64function_write_char(intrinsic, 1, '\n');
+    arm64function_add_instruction(caller, "mov", "x2,x1");
+    arm64function_add_instruction(caller, "mov", "x1,x0");
+    arm64function_add_instruction(caller, "mov", "x0,#0x01");
+    arm64function_syscall(caller, SYSCALL_WRITE);
+    arm64function_write_char(caller, 1, '\n');
 }
 
-void generate_READ(ARM64Function *intrinsic)
+void generate_READ(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_syscall(intrinsic, 0x04);
+    arm64function_syscall(caller, 0x04);
 }
 
-void generate_WRITE(ARM64Function *intrinsic)
+void generate_WRITE(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    arm64function_syscall(intrinsic, 0x04);
+    arm64function_syscall(caller, 0x04);
 }
 
-void generate_intrinsic_call(ARM64Function *called_function)
+void generate_intrinsic_call(ARM64Function *caller, ARM64Function *intrinsic)
 {
-    IRFunction *function = called_function->function;
+    IRFunction *function = intrinsic->function;
     assert(function->kind == FK_INTRINSIC);
     switch (function->intrinsic) {
 #undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i)              \
-    case INT_##i:                      \
-        generate_##i(called_function); \
+#define INTRINSIC_ENUM(i)                \
+    case INT_##i:                        \
+        generate_##i(caller, intrinsic); \
         break;
         INTRINSICS(INTRINSIC_ENUM)
 #undef INTRINSIC_ENUM
@@ -136,7 +136,7 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
         arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(arm64function_label(called_function)));
         break;
     case FK_INTRINSIC:
-        generate_intrinsic_call(called_function);
+        generate_intrinsic_call(calling_function, called_function);
         break;
     default:
         UNREACHABLE();
@@ -295,6 +295,7 @@ void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
     assert(new_scope->operation == op);
     scope->current = new_scope;
     function->scribble.current_scope = new_scope;
+    function->scribble.stack_depth += new_scope->depth;
 }
 
 void generate_SCOPE_END(ARM64Function *function, IROperation *op)
@@ -302,6 +303,7 @@ void generate_SCOPE_END(ARM64Function *function, IROperation *op)
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
     scope->current = NULL;
+    function->scribble.stack_depth -= scope->depth;
     function->scribble.current_scope = scope->up;
 }
 
@@ -311,6 +313,7 @@ void generate_code(ARM64Function *arm_function)
     assert(function->kind == FK_SCRIBBLE);
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
     arm_function->scribble.current_scope = &arm_function->scope;
+    arm_function->scribble.stack_depth = arm_function->scope.depth;
     arm64function_enter(arm_function);
     for (size_t ix = 0; ix < function->operations.size; ++ix) {
         IROperation *op = function->operations.elements + ix;
