@@ -318,9 +318,9 @@ ParameterPassingMethod_name(ParameterPassingMethod mth)
 }
 
 typedef struct arm64_variable {
-    struct arm64_function *function;
-    ARM64VariableKind      kind;
-    IRVarDecl              var_decl;
+    struct arm64_scope *scope;
+    ARM64VariableKind   kind;
+    IRVarDecl           var_decl;
     union {
         struct {
             int64_t                offset;
@@ -357,15 +357,17 @@ typedef enum scope_kind {
 } ScopeKind;
 
 typedef struct arm64_scope {
-    ScopeKind           kind;
-    DA_ARM64Variable    variables;
-    IROperation        *operation;
-    int64_t             depth;
-    struct arm64_scope *up;
-    struct arm64_scope *scopes;
-    struct arm64_scope *current;
-    ValueLocation      *expression_stack;
-    struct arm64_scope *next;
+    struct arm64_function *function;
+    ScopeKind              kind;
+    DA_ARM64Variable       variables;
+    IROperation           *operation;
+    int64_t                depth;
+    int64_t                cumulative_depth;
+    struct arm64_scope    *up;
+    struct arm64_scope    *scopes;
+    struct arm64_scope    *current;
+    ValueLocation         *expression_stack;
+    struct arm64_scope    *next;
 } ARM64Scope;
 
 typedef struct arm64_function {
@@ -469,6 +471,7 @@ extern void                  assembly_new_function(Assembly *assembly);
 extern void                  assembly_save_and_assemble(Assembly *assembly, StringView file_name);
 extern ARM64Function        *assembly_function_by_name(Assembly *assembly, StringView name);
 extern StringView            value_location_to_string(ValueLocation loc, Allocator *allocator);
+extern void                  arm64scope_set_depth(ARM64Scope *scope, int64_t depth);
 extern StringView            arm64function_label(ARM64Function *function);
 extern StringView            arm64function_to_string(ARM64Function *function);
 extern ARM64Variable        *arm64function_variable_by_name(ARM64Function *function, StringView name);

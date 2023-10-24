@@ -8,4 +8,4 @@ add_library(
         function.c
         generate.c
         variable.c
-)
+        scope.c)

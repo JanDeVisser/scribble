@@ -350,7 +350,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             size_t var_ix = da_append_ARM64Variable(
                 &arm_function->scope.variables,
                 (ARM64Variable) {
-                    .function = arm_function,
+                    .scope = &arm_function->scope,
                     .kind = VK_PARAMETER,
                     .var_decl = *ir_param,
                     .parameter.offset = offset,
@@ -406,7 +406,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                 size_t var_ix = da_append_ARM64Variable(
                     &scope->variables,
                     (ARM64Variable) {
-                        .function = arm_function,
+                        .scope = scope,
                         .kind = VK_LOCAL,
                         .var_decl = op->var_decl,
                     });
@@ -419,6 +419,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                 new_scope->kind = SK_BLOCK;
                 new_scope->operation = op;
                 new_scope->up = scope;
+                new_scope->function = arm_function;
                 if (scope->current) {
                     scope->current->next = new_scope;
                 } else {
@@ -437,6 +438,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             }
         }
         scope->current = NULL;
+        arm64scope_set_depth(&arm_function->scope, 0);
     }
 }
 

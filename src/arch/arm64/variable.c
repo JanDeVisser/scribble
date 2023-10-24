@@ -60,9 +60,9 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->function->scribble.stack_depth - variable->local_address.offset }
+                .offset = variable->scope->cumulative_depth - variable->local_address.offset }
         };
-        arm64function_copy(variable->function, to_location, from_location);
+        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_STATIC:
     case VK_GLOBAL: {
@@ -71,7 +71,7 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
             .kind = VLK_SYMBOL,
             .symbol = variable->static_address.label
         };
-        arm64function_copy(variable->function, to_location, from_location);
+        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_AGGREGATE_COMPONENT: {
         NYI("VK_AGGREGATE_COMPONENT store");
@@ -95,9 +95,9 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->function->scribble.stack_depth - variable->local_address.offset }
+                .offset = variable->scope->cumulative_depth - variable->local_address.offset }
         };
-        arm64function_copy(variable->function, to_location, from_location);
+        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_STATIC:
     case VK_GLOBAL: {
@@ -106,7 +106,7 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
             .kind = VLK_SYMBOL,
             .symbol = variable->static_address.label
         };
-        arm64function_copy(variable->function, to_location, from_location);
+        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_AGGREGATE_COMPONENT: {
         NYI("VK_AGGREGATE_COMPONENT load");

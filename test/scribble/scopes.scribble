@@ -6,7 +6,12 @@ func main() : i32 {
         {
             var y: i32 = 6;
             puti(y); endln();
+            puti(x); endln();
         }
+    }
+    {
+        var y: i32 = 7;
+        puti(y); endln();
     }
     puti(x); endln();
     return 0;
