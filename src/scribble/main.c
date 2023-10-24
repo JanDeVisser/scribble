@@ -57,5 +57,5 @@ int main(int argc, char **argv)
     }
     BoundNode *ast = bind(parse_result.program);
     IRProgram  ir = generate(ast);
-    MUST_VOID(Int, output_arm64(&ir));
+    MUST(Int, output_arm64(&ir));
 }

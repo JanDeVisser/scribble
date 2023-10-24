@@ -952,7 +952,7 @@ module_done:
 
 void parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
 {
-    MUST(Char, char *, buffer, read_file_at(dir_fd, file))
+    char *buffer = MUST(Char, read_file_at(dir_fd, file));
     parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
 }
 

@@ -379,7 +379,7 @@ void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_na
         assert(my_lib);
     }
     trace(CAT_LIB, "dlsym('%.*s')", SV_ARG(func_name));
-    MUST(DLResult, void_t, ret, _resolve_handle_get_function(my_lib, func_name))
+    void_t ret = MUST(DLResult, _resolve_handle_get_function(my_lib, func_name));
     if (ret) {
         FunctionHandle *fnc_handle = allocate_new(FunctionHandle);
         fnc_handle->name = sv_printf("%.*s", SV_ARG(func_name));

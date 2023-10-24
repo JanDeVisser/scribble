@@ -161,7 +161,7 @@ void directive_handle_include(StringView directive, Lexer *lexer)
     char      *name = allocate(sv_length(file) + 1);
     memcpy(name, file.ptr, file.length);
     name[file.length] = 0;
-    MUST(Char, char *, buffer, read_file_by_name(name));
+    char *buffer = MUST(Char, read_file_by_name(name));
     lexer_advance_source(lexer, ix);
     lexer_push_source(lexer, (StringView) { buffer, strlen(buffer) }, sv_from(name));
 }

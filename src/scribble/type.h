@@ -269,7 +269,7 @@ static size_t typeid_ix(type_id type)
 static size_t typeid_sizeof(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
-    MUST(Size, size_t, sz, type_sizeof(et));
+    size_t          sz = MUST(Size, type_sizeof(et));
     return sz;
 }
 

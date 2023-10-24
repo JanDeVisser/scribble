@@ -83,8 +83,8 @@ bool BuiltinType_is_unsigned(BuiltinType type)
 
 ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type)
 {
-    uint8_t kind = builtin_type >> 12;
-    TRY(TypeID, type_id, id, type_registry_make_type(name, kind))
+    uint8_t         kind = builtin_type >> 12;
+    type_id         id = TRY(TypeID, type_registry_make_type(name, kind));
     ExpressionType *type = type_registry_get_type_by_id(id);
     assert(type);
     type->type_id |= ((uint32_t) builtin_type) << 16;
@@ -182,36 +182,36 @@ void type_registry_init()
     type_registry.size = 0;
 #undef BUILTINTYPE_ENUM
 #define BUILTINTYPE_ENUM(type, name, code) \
-    MUST_TO_VAR(TypeID, type##_ID, type_registry_add_builtin(sv_from(#name), BIT_##type));
+    type##_ID = MUST(TypeID, type_registry_add_builtin(sv_from(#name), BIT_##type));
     BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
-    MUST_VOID(TypeID, type_registry_alias(sv_from("int"), I32_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("unsigned"), U32_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("byte"), I8_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("char"), U8_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("short"), I16_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("ushort"), U16_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("long"), I64_ID))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("ulong"), U64_ID))
+    MUST(TypeID, type_registry_alias(sv_from("int"), I32_ID));
+    MUST(TypeID, type_registry_alias(sv_from("unsigned"), U32_ID));
+    MUST(TypeID, type_registry_alias(sv_from("byte"), I8_ID));
+    MUST(TypeID, type_registry_alias(sv_from("char"), U8_ID));
+    MUST(TypeID, type_registry_alias(sv_from("short"), I16_ID));
+    MUST(TypeID, type_registry_alias(sv_from("ushort"), U16_ID));
+    MUST(TypeID, type_registry_alias(sv_from("long"), I64_ID));
+    MUST(TypeID, type_registry_alias(sv_from("ulong"), U64_ID));
     assert(typeid_has_kind(STRING_ID, TK_AGGREGATE));
     assert(typeid_has_kind(RANGE_ID, TK_AGGREGATE));
 
-    MUST_VOID(TypeID,
-        type_set_template_parameters(POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
-    MUST_VOID(TypeID,
-        type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }))
-    MUST_VOID(TypeID,
+    MUST(TypeID,
+        type_set_template_parameters(POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
+    MUST(TypeID,
+        type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
+    MUST(TypeID,
         type_set_struct_components(RANGE_ID, 2,
             (TypeComponent[]) {
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("min"), .param = sv_from("T") },
-                { .kind = CK_TEMPLATE_PARAM, .name = sv_from("max"), .param = sv_from("T") } }))
-    MUST_VOID(TypeID,
+                { .kind = CK_TEMPLATE_PARAM, .name = sv_from("max"), .param = sv_from("T") } }));
+    MUST(TypeID,
         type_set_struct_components(STRING_ID, 2,
             (TypeComponent[]) {
                 { .kind = CK_TYPE, .name = sv_from("ptr"), .type_id = POINTER_ID },
-                { .kind = CK_TYPE, .name = sv_from("length"), .type_id = U64_ID } }))
-    MUST_TO_VAR(TypeID, PCHAR_ID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = U8_ID } }))
-    MUST_VOID(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID))
+                { .kind = CK_TYPE, .name = sv_from("length"), .type_id = U64_ID } }));
+    PCHAR_ID = MUST(TypeID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = U8_ID } }));
+    MUST(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID));
 
     FIRST_CUSTOM_IX = type_registry.size;
     NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
@@ -299,12 +299,12 @@ ErrorOrSize type_sizeof(ExpressionType *type)
         if (type->array.base_type.kind != CK_TYPE) {
             ERROR(Size, TypeError, 0, "Cannot get size of template type");
         }
-        TRY(Size, size_t, component_size, type_sizeof(type_registry_get_type_by_id(type->array.base_type.type_id)))
+        size_t component_size = TRY(Size, type_sizeof(type_registry_get_type_by_id(type->array.base_type.type_id)));
         RETURN(Size, component_size * type->array.size);
     }
     case TK_AGGREGATE: {
         size_t size = 0;
-        TRY(Size, size_t, align, type_alignat(type))
+        size_t align = TRY(Size, type_alignat(type));
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
             if (type->components.components[ix].kind != CK_TYPE) {
                 ERROR(Size, TypeError, 0, "Cannot get size of template type");
@@ -313,7 +313,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
                 size += size + align - (size % align);
             }
             ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
-            TRY(Size, size_t, component_size, type_sizeof(component_type))
+            size_t          component_size = TRY(Size, type_sizeof(component_type));
             size += component_size;
         }
         RETURN(Size, size);
@@ -325,7 +325,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
                 ERROR(Size, TypeError, 0, "Cannot get size of template type");
             }
             ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
-            TRY(Size, size_t, component_size, type_sizeof(component_type))
+            size_t          component_size = TRY(Size, type_sizeof(component_type));
             if (component_size > size) {
                 size = component_size;
             }
@@ -357,7 +357,7 @@ ErrorOrSize type_alignat(ExpressionType *type)
                 ERROR(Size, TypeError, 0, "Cannot get alignment of template type");
             }
             ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
-            TRY(Size, size_t, component_align, type_alignat(component_type))
+            size_t          component_align = TRY(Size, type_alignat(component_type));
             if (component_align > align) {
                 align = component_align;
             }
@@ -381,13 +381,13 @@ ErrorOrSize type_offsetof_index(ExpressionType *type, size_t index)
         ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
     }
     size_t offset = 0;
-    TRY(Size, size_t, align, type_alignat(type))
+    size_t align = TRY(Size, type_alignat(type));
     for (size_t ix = 0; ix < index; ++ix) {
         if (offset % align) {
             offset += offset + align - (offset % align);
         }
         ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
-        TRY(Size, size_t, component_size, type_sizeof(component_type))
+        size_t          component_size = TRY(Size, type_sizeof(component_type));
         offset += component_size;
     }
     RETURN(Size, offset);
@@ -402,7 +402,7 @@ ErrorOrSize type_offsetof_name(ExpressionType *type, StringView name)
         ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
     }
     size_t offset = 0;
-    TRY(Size, size_t, align, type_alignat(type))
+    size_t align = TRY(Size, type_alignat(type));
     for (size_t ix = 0; ix < type->components.num_components; ++ix) {
         if (sv_eq(type->components.components[ix].name, name)) {
             RETURN(Size, offset);
@@ -411,7 +411,7 @@ ErrorOrSize type_offsetof_name(ExpressionType *type, StringView name)
             offset += offset + align - (offset % align);
         }
         ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
-        TRY(Size, size_t, component_size, type_sizeof(component_type))
+        size_t          component_size = TRY(Size, type_sizeof(component_type));
         offset += component_size;
     }
     ERROR(Size, TypeError, 0, "Type '%.*s' has no component with name '%.*s'", SV_ARG(type->name), SV_ARG(name));
@@ -625,7 +625,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     }
     sb_append_cstr(&name, ">");
 
-    TRY(TypeID, type_id, new_id, type_registry_make_type(name.view, type_kind(template_type)))
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name.view, type_kind(template_type)));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->specialization_of = template_type->type_id;
@@ -723,7 +723,7 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
     }
     sb_append_cstr(&name, ">");
 
-    TRY(TypeID, type_id, new_variant_id, type_registry_make_type(name.view, TK_VARIANT))
+    type_id         new_variant_id = TRY(TypeID, type_registry_make_type(name.view, TK_VARIANT));
     ExpressionType *new_variant = type_registry_get_type_by_id(new_variant_id);
     assert(new_variant);
     new_variant->components.num_components = num;
@@ -748,7 +748,7 @@ ErrorOrTypeID type_registry_get_variant2(type_id t1, type_id t2)
 
 ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 {
-    TRY(TypeID, type_id, new_id, type_registry_make_type(name, TK_ALIAS))
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->alias_for_id = aliased;
@@ -757,7 +757,7 @@ ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 
 ErrorOrTypeID type_registry_array(StringView name, type_id base_type, size_t size)
 {
-    TRY(TypeID, type_id, new_id, type_registry_make_type(name, TK_ARRAY))
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ARRAY));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->array.base_type.type_id = base_type;

@@ -96,7 +96,7 @@ ErrorOrInt output_arm64(IRProgram *program)
     StringView sdk_path = { 0 }; // "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX12.1.sdk";
     if (sv_empty(sdk_path)) {
         Process *p = process_create(sv_from("xcrun"), "-sdk", "macosx", "--show-sdk-path");
-        MUST_VOID(Int, process_execute(p))
+        MUST(Int, process_execute(p));
         sdk_path = sv_strip(p->out.view);
     }
 #endif
@@ -189,7 +189,7 @@ ErrorOrInt output_arm64(IRProgram *program)
         //        for (auto& m : modules)
         //            ld_args.push_back(m);
 
-        MUST(Int, int, ld_result, execute_sl(sv_from("ld"), &ld_args))
+        int ld_result = MUST(Int, execute_sl(sv_from("ld"), &ld_args));
         if (ld_result) {
             fatal("ld failed with exit code %d", ld_result);
         }

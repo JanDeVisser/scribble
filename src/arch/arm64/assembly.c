@@ -117,7 +117,7 @@ void assembly_save_and_assemble(Assembly *assembly, StringView bare_file_name)
         fatal("Could not write assembly text to %.*s: %s", SV_ARG(asm_file), strerror(ferror(s)));
     }
     fclose(s);
-    MUST_VOID(Int, execute(sv_from("as"), sv_cstr(asm_file), "-o", sv_cstr(obj_file)))
+    MUST(Int, execute(sv_from("as"), sv_cstr(asm_file), "-o", sv_cstr(obj_file)));
 }
 
 bool assembly_has_exports(Assembly *assembly)

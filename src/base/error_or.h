@@ -95,47 +95,23 @@ extern char const *Error_to_string(Error error);
 #define ERROR(name, cat, code, msg, ...) return ErrorOr##name##_error(cat, code, msg __VA_OPT__(, ) __VA_ARGS__)
 #define VERROR(name, cat, code, msg, args) return ErrorOr##name##_verror(cat, code, msg, args)
 
-#define MUST_TO_VAR(name, var, expr)                    \
-    {                                                   \
+#define MUST(name, expr)                                \
+    ({                                                  \
         ErrorOr##name name##_maybe = (expr);            \
         if (ErrorOr##name##_is_error(name##_maybe)) {   \
             fatal(Error_to_string(name##_maybe.error)); \
         }                                               \
-        var = name##_maybe.value;                       \
-    }
+        name##_maybe.value;                             \
+    })
 
-#define MUST(name, typ, var, expr) \
-    typ var;                       \
-    MUST_TO_VAR(name, var, expr)
-
-#define MUST_VOID(name, expr)                           \
-    {                                                   \
-        ErrorOr##name name##_maybe = (expr);            \
-        if (ErrorOr##name##_is_error(name##_maybe)) {   \
-            fatal(Error_to_string(name##_maybe.error)); \
-        }                                               \
-    }
-
-#define TRY_TO_VAR(name, var, expr)                   \
-    {                                                 \
+#define TRY(name, expr)                               \
+    ({                                                \
         ErrorOr##name name##_maybe = (expr);          \
         if (ErrorOr##name##_is_error(name##_maybe)) { \
             return name##_maybe;                      \
         }                                             \
-        var = name##_maybe.value;                     \
-    }
-
-#define TRY(name, typ, var, expr) \
-    typ var;                      \
-    TRY_TO_VAR(name, var, expr)
-
-#define TRY_VOID(name, expr)                          \
-    {                                                 \
-        ErrorOr##name name##_maybe = (expr);          \
-        if (ErrorOr##name##_is_error(name##_maybe)) { \
-            return name##_maybe;                      \
-        }                                             \
-    }
+        name##_maybe.value;                           \
+    })
 
 #define TRY_TO(name, to_name, typ, var, expr)             \
     typ var;                                              \

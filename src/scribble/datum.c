@@ -225,7 +225,7 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     Datum *geq = datum_LESS_EQUALS(d1, d2);
     assert(geq->bool_value);
     datum_free(geq);
-    MUST(TypeID, type_id, type, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }))
+    type_id type = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }));
     assert(typeid_has_kind(type, TK_AGGREGATE));
     Datum *ret = datum_allocate(type);
     datum_copy(ret->composite.components, d1);

@@ -169,7 +169,7 @@ bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *
         if (lhs.type_id != rhs.type_id) {
             return false;
         }
-        MUST_TO_VAR(TypeID, ret->type_id, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = lhs.type_id } }));
+        ret->type_id = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = lhs.type_id } }));
         ret->optional = false;
         return true;
     }

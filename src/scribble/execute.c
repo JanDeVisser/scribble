@@ -364,7 +364,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
                     SV_ARG(op->sv), SV_ARG(typeid_name(alias_for_id)), SV_ARG(et->name));
             }
         } else {
-            MUST_VOID(TypeID, type_registry_alias(op->sv, alias_for_id))
+            MUST(TypeID, type_registry_alias(op->sv, alias_for_id));
         }
     } break;
     case IR_DEFINE_AGGREGATE: {
@@ -398,8 +398,8 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             components[ix].type_id = comp_type;
         }
         if (!et) {
-            MUST(TypeID, type_id, new_id, type_registry_make_type(op->sv, TK_AGGREGATE))
-            MUST_VOID(TypeID, type_set_struct_components(new_id, num_components, components))
+            type_id new_id = MUST(TypeID, type_registry_make_type(op->sv, TK_AGGREGATE));
+            MUST(TypeID, type_set_struct_components(new_id, num_components, components));
         }
     } break;
     case IR_DEFINE_ARRAY: {
@@ -419,7 +419,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
                     SV_ARG(op->sv), size, et->array.size);
             }
         } else {
-            MUST_VOID(TypeID, type_registry_array(op->sv, type, size))
+            MUST(TypeID, type_registry_array(op->sv, type, size));
         }
     } break;
     case IR_DEFINE_VARIANT: {
@@ -446,7 +446,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             options[ix] = opt_type;
         }
         if (!et) {
-            MUST_VOID(TypeID, type_registry_get_variant(num_variants, options))
+            MUST(TypeID, type_registry_get_variant(num_variants, options));
         }
     } break;
     case IR_JUMP: {
