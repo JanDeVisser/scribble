@@ -197,12 +197,23 @@ static inline char const *v_reg(Register r)
     return reg(r);
 }
 
+typedef struct register_range {
+    Register start;
+    Register end;
+} RegisterRange;
+
+typedef struct register_pointer {
+    Register reg;
+    int64_t  offset;
+} RegisterPointer;
+
 #define VALUELOCATIONKINDS(S) \
     S(POINTER)                \
     S(REGISTER)               \
     S(REGISTER_RANGE)         \
     S(STACK)                  \
-    S(SYMBOL)
+    S(LABEL)                  \
+    S(DATA)
 
 typedef enum value_location_kind {
 #undef VALUELOCATIONKIND
@@ -229,17 +240,11 @@ typedef struct value_location {
     type_id           type;
     ValueLocationKind kind;
     union {
-        struct {
-            Register reg;
-            int64_t  offset;
-        } pointer;
-        Register reg;
-        struct {
-            Register start;
-            Register end;
-        } range;
-        int64_t    offset;
-        StringView symbol;
+        RegisterPointer pointer;
+        Register        reg;
+        RegisterRange   range;
+        int64_t         offset;
+        StringView      symbol;
     };
     struct value_location *next;
 } ValueLocation;
@@ -291,6 +296,7 @@ static inline char const *VariableKind_name(ARM64VariableKind type)
 
 #define PARAMETERPASSINGMETHODS(S) \
     S(REGISTER)                    \
+    S(REGISTER_RANGE)              \
     S(STACK)                       \
     S(POINTER)                     \
     S(POINTER_STACK)
@@ -327,7 +333,11 @@ typedef struct arm64_variable {
             ParameterPassingMethod method;
             union {
                 Register reg;
-                int64_t  nsaa_offset;
+                struct {
+                    Register start;
+                    Register end;
+                } range;
+                int64_t nsaa_offset;
             };
         } parameter;
         struct {
@@ -362,7 +372,7 @@ typedef struct arm64_scope {
     DA_ARM64Variable       variables;
     IROperation           *operation;
     int64_t                depth;
-    int64_t                cumulative_depth;
+    int64_t                scope_offset;
     struct arm64_scope    *up;
     struct arm64_scope    *scopes;
     struct arm64_scope    *current;
@@ -446,7 +456,7 @@ extern void                  code_add_export(Code *code, StringView function_nam
 extern void                  code_add_import(Code *code, StringView function_name);
 extern void                  code_add_comment(Code *code, char const *text, ...);
 extern void                  code_vadd_comment(Code *code, char const *text, va_list args);
-extern void                  code_copy_pointers(Code *code, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size);
+extern void                  code_copy_memory(Code *code, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size);
 extern void                  code_copy_to_registers(Code *code, Register first, Register from_pointer, size_t from_offset, size_t size);
 extern void                  code_copy_from_registers(Code *code, Register to_pointer, size_t to_offset, Register r, size_t size);
 extern void                  code_copy_to_stack(Code *code, Register r, size_t size);
@@ -461,7 +471,6 @@ extern void                  code_close_function(Code *code, StringView name, si
 extern void                  code_select_prolog(Code *code);
 extern void                  code_select_epilog(Code *code);
 extern void                  code_select_code(Code *code);
-extern Assembly             *assembly_acreate(Allocator *allocator, IRModule *module);
 extern size_t                assembly_add_string(Assembly *assembly, StringView str);
 extern void                  assembly_add_data(Assembly *assembly, StringView label, bool global, StringView type, bool is_static, StringView value);
 extern StringView            assembly_to_string(Assembly *assembly);
@@ -470,8 +479,7 @@ extern bool                  assembly_has_main(Assembly *assembly);
 extern void                  assembly_new_function(Assembly *assembly);
 extern void                  assembly_save_and_assemble(Assembly *assembly, StringView file_name);
 extern ARM64Function        *assembly_function_by_name(Assembly *assembly, StringView name);
-extern StringView            value_location_to_string(ValueLocation loc, Allocator *allocator);
-extern void                  arm64scope_set_depth(ARM64Scope *scope, int64_t depth);
+extern StringView            value_location_to_string(ValueLocation loc);
 extern StringView            arm64function_label(ARM64Function *function);
 extern StringView            arm64function_to_string(ARM64Function *function);
 extern ARM64Variable        *arm64function_variable_by_name(ARM64Function *function, StringView name);
@@ -496,11 +504,13 @@ extern void                  arm64function_copy_to_stack(ARM64Function *function
 extern void                  arm64function_copy(ARM64Function *function, ValueLocation to_location, ValueLocation from_location);
 extern void                  arm64function_write_char(ARM64Function *function, int fd, char ch);
 extern Register              arm64function_allocate_register(ARM64Function *function);
+extern RegisterRange         arm64function_allocate_register_range(ARM64Function *function, size_t num);
 extern void                  arm64function_release_register(ARM64Function *function, Register reg);
 extern void                  arm64function_release_all_registers(ARM64Function *function);
 extern OptionalValueLocation arm64function_pop_location(ARM64Function *function);
 extern void                  arm64function_push_location(ARM64Function *function, ValueLocation entry);
 extern void                  arm64function_push_register(ARM64Function *function, type_id type, Register reg);
+extern void                  arm64function_push_registers(ARM64Function *function, type_id type, RegisterRange regs);
 extern void                  arm64function_enter(ARM64Function *func);
 extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);

@@ -23,6 +23,9 @@ StringView arm64variable_to_string(ARM64Variable *var)
         case PPM_REGISTER:
             sb_printf(&sb, "%s", reg(var->parameter.reg));
             break;
+        case PPM_REGISTER_RANGE:
+            sb_printf(&sb, "%s-%s", reg(var->parameter.range.start), reg(var->parameter.range.end - 1));
+            break;
         case PPM_STACK:
             sb_printf(&sb, "[SP,%ld]", var->parameter.nsaa_offset);
             break;
@@ -60,7 +63,7 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->scope->cumulative_depth - variable->local_address.offset }
+                .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset }
         };
         arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
@@ -68,7 +71,7 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
     case VK_GLOBAL: {
         ValueLocation to_location = {
             .type = type,
-            .kind = VLK_SYMBOL,
+            .kind = VLK_DATA,
             .symbol = variable->static_address.label
         };
         arm64function_copy(variable->scope->function, to_location, from_location);
@@ -95,7 +98,7 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->scope->cumulative_depth - variable->local_address.offset }
+                .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset }
         };
         arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
@@ -103,7 +106,7 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
     case VK_GLOBAL: {
         ValueLocation from_location = {
             .type = type,
-            .kind = VLK_SYMBOL,
+            .kind = VLK_DATA,
             .symbol = variable->static_address.label
         };
         arm64function_copy(variable->scope->function, to_location, from_location);
