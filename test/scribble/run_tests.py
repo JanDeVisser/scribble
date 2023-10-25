@@ -1,7 +1,8 @@
-#!/opt/homebrew/bin/python3
+#!/usr/bin/env python3
 #  Copyright (c) 2021-2022, Jan de Visser <jan@finiandarcy.com>
 #
 #  SPDX-License-Identifier: GPL-3.0-or-later
+#
 
 import argparse
 import json
@@ -10,6 +11,10 @@ import shutil
 import subprocess
 
 import sys
+
+scribble_build_dir = os.path.join("..", "..")
+scribble_bin_dir = os.path.join(scribble_build_dir, "bin")
+scribble_path = os.path.join(scribble_bin_dir, "scribble")
 
 
 def check_stream(script, which, stream):
@@ -29,11 +34,11 @@ def check_stream(script, which, stream):
 def compile_script(name):
     os.path.exists("stdout") and os.remove("stdout")
     os.path.exists("stderr") and os.remove("stderr")
-    if name.endswith(".obl"):
+    if name.endswith(".scribble"):
         f = name
-        name = name[:-4]
+        name = name[:-9]
     else:
-        f = name + ".obl"
+        f = name + ".scribble"
 
     print(name)
     script = {"name": name}
@@ -42,7 +47,7 @@ def compile_script(name):
             os.remove(name)
         if os.path.exists(os.path.join(".compiled", name)):
             os.remove(os.path.join(".compiled", name))
-        ex = subprocess.call(["../build/bin/obelix", "--keep-assembly", f], stdout=out, stderr=err)
+        ex = subprocess.call([scribble_path, "--keep-assembly", f], stdout=out, stderr=err)
         if ex != 0:
             print(f"Compilation of '{f}' failed: {ex}")
             subprocess.call(["cat", "stdout"])
@@ -55,8 +60,8 @@ def compile_script(name):
 
 
 def test_script(name):
-    if name.endswith(".obl"):
-        name = name[:-4]
+    if name.endswith(".scribble"):
+        name = name[:-9]
 
     with open(name + ".json") as fd:
         script = json.load(fd)

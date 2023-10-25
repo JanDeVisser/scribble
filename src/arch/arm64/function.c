@@ -159,7 +159,7 @@ void arm64function_syscall4(ARM64Function *function, int id, uint64_t arg1, uint
 
 void arm64function_copy_pointers(ARM64Function *function, Register to_pointer, size_t to_offset, Register from_pointer, size_t from_offset, size_t size)
 {
-    code_copy_pointers(function->scribble.code, to_pointer, to_offset, from_pointer, from_offset, size);
+    code_copy_memory(function->scribble.code, to_pointer, to_offset, from_pointer, from_offset, size);
 }
 
 void arm64function_copy_to_registers(ARM64Function *function, Register r, Register from_pointer, size_t from_offset, size_t size)
@@ -200,9 +200,43 @@ extern Register arm64function_allocate_register(ARM64Function *function)
     fatal("Out of registers");
 }
 
+extern RegisterRange arm64function_allocate_register_range(ARM64Function *function, size_t num)
+{
+    for (Register ix = REG_X9; ix <= REG_X16 - num; ++ix) {
+        for (size_t jx = 0; jx < num; ++jx) {
+            if (function->scribble.registers[ix + jx]) {
+                ix = ix + jx;
+                goto next_1;
+            }
+        }
+        for (size_t jx = 0; jx < num; ++jx) {
+            function->scribble.registers[ix + jx] = true;
+        }
+        return (RegisterRange) { .start = ix, .end = ix + num };
+    next_1:;
+    }
+    for (Register ix = REG_X19; ix < REG_FP; ++ix) {
+        for (size_t jx = 0; jx < num; ++jx) {
+            if (function->scribble.registers[ix + jx]) {
+                ix = ix + jx;
+                goto next_2;
+            }
+        }
+        for (size_t jx = 0; jx < num; ++jx) {
+            function->scribble.registers[ix + jx] = true;
+            function->scribble.callee_saved[ix + jx - REG_X19] = true;
+        }
+        return (RegisterRange) { .start = ix, .end = ix + num };
+    next_2:;
+    }
+    fatal("Out of registers");
+}
+
 void arm64function_release_register(ARM64Function *function, Register reg)
 {
-    function->scribble.registers[reg] = false;
+    if ((reg >= REG_X9 && reg < REG_X16) || (reg >= REG_X19 && reg < REG_FP)) {
+        function->scribble.registers[reg] = false;
+    }
 }
 
 void arm64function_release_all_registers(ARM64Function *function)
@@ -250,10 +284,20 @@ void arm64function_push_register(ARM64Function *function, type_id type, Register
     arm64function_push_location(function, (ValueLocation) { .type = type, .kind = VLK_REGISTER, .reg = reg });
 }
 
+void arm64function_push_registers(ARM64Function *function, type_id type, RegisterRange regs)
+{
+    arm64function_push_location(
+        function,
+        (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER_RANGE,
+            .range = regs,
+        });
+}
+
 void arm64function_enter(ARM64Function *function)
 {
     function->scribble.current_scope = &function->scope;
-    int64_t stack_depth = function->scope.depth;
     int64_t nsaa = function->nsaa;
     //    arm64context_set_stack_depth(function->, stack_depth);
 
@@ -284,6 +328,15 @@ void arm64function_enter(ARM64Function *function)
             };
             arm64function_copy(function, param_location, arg_location);
         } break;
+        case PPM_REGISTER_RANGE: {
+            ValueLocation arg_location = {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range.start = param->parameter.range.start,
+                .range.end = param->parameter.range.end,
+            };
+            arm64function_copy(function, param_location, arg_location);
+        } break;
         case PPM_POINTER: {
             ValueLocation arg_location = {
                 .type = type,
@@ -301,7 +354,7 @@ void arm64function_enter(ARM64Function *function)
             ValueLocation arg_location = {
                 .type = type,
                 .kind = VLK_STACK,
-                .offset = param->parameter.nsaa_offset + stack_depth + 16,
+                .offset = param->parameter.nsaa_offset + function->scribble.stack_depth + 16,
             };
             arm64function_add_comment(function, "Stack parameter %.*s: %ld -> %ld",
                 SV_ARG(param->var_decl.name), param->parameter.nsaa_offset, param->parameter.offset);
@@ -319,7 +372,7 @@ void arm64function_enter(ARM64Function *function)
             };
             arm64function_add_comment(function, "Stacked pointer parameter %.*s: %ld -> %ld",
                 SV_ARG(param->var_decl.name), param->parameter.nsaa_offset, param->parameter.offset);
-            arm64function_add_instruction(function, "ldr", "%s,[fp,#%d]", x_reg(r), param->parameter.nsaa_offset + stack_depth + 16);
+            arm64function_add_instruction(function, "ldr", "%s,[fp,#%d]", x_reg(r), param->parameter.nsaa_offset + function->scribble.stack_depth + 16);
             arm64function_copy(function, param_location, arg_location);
             arm64function_release_register(function, r);
         } break;
@@ -348,8 +401,8 @@ void arm64function_leave(ARM64Function *function)
     code_add_export(function->scribble.code, name);
     code_add_label(function->scribble.code, name);
     code_add_instruction(function->scribble.code, "stp", "fp,lr,[sp,#-16]!");
-    if (function->scope.depth > 0) {
-        code_add_instruction(function->scribble.code, "sub", "sp,sp,#%zu", function->scope.depth);
+    if (function->scribble.stack_depth > 0) {
+        code_add_instruction(function->scribble.code, "sub", "sp,sp,#%zu", function->scribble.stack_depth);
     }
     code_add_instruction(function->scribble.code, "mov", "fp,sp");
     Register regs[2];
@@ -383,8 +436,8 @@ void arm64function_leave(ARM64Function *function)
         code_add_instruction(function->scribble.code, "ldr", "%s,[sp,#-16]!", x_reg(regs[0]));
     }
     code_add_instruction(function->scribble.code, "mov", "sp,fp");
-    if (function->scope.depth > 0) {
-        code_add_instruction(function->scribble.code, "add", "sp,sp,#%zu", function->scope.depth);
+    if (function->scribble.stack_depth > 0) {
+        code_add_instruction(function->scribble.code, "add", "sp,sp,#%zu", function->scribble.stack_depth);
     }
     code_add_instruction(function->scribble.code, "ldp", "fp,lr,[sp],16");
     code_add_instruction(function->scribble.code, "ret", "");
@@ -405,13 +458,22 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
         MUST_OPTIONAL(ValueLocation, arg_location, arm64function_pop_location(calling_function))
         code_add_comment(marshalling, "Marshalling argument %.*s: %.*s from %.*s",
             SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
-            SV_ARG(value_location_to_string(arg_location, get_allocator())));
+            SV_ARG(value_location_to_string(arg_location)));
         switch (param->parameter.method) {
         case PPM_REGISTER: {
             ValueLocation param_location = {
                 .type = type,
                 .kind = VLK_REGISTER,
                 .reg = param->parameter.reg,
+            };
+            code_copy(marshalling, param_location, arg_location);
+        } break;
+        case PPM_REGISTER_RANGE: {
+            ValueLocation param_location = {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range.start = param->parameter.range.start,
+                .range.end = param->parameter.range.end,
             };
             code_copy(marshalling, param_location, arg_location);
         } break;
@@ -433,7 +495,7 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
                 code_add_instruction(marshalling, "add", "%s,sp,%#ld",
                     x_reg(param->parameter.reg), arg_location.offset);
                 break;
-            case VLK_SYMBOL:
+            case VLK_LABEL:
                 code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
                 code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
                 break;
@@ -452,7 +514,7 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
                 code_add_instruction(marshalling, "add", "%s,%s,%#ld",
                     x_reg(param->parameter.reg), reg(REG_SP), arg_location.offset);
                 break;
-            case VLK_SYMBOL:
+            case VLK_LABEL:
                 code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(r), SV_ARG(arg_location.symbol));
                 code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(r), reg(param->parameter.reg), SV_ARG(arg_location.symbol));
                 break;
@@ -462,6 +524,18 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
             code_add_instruction(marshalling, "str", "%s,[sp,#%d]", x_reg(r), param->parameter.nsaa_offset);
             arm64function_release_register(calling_function, r);
         } break;
+        }
+        switch (arg_location.kind) {
+        case VLK_REGISTER:
+            arm64function_release_register(calling_function, arg_location.reg);
+            break;
+        case VLK_REGISTER_RANGE: {
+            for (Register r = arg_location.range.start; r < arg_location.range.end; ++r) {
+                arm64function_release_register(calling_function, r);
+            }
+        } break;
+        default:
+            break;
         }
     }
     code_select_prolog(marshalling);

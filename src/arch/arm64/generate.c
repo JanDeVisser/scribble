@@ -251,10 +251,21 @@ void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
 
 void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
 {
-    size_t str_id = assembly_add_string(function->assembly, op->sv);
-    arm64function_add_instruction(function, "adr", "x0,str_%zu", str_id);
-    arm64function_add_instruction(function, "mov", "x1,#%zu", op->sv.length);
-    // arm64context_push_value(ctx, STRING_ID, 0);
+    RegisterRange r = arm64function_allocate_register_range(function, 2);
+    size_t        str_id = assembly_add_string(function->assembly, op->sv);
+    ValueLocation target = {
+        .type = POINTER_ID,
+        .kind = VLK_REGISTER,
+        .reg = r.start,
+    };
+    ValueLocation source = {
+        .type = POINTER_ID,
+        .kind = VLK_LABEL,
+        .symbol = sv_printf("str_%ld", str_id),
+    };
+    arm64function_copy(function, target, source);
+    arm64function_add_instruction(function, "mov", "%s,#%ld", x_reg(r.end - 1), op->sv.length);
+    arm64function_push_registers(function, STRING_ID, r);
 }
 
 void generate_PUSH_VAR(ARM64Function *function, IROperation *op)
@@ -295,7 +306,6 @@ void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
     assert(new_scope->operation == op);
     scope->current = new_scope;
     function->scribble.current_scope = new_scope;
-    function->scribble.stack_depth += new_scope->depth;
 }
 
 void generate_SCOPE_END(ARM64Function *function, IROperation *op)
@@ -303,7 +313,6 @@ void generate_SCOPE_END(ARM64Function *function, IROperation *op)
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
     scope->current = NULL;
-    function->scribble.stack_depth -= scope->depth;
     function->scribble.current_scope = scope->up;
 }
 
@@ -313,7 +322,6 @@ void generate_code(ARM64Function *arm_function)
     assert(function->kind == FK_SCRIBBLE);
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
     arm_function->scribble.current_scope = &arm_function->scope;
-    arm_function->scribble.stack_depth = arm_function->scope.depth;
     arm64function_enter(arm_function);
     for (size_t ix = 0; ix < function->operations.size; ++ix) {
         IROperation *op = function->operations.elements + ix;
@@ -346,7 +354,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             IRVarDecl *ir_param = function->parameters + ix;
             type_id    type = typeid_canonical_type_id(ir_param->type.type_id);
             size_t     sz = align_at(typeid_sizeof(type), 8);
-            offset = (int64_t) align_at(offset + sz, 16);
+            offset += (int64_t) align_at(offset + sz, 16);
             size_t var_ix = da_append_ARM64Variable(
                 &arm_function->scope.variables,
                 (ARM64Variable) {
@@ -374,11 +382,12 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                 arm_function->nsaa += (int64_t) sz;
             } break;
             case TK_AGGREGATE: {
-                size_t size_in_double_words = align_at(typeid_sizeof(type), 8);
+                size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
                 if ((size_in_double_words <= 2) && (ngrn + size_in_double_words < REG_X8)) {
-                    arm_param->parameter.method = PPM_REGISTER;
-                    arm_param->parameter.reg = ngrn;
+                    arm_param->parameter.method = PPM_REGISTER_RANGE;
+                    arm_param->parameter.range.start = ngrn;
                     ngrn += size_in_double_words;
+                    arm_param->parameter.range.end = ngrn;
                     break;
                 }
                 if (ngrn < 8) {
@@ -395,9 +404,9 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             }
         }
     }
-    arm_function->scope.depth = offset;
     if (function->kind == FK_SCRIBBLE) {
         arm_function->scope.depth = offset;
+        arm_function->scope.scope_offset = 0;
         ARM64Scope *scope = &arm_function->scope;
         for (size_t op_ix = 0; op_ix < function->operations.size; ++op_ix) {
             IROperation *op = function->operations.elements + op_ix;
@@ -412,7 +421,7 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                     });
                 ARM64Variable *variable = scope->variables.elements + var_ix;
                 scope->depth += (int64_t) align_at(typeid_sizeof(variable->var_decl.type.type_id), 16);
-                variable->local_address.offset = scope->depth;
+                variable->local_address.offset = scope->scope_offset + scope->depth;
             } break;
             case IR_SCOPE_BEGIN: {
                 ARM64Scope *new_scope = allocate_new(ARM64Scope);
@@ -420,6 +429,8 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
                 new_scope->operation = op;
                 new_scope->up = scope;
                 new_scope->function = arm_function;
+                new_scope->depth = 0;
+                new_scope->scope_offset = scope->scope_offset + scope->depth;
                 if (scope->current) {
                     scope->current->next = new_scope;
                 } else {
@@ -431,6 +442,9 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             case IR_SCOPE_END: {
                 assert(scope->up);
                 scope->current = NULL;
+                if (scope->scope_offset + scope->depth > arm_function->scribble.stack_depth) {
+                    arm_function->scribble.stack_depth = scope->scope_offset + scope->depth;
+                }
                 scope = scope->up;
             } break;
             default:
@@ -438,7 +452,6 @@ void generate_function_declaration(ARM64Function *arm_function, IRFunction *func
             }
         }
         scope->current = NULL;
-        arm64scope_set_depth(&arm_function->scope, 0);
     }
 }
 

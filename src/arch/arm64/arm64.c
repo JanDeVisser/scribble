@@ -56,7 +56,7 @@ OpcodeMap get_opcode_map(type_id type)
     return ret;
 }
 
-StringView value_location_to_string(ValueLocation loc, Allocator *allocator)
+StringView value_location_to_string(ValueLocation loc)
 {
     StringBuilder sb = sb_create();
     sb_append_cstr(&sb, ValueLocationKind_name(loc.kind));
@@ -72,12 +72,13 @@ StringView value_location_to_string(ValueLocation loc, Allocator *allocator)
     case VLK_REGISTER_RANGE:
         sb_printf(&sb, "%s-%s",
             reg_with_width(loc.range.start, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32),
-            reg_with_width(loc.range.end, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32));
+            reg_with_width(loc.range.end - 1, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32));
         break;
     case VLK_STACK:
         sb_printf(&sb, "[SP, #%ld]", loc.offset);
         break;
-    case VLK_SYMBOL:
+    case VLK_LABEL:
+    case VLK_DATA:
         sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
         break;
     default:

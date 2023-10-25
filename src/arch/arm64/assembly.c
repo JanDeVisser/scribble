@@ -31,10 +31,10 @@ size_t assembly_add_string(Assembly *assembly, StringView str)
         }
     }
     size_t id = label_reserve_id();
-    code_add_directive(assembly->code, ".align", "2");
-    code_add_label(assembly->code, sv_printf("str_%zu"));
+    code_add_directive(assembly->data, ".align", "2");
+    code_add_label(assembly->data, sv_printf("str_%zu", id));
     // .asciz  may need to be .string
-    code_add_directive(assembly->code, ".asciz", sv_cstr(sv_printf("\"%.*s\"", SV_ARG(str))));
+    code_add_directive(assembly->data, ".asciz", sv_cstr(sv_printf("\"%.*s\"", SV_ARG(str))));
     StringID *sid = allocate_new(StringID);
     sid->string = str;
     sid->id = id;
