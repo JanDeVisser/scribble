@@ -153,55 +153,6 @@ bool code_has_text(Code *code)
     return !code_empty(code);
 }
 
-void code_close_function(Code *code, StringView name, size_t stack_depth)
-{
-    code_select_prolog(code);
-    code_add_directive(code, ".global", sv_cstr(name));
-    code_add_label(code, name);
-    code_add_instruction(code, "stp", "fp,lr,[sp,#-16]!");
-    if (stack_depth > 0) {
-        code_add_instruction(code, "sub", "sp,sp,#%zu", stack_depth);
-    }
-    code_add_instruction(code, "mov", "fp,sp");
-    Register regs[2];
-    int      r = 0;
-    for (int ix = 0; ix < (int) REG_FP - (int) REG_X19; ++ix) {
-        if (code->function->scribble.callee_saved[ix]) {
-            regs[r] = REG_X19 + ix;
-            r = 1 - r;
-            if (r == 0) {
-                code_add_instruction(code, "stp", "%s,%s,[sp,#-16]!", x_reg(regs[0]), x_reg(regs[1]));
-            }
-        }
-    }
-    if (r == 1) {
-        code_add_instruction(code, "str", "%s,[sp,#-16]!", x_reg(regs[0]));
-    }
-
-    code_select_epilog(code);
-    code_add_label(code, sv_printf("__%.*s_return", SV_ARG(name)));
-    r = 0;
-    for (int ix = (int) REG_FP - (int) REG_X19 - 1; ix >= 0; --ix) {
-        if (code->function->scribble.callee_saved[ix]) {
-            regs[r] = REG_X19 + ix;
-            r = 1 - r;
-            if (r == 0) {
-                code_add_instruction(code, "ldp", "%s,%s,[sp,#-16]!", x_reg(regs[1]), x_reg(regs[0]));
-            }
-        }
-    }
-    if (r == 1) {
-        code_add_instruction(code, "ldr", "%s,[sp,#-16]!", x_reg(regs[0]));
-    }
-    code_add_instruction(code, "mov", "sp,fp");
-    if (stack_depth > 0) {
-        code_add_instruction(code, "add", "sp,sp,#%zu", stack_depth);
-    }
-    code_add_instruction(code, "ldp", "fp,lr,[sp],16");
-    code_add_instruction(code, "ret", "");
-    code_select_code(code);
-}
-
 void code_select_prolog(Code *code)
 {
     code->active = &code->prolog;
@@ -325,10 +276,22 @@ void code_copy_to_stack(Code *code, Register r, size_t size)
     }
 }
 
+void code_load_immediate(Code *code, Register reg, ValueLocation loc)
+{
+    assert(loc.kind == VLK_IMMEDIATE);
+    OpcodeMap opcode_map = get_opcode_map(loc.type);
+    if (BuiltinType_is_unsigned(typeid_builtin_type(loc.type))) {
+        code_add_instruction(code, "mov", "%s,#%zu", reg_with_width(reg, opcode_map.reg_width), loc.unsigned_value);
+    } else {
+        code_add_instruction(code, "mov", "%s,#%ld", reg_with_width(reg, opcode_map.reg_width), loc.signed_value);
+    }
+}
+
 void code_copy(Code *code, ValueLocation to_location, ValueLocation from_location)
 {
     assert(to_location.type == from_location.type);
     size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
+    size_t    aligned_sz = align_at(sz, 16);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);
     code_add_comment(code, "copy %.*s to %.*s",
         SV_ARG(value_location_to_string(from_location)),
@@ -348,7 +311,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_from_registers(code, to_location.pointer.reg, to_location.pointer.offset, from_location.range.start, sz);
         } break;
         case VLK_STACK: {
-            code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, REG_SP, from_location.offset, sz);
+            code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, REG_SP, 0, sz);
         } break;
         case VLK_LABEL: {
             assert(sz == 8);
@@ -365,6 +328,15 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 x_reg(pointer), x_reg(pointer), SV_ARG(from_location.symbol));
             code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
+        } break;
+        case VLK_IMMEDIATE: {
+            Register value = arm64function_allocate_register(code->function);
+            code_load_immediate(code, value, from_location);
+            code_copy_from_registers(code, to_location.pointer.reg, to_location.pointer.offset, value, sz);
+            arm64function_release_register(code->function, value);
+        } break;
+        case VLK_FLOAT: {
+            NYI("code_copy w/ VLK_FLOAT");
         } break;
         default:
             UNREACHABLE();
@@ -390,9 +362,9 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 reg_with_width(from_location.range.start, opcode_map.reg_width));
         } break;
         case VLK_STACK: {
-            code_add_instruction(code, opcode_map.load_opcode, "%s,[sp,#%ld]",
+            code_add_instruction(code, opcode_map.load_opcode, "%s,[%s],#%ld",
                 reg_with_width(to_location.reg, opcode_map.reg_width),
-                reg(from_location.pointer.reg), from_location.offset);
+                reg(REG_SP), aligned_sz);
         } break;
         case VLK_LABEL: {
             code_load_label(code, to_location.reg, from_location.symbol);
@@ -404,6 +376,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 reg_with_width(to_location.reg, opcode_map.reg_width),
                 x_reg(pointer), SV_ARG(from_location.symbol));
             arm64function_release_register(code->function, pointer);
+        } break;
+        case VLK_IMMEDIATE: {
+            code_load_immediate(code, to_location.reg, from_location);
+        } break;
+        case VLK_FLOAT: {
+            NYI("code_copy w/ VLK_FLOAT");
         } break;
         default:
             UNREACHABLE();
@@ -430,7 +408,8 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             }
         } break;
         case VLK_STACK: {
-            code_copy_to_registers(code, to_location.range.start, REG_SP, from_location.offset, sz);
+            code_copy_to_registers(code, to_location.range.start, REG_SP, 0, sz);
+            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
         } break;
         case VLK_LABEL: {
             code_load_label(code, to_location.range.start, from_location.symbol);
@@ -441,6 +420,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_to_registers(code, to_location.range.start, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
         } break;
+        case VLK_IMMEDIATE: {
+            code_load_immediate(code, to_location.range.start, from_location);
+        } break;
+        case VLK_FLOAT: {
+            NYI("code_copy w/ VLK_FLOAT");
+        } break;
         default:
             UNREACHABLE();
         }
@@ -449,32 +434,46 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         assert(typeid_sizeof(to_location.type) == sz);
         switch (from_location.kind) {
         case VLK_POINTER: {
-            code_copy_memory(code, REG_SP, to_location.offset, from_location.pointer.reg, from_location.pointer.offset, sz);
+            code_add_instruction(code, "sub", "sp,sp,#%zu", aligned_sz);
+            code_copy_memory(code, REG_SP, 0, from_location.pointer.reg, from_location.pointer.offset, sz);
         } break;
         case VLK_REGISTER: {
             assert(sz == 8);
-            code_add_instruction(code, opcode_map.store_opcode, "%s,[%s,#%ld]",
+            code_add_instruction(code, opcode_map.store_opcode, "%s,[%s,-#%ld]!",
                 reg_with_width(from_location.reg, opcode_map.reg_width),
-                reg(REG_SP), to_location.offset);
+                reg(REG_SP), aligned_sz);
         } break;
         case VLK_REGISTER_RANGE: {
             assert(8 * ((int) from_location.range.end - (int) from_location.range.start) == sz);
-            code_copy_from_registers(code, REG_SP, to_location.offset, from_location.range.start, sz);
+            code_add_instruction(code, "sub", "sp,sp,#%zu", aligned_sz);
+            code_copy_from_registers(code, REG_SP, 0, from_location.range.start, sz);
         } break;
         case VLK_STACK: {
-            code_copy_memory(code, REG_SP, to_location.offset, REG_SP, from_location.offset, sz);
+            // NO-OP
         } break;
         case VLK_LABEL: {
             Register label = arm64function_allocate_register(code->function);
             code_load_label(code, label, from_location.symbol);
-            code_copy_from_registers(code, REG_SP, to_location.offset, label, sz);
+            code_add_instruction(code, "str", "%s,[%s,-#%ld]!", x_reg(label), reg(REG_SP), aligned_sz);
             arm64function_release_register(code->function, label);
         } break;
         case VLK_DATA: {
+            code_add_instruction(code, "sub", "sp,sp,#%zu", aligned_sz);
             Register pointer = arm64function_allocate_register(code->function);
             code_load_label(code, pointer, from_location.symbol);
-            code_copy_memory(code, REG_SP, to_location.offset, pointer, 0, sz);
+            code_copy_memory(code, REG_SP, 0, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
+        } break;
+        case VLK_IMMEDIATE: {
+            Register value = arm64function_allocate_register(code->function);
+            code_load_immediate(code, value, from_location);
+            code_add_instruction(code, opcode_map.store_opcode, "%s,[%s,-#%ld]!",
+                reg_with_width(value, opcode_map.reg_width),
+                reg(REG_SP), aligned_sz);
+            arm64function_release_register(code->function, value);
+        } break;
+        case VLK_FLOAT: {
+            NYI("code_copy w/ VLK_FLOAT");
         } break;
         default:
             UNREACHABLE();
@@ -498,6 +497,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         } break;
         case VLK_STACK: {
             code_copy_memory(code, to_pointer, 0, REG_SP, from_location.offset, sz);
+            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
         } break;
         case VLK_LABEL: {
             assert(sz == 8);
@@ -512,6 +512,16 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_memory(code, to_pointer, 0, from_pointer, 0, sz);
             arm64function_release_register(code->function, from_pointer);
         } break;
+        case VLK_IMMEDIATE: {
+            Register value = arm64function_allocate_register(code->function);
+            code_load_immediate(code, value, from_location);
+            code_add_instruction(code, opcode_map.store_opcode, "%s,[%s]",
+                reg_with_width(value, opcode_map.reg_width), to_pointer);
+            arm64function_release_register(code->function, value);
+        } break;
+        case VLK_FLOAT: {
+            NYI("code_copy w/ VLK_FLOAT");
+        } break;
         default:
             UNREACHABLE();
         }
@@ -519,6 +529,23 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     } break;
     default:
         UNREACHABLE();
+    }
+    switch (from_location.kind) {
+    case VLK_REGISTER: {
+        arm64function_release_register(code->function, from_location.reg);
+    } break;
+    case VLK_REGISTER_RANGE: {
+        for (size_t ix = from_location.range.start; ix < from_location.range.end; ++ix) {
+            arm64function_release_register(code->function, ix);
+        }
+    } break;
+    case VLK_STACK: {
+        if (to_location.kind != VLK_STACK) {
+            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
+        }
+    } break;
+    default:
+        break;
     }
 }
 

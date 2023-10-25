@@ -213,7 +213,9 @@ typedef struct register_pointer {
     S(REGISTER_RANGE)         \
     S(STACK)                  \
     S(LABEL)                  \
-    S(DATA)
+    S(DATA)                   \
+    S(IMMEDIATE)              \
+    S(FLOAT)
 
 typedef enum value_location_kind {
 #undef VALUELOCATIONKIND
@@ -245,6 +247,11 @@ typedef struct value_location {
         RegisterRange   range;
         int64_t         offset;
         StringView      symbol;
+        double          float_value;
+        union {
+            uint64_t unsigned_value;
+            int64_t  signed_value;
+        };
     };
     struct value_location *next;
 } ValueLocation;
@@ -467,7 +474,6 @@ extern void                  code_append_code(Code *code, Code *append);
 extern StringView            code_to_string(Code *code);
 extern bool                  code_empty(Code *code);
 extern bool                  code_has_text(Code *code);
-extern void                  code_close_function(Code *code, StringView name, size_t stack_depth);
 extern void                  code_select_prolog(Code *code);
 extern void                  code_select_epilog(Code *code);
 extern void                  code_select_code(Code *code);
@@ -518,7 +524,7 @@ extern void                  arm64function_marshall_arguments(ARM64Function *cal
 extern void                  arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result);
 extern StringView            arm64variable_to_string(ARM64Variable *var);
 extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
-extern void                  arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_location);
+extern void                  arm64variable_load_variable(ARM64Variable *variable);
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);

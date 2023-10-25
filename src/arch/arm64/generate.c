@@ -228,57 +228,75 @@ void generate_POP_VAR_COMPONENT(ARM64Function *function, IROperation *op)
 
 void generate_PUSH_BOOL_CONSTANT(ARM64Function *function, IROperation *op)
 {
-    Register r = arm64function_allocate_register(function);
-    arm64function_add_instruction(function, "mov", "%s,#%d", w_reg(r), (op->bool_value) ? 1 : 0);
-    arm64function_push_register(function, BOOL_ID, r);
+    arm64function_push_location(
+        function,
+        (ValueLocation) {
+            .type = BOOL_ID,
+            .kind = VLK_IMMEDIATE,
+            .unsigned_value = (op->bool_value) ? 1 : 0,
+        });
 }
 
 void generate_PUSH_FLOAT_CONSTANT(ARM64Function *function, IROperation *op)
 {
+    arm64function_push_location(
+        function,
+        (ValueLocation) {
+            .type = FLOAT_ID,
+            .kind = VLK_FLOAT,
+            .float_value = op->double_value,
+        });
 }
 
 void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
 {
-    Register      r = arm64function_allocate_register(function);
-    RegisterWidth w = (BuiltinType_width(op->integer.type) < 64) ? RW_32 : RW_64;
-    if (BuiltinType_is_unsigned(op->integer.type)) {
-        arm64function_add_instruction(function, "mov", "%s,#%zu", reg_with_width(r, w), op->integer.value.unsigned_value);
+    ValueLocation immediate = {
+        .type = type_registry_id_of_builtin_type(op->integer.type),
+        .kind = VLK_IMMEDIATE,
+    };
+    if (BuiltinType_is_unsigned(typeid_builtin_type(immediate.type))) {
+        immediate.unsigned_value = op->integer.value.unsigned_value;
     } else {
-        arm64function_add_instruction(function, "mov", "%s,#%ld", reg_with_width(r, w), op->integer.value.signed_value);
+        immediate.signed_value = op->integer.value.signed_value;
     }
-    arm64function_push_register(function, type_registry_id_of_builtin_type(op->integer.type), r);
+    arm64function_push_location(function, immediate);
 }
 
 void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
 {
-    RegisterRange r = arm64function_allocate_register_range(function, 2);
+    RegisterRange regs = arm64function_allocate_register_range(function, 2);
     size_t        str_id = assembly_add_string(function->assembly, op->sv);
-    ValueLocation target = {
-        .type = POINTER_ID,
-        .kind = VLK_REGISTER,
-        .reg = r.start,
-    };
-    ValueLocation source = {
-        .type = POINTER_ID,
-        .kind = VLK_LABEL,
-        .symbol = sv_printf("str_%ld", str_id),
-    };
-    arm64function_copy(function, target, source);
-    arm64function_add_instruction(function, "mov", "%s,#%ld", x_reg(r.end - 1), op->sv.length);
-    arm64function_push_registers(function, STRING_ID, r);
+    arm64function_copy(function,
+        (ValueLocation) {
+            .type = POINTER_ID,
+            .kind = VLK_REGISTER,
+            .reg = regs.start,
+        },
+        (ValueLocation) {
+            .type = POINTER_ID,
+            .kind = VLK_LABEL,
+            .symbol = sv_printf("str_%ld", str_id),
+        });
+    arm64function_copy(
+        function,
+        (ValueLocation) {
+            .type = U64_ID,
+            .kind = VLK_REGISTER,
+            .reg = regs.start + 1,
+        },
+        (ValueLocation) {
+            .type = U64_ID,
+            .kind = VLK_IMMEDIATE,
+            .unsigned_value = op->sv.length,
+        });
+    arm64function_push_registers(function, STRING_ID, regs);
 }
 
 void generate_PUSH_VAR(ARM64Function *function, IROperation *op)
 {
     Register       r = arm64function_allocate_register(function);
     ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
-    ValueLocation  location = {
-         .type = var->var_decl.type.type_id,
-         .kind = VLK_REGISTER,
-         .reg = r,
-    };
-    arm64variable_load_variable(var, location);
-    arm64function_push_location(function, location);
+    arm64variable_load_variable(var);
 }
 
 void generate_PUSH_VAR_COMPONENT(ARM64Function *function, IROperation *op)

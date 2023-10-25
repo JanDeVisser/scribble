@@ -87,29 +87,59 @@ void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_lo
     }
 }
 
-void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_location)
+void arm64variable_load_variable(ARM64Variable *variable)
 {
-    type_id type = variable->var_decl.type.type_id;
+    type_id        type = variable->var_decl.type.type_id;
+    ARM64Function *function = variable->scope->function;
+    ValueLocation  from_location = { 0 };
+    ValueLocation  to_location = { 0 };
+
+    switch (typeid_kind(type)) {
+    case TK_PRIMITIVE: {
+        to_location = (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+    } break;
+    case TK_AGGREGATE: {
+        size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
+        if (size_in_double_words <= 2) {
+            to_location = (ValueLocation) {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range = arm64function_allocate_register_range(function, size_in_double_words),
+            };
+            break;
+        }
+        to_location = (ValueLocation) {
+            .type = type,
+            .kind = VLK_STACK,
+        };
+    } break;
+    default:
+        NYI("load_variable for non-primitive, non-aggregate type");
+        break;
+    }
+
     switch (variable->kind) {
     case VK_PARAMETER:
     case VK_LOCAL: {
-        ValueLocation from_location = {
+        from_location = (ValueLocation) {
             .type = type,
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
                 .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset }
         };
-        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_STATIC:
     case VK_GLOBAL: {
-        ValueLocation from_location = {
+        from_location = (ValueLocation) {
             .type = type,
             .kind = VLK_DATA,
             .symbol = variable->static_address.label
         };
-        arm64function_copy(variable->scope->function, to_location, from_location);
     } break;
     case VK_AGGREGATE_COMPONENT: {
         NYI("VK_AGGREGATE_COMPONENT load");
@@ -120,4 +150,6 @@ void arm64variable_load_variable(ARM64Variable *variable, ValueLocation to_locat
     default:
         UNREACHABLE();
     }
+    arm64function_copy(variable->scope->function, to_location, from_location);
+    arm64function_push_location(function, to_location);
 }

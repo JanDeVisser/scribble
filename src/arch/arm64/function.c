@@ -255,13 +255,6 @@ OptionalValueLocation arm64function_pop_location(ARM64Function *function)
     if (!scope->expression_stack) {
         return OptionalValueLocation_empty();
     }
-    switch (scope->expression_stack->kind) {
-    case VLK_REGISTER: {
-        arm64function_release_register(function, scope->expression_stack->reg);
-    } break;
-    default:
-        break;
-    }
     OptionalValueLocation ret = OptionalValueLocation_create(*scope->expression_stack);
     scope->expression_stack = scope->expression_stack->next;
     return ret;

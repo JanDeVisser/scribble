@@ -81,6 +81,12 @@ StringView value_location_to_string(ValueLocation loc)
     case VLK_DATA:
         sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
         break;
+    case VLK_IMMEDIATE:
+        sb_printf(&sb, "#%ld", loc.signed_value);
+        break;
+    case VLK_FLOAT:
+        sb_printf(&sb, "#%f", loc.float_value);
+        break;
     default:
         UNREACHABLE();
     }
