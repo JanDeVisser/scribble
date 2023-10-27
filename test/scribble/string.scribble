@@ -1,0 +1,5 @@
+func main() : i32 {
+  var s = "Hello, World!";
+  putln(s);
+  return 0;
+}

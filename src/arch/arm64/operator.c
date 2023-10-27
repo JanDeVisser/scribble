@@ -91,10 +91,179 @@ char const *conditional_for_op_by_type(Operator op, type_id type)
     return conditional;
 }
 
+ValueLocation arm64_apply_string_op(ARM64Function *function, IROperation *op)
+{
+    assert(op->operator.lhs == STRING_ID);
+    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
+    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+
+    switch (op->operator.op) {
+    case OP_ADD: {
+        //        StringView concat(StringView s1, StringView s2)
+        //        {
+        //            StringBuilder sb = make_sb();
+        //            sb_append(&sb, s1);
+        //            sb_append(&sb, s2);
+        //            return sb.view;
+        //        }
+        //
+        //        stp     x0, x1, [sp, 32] ; lhs
+        //        stp     x2, x3, [sp, 16] ; rhs
+        //        bl      sb_create
+        //        stp     x0, x1, [sp, 48] ; Store new stringbuilder on stack
+        //        add     x0, sp, 48       ; Get pointer to new stringbuilder
+        //        ldp     x1, x2, [sp, 32] ; Get lhs
+        //        bl      sb_append        ; Copy lhs into stringbuilder
+        //        add     x0, sp, 48       ; Get pointer to new stringbuilder
+        //        ldp     x1, x2, [sp, 16] ; Get rhs
+        //        bl      sb_append        ; Copy rhs into stringbuilder
+        //        ldp     x0, x1, [sp, 48] ; Return stringbuilder
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            },
+            lhs);
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            },
+            rhs);
+        arm64function_add_instruction(function, "bl", "_sb_create");
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_REGISTER_RANGE,
+                .range = {
+                    .start = REG_X0,
+                    .end = REG_X1 + 1,
+                },
+            });
+
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = POINTER_ID,
+                .kind = VLK_REGISTER,
+                .reg = REG_X0,
+            },
+            (ValueLocation) {
+                .type = POINTER_ID,
+                .kind = VLK_REGISTER,
+                .reg = REG_SP,
+            });
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_REGISTER_RANGE,
+                .range = {
+                    .start = REG_X1,
+                    .end = REG_X2 + 1,
+                } },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_POINTER,
+                .pointer = {
+                    .reg = REG_SP,
+                    .offset = 32,
+                },
+            });
+        arm64function_add_instruction(function, "bl", "_sb_append_sv");
+
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = POINTER_ID,
+                .kind = VLK_REGISTER,
+                .reg = REG_X0,
+            },
+            (ValueLocation) {
+                .type = POINTER_ID,
+                .kind = VLK_REGISTER,
+                .reg = REG_SP,
+            });
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_REGISTER_RANGE,
+                .range = {
+                    .start = REG_X1,
+                    .end = REG_X2 + 1,
+                } },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_POINTER,
+                .pointer = {
+                    .reg = REG_SP,
+                    .offset = 16,
+                },
+            });
+        arm64function_add_instruction(function, "bl", "_sb_append_sv");
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_REGISTER_RANGE,
+                .range = {
+                    .start = REG_X0,
+                    .end = REG_X1 + 1,
+                } },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            });
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_DISCARD,
+            },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            });
+        arm64function_copy(
+            function,
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_DISCARD,
+            },
+            (ValueLocation) {
+                .type = STRING_ID,
+                .kind = VLK_STACK,
+            });
+        return (ValueLocation) {
+            .type = STRING_ID,
+            .kind = VLK_REGISTER_RANGE,
+            .range = {
+                .start = REG_X0,
+                .end = REG_X1 + 1,
+            }
+        };
+    }
+    default:
+        NYI("codegen for operator `%s` on strings", Operator_name(op->operator.op));
+    }
+}
+
 ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+    if (op->operator.lhs == STRING_ID) {
+        return arm64_apply_string_op(function, op);
+    }
+
     MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
+    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
     assert(lhs.kind == VLK_REGISTER);
     assert(rhs.kind == VLK_REGISTER);
     Register      result = arm64function_allocate_register(function);
