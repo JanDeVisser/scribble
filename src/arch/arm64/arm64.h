@@ -171,7 +171,7 @@ static inline char const *reg(Register reg)
 static inline char const *x_reg(Register r)
 {
     assert((int) r <= (int) REG_WZR);
-    return (r != REG_PC) ? reg(r & 0x1F) : reg(r);
+    return ((r != REG_PC) && (r != REG_SP)) ? reg(r & 0x1F) : reg(r);
 }
 
 static inline char const *w_reg(Register r)
@@ -215,7 +215,8 @@ typedef struct register_pointer {
     S(LABEL)                  \
     S(DATA)                   \
     S(IMMEDIATE)              \
-    S(FLOAT)
+    S(FLOAT)                  \
+    S(DISCARD)
 
 typedef enum value_location_kind {
 #undef VALUELOCATIONKIND

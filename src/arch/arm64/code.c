@@ -297,6 +297,9 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         SV_ARG(value_location_to_string(from_location)),
         SV_ARG(value_location_to_string(to_location)));
     switch (to_location.kind) {
+    case VLK_DISCARD:
+        // Nothing.
+        break;
     case VLK_POINTER: {
         switch (from_location.kind) {
         case VLK_POINTER: {
@@ -409,7 +412,6 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         } break;
         case VLK_STACK: {
             code_copy_to_registers(code, to_location.range.start, REG_SP, 0, sz);
-            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
         } break;
         case VLK_LABEL: {
             code_load_label(code, to_location.range.start, from_location.symbol);
@@ -497,7 +499,6 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         } break;
         case VLK_STACK: {
             code_copy_memory(code, to_pointer, 0, REG_SP, from_location.offset, sz);
-            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
         } break;
         case VLK_LABEL: {
             assert(sz == 8);

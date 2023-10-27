@@ -74,9 +74,6 @@ StringView value_location_to_string(ValueLocation loc)
             reg_with_width(loc.range.start, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32),
             reg_with_width(loc.range.end - 1, (typeid_sizeof(loc.type) == 8) ? RW_64 : RW_32));
         break;
-    case VLK_STACK:
-        sb_printf(&sb, "[SP, #%ld]", loc.offset);
-        break;
     case VLK_LABEL:
     case VLK_DATA:
         sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
@@ -86,6 +83,9 @@ StringView value_location_to_string(ValueLocation loc)
         break;
     case VLK_FLOAT:
         sb_printf(&sb, "#%f", loc.float_value);
+        break;
+    case VLK_DISCARD:
+    case VLK_STACK:
         break;
     default:
         UNREACHABLE();
