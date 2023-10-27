@@ -452,6 +452,7 @@ typedef struct opcode_map {
 OPTIONAL(OpcodeMap)
 
 extern OpcodeMap             get_opcode_map(type_id type);
+extern size_t                label_reserve_id();
 extern Code                 *code_create(ARM64Function *function);
 extern void                  code_add_instruction(Code *code, char const *opcode, char const *arg_fmt, ...);
 extern void                  code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, va_list args);

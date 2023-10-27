@@ -7,5 +7,6 @@ add_library(
         context.c
         function.c
         generate.c
+        operator.c
         variable.c
 )

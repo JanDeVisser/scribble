@@ -6,6 +6,7 @@
 
 #include <allocate.h>
 #include <arm64.h>
+#include <operator.h>
 #include <sv.h>
 
 #undef INTRINSIC_ENUM
@@ -101,28 +102,30 @@ void generate_intrinsic_call(ARM64Function *caller, ARM64Function *intrinsic)
 
 void generate_native(ARM64Function *function)
 {
-    IRFunction *ir_fnc = function->function;
-    assert(ir_fnc->kind == FK_NATIVE);
-    arm64function_enter(function);
-    arm64function_push(function, REG_X0);
-    arm64function_push(function, REG_X1);
-    size_t str_id = assembly_add_string(function->assembly, ir_fnc->native_name);
-    arm64function_add_text(function,
-        "adrp   x0,str_%zu@PAGE\n"
-        "add    x0,x0,str_%zu@PAGEOFF\n"
-        "adrp   x16,_resolve_function@PAGE\n"
-        "add    x16,x16,_resolve_function@PAGEOFF\n"
-        "blr    x16\n"
-        "cbz    x0,__%.*s_$error\n"
-        "mov    x16,x0",
-        str_id, str_id, SV_ARG(arm64function_label(function)));
-    arm64function_pop(function, REG_X1);
-    arm64function_pop(function, REG_X0);
-    arm64function_add_instruction(function, "blr", "x16");
-    arm64function_return(function);
-    arm64function_add_label(function, sv_printf("__%.*s_$error", SV_ARG(arm64function_label(function))));
-    arm64function_add_instruction(function, "mov", "x0,#-1");
-    arm64function_leave(function);
+    if (sv_first(function->function->native_name, ':') > 0) {
+        IRFunction *ir_fnc = function->function;
+        assert(ir_fnc->kind == FK_NATIVE);
+        arm64function_enter(function);
+        arm64function_push(function, REG_X0);
+        arm64function_push(function, REG_X1);
+        size_t str_id = assembly_add_string(function->assembly, ir_fnc->native_name);
+        arm64function_add_text(function,
+            "adrp   x0,str_%zu@PAGE\n"
+            "add    x0,x0,str_%zu@PAGEOFF\n"
+            "adrp   x16,_resolve_function@PAGE\n"
+            "add    x16,x16,_resolve_function@PAGEOFF\n"
+            "blr    x16\n"
+            "cbz    x0,__%.*s_$error\n"
+            "mov    x16,x0",
+            str_id, str_id, SV_ARG(arm64function_label(function)));
+        arm64function_pop(function, REG_X1);
+        arm64function_pop(function, REG_X0);
+        arm64function_add_instruction(function, "blr", "x16");
+        arm64function_return(function);
+        arm64function_add_label(function, sv_printf("__%.*s_$error", SV_ARG(arm64function_label(function))));
+        arm64function_add_instruction(function, "mov", "x0,#-1");
+        arm64function_leave(function);
+    }
 }
 
 void generate_CALL(ARM64Function *calling_function, IROperation *op)
@@ -131,13 +134,19 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
     assert(called_function);
     arm64function_marshall_arguments(calling_function, called_function);
     switch (called_function->function->kind) {
-    case FK_SCRIBBLE:
-    case FK_NATIVE:
+    case FK_SCRIBBLE: {
         arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(arm64function_label(called_function)));
-        break;
-    case FK_INTRINSIC:
+    } break;
+    case FK_NATIVE: {
+        if (sv_first(called_function->function->native_name, ':') > 0) {
+            arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(arm64function_label(called_function)));
+        } else {
+            arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(called_function->function->native_name));
+        }
+    } break;
+    case FK_INTRINSIC: {
         generate_intrinsic_call(calling_function, called_function);
-        break;
+    } break;
     default:
         UNREACHABLE();
     }
@@ -199,20 +208,8 @@ void generate_NEW_DATUM(ARM64Function *function, IROperation *op)
 
 void generate_OPERATOR(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
-    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
-    Register result = arm64function_allocate_register(function);
-    switch (op->operator.op) {
-    case OP_ADD:
-        arm64function_add_instruction(function, "add", "%s,%s,%s", w_reg(result), w_reg(lhs.reg), w_reg(rhs.reg));
-        break;
-    case OP_MULTIPLY:
-        arm64function_add_instruction(function, "mul", "%s,%s,%s", w_reg(result), w_reg(lhs.reg), w_reg(rhs.reg));
-        break;
-    default:
-        NYI("Operator %s", Operator_name(op->operator.op));
-    }
-    arm64function_push_register(function, I32_ID, result);
+    ValueLocation result = arm64_apply_op(function, op);
+    arm64function_push_location(function, result);
 }
 
 void generate_POP_VAR(ARM64Function *function, IROperation *op)
@@ -250,6 +247,8 @@ void generate_PUSH_FLOAT_CONSTANT(ARM64Function *function, IROperation *op)
 
 void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
 {
+    Register reg = arm64function_allocate_register(function);
+
     ValueLocation immediate = {
         .type = type_registry_id_of_builtin_type(op->integer.type),
         .kind = VLK_IMMEDIATE,
@@ -259,7 +258,13 @@ void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
     } else {
         immediate.signed_value = op->integer.value.signed_value;
     }
-    arm64function_push_location(function, immediate);
+    ValueLocation result = {
+        .type = immediate.type,
+        .kind = VLK_REGISTER,
+        .reg = reg,
+    };
+    arm64function_copy(function, result, immediate);
+    arm64function_push_location(function, result);
 }
 
 void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
@@ -294,7 +299,6 @@ void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
 
 void generate_PUSH_VAR(ARM64Function *function, IROperation *op)
 {
-    Register       r = arm64function_allocate_register(function);
     ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
     arm64variable_load_variable(var);
 }
