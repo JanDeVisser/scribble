@@ -8,6 +8,7 @@
 
 #include <allocate.h>
 #include <error_or.h>
+#include <fs.h>
 #include <options.h>
 #include <process.h>
 
@@ -103,21 +104,27 @@ StringView assembly_to_string(Assembly *assembly)
 
 void assembly_save_and_assemble(Assembly *assembly, StringView bare_file_name)
 {
-    StringView asm_file = sv_printf("%.*s.s", SV_ARG(bare_file_name));
-    StringView obj_file = sv_printf("%.*s.o", SV_ARG(bare_file_name));
     StringView asm_text = assembly_to_string(assembly);
     if (!assembly_has_exports(assembly)) {
+        sv_free(asm_text);
         return;
     }
-    FILE *s = fopen(sv_cstr(asm_file), "w+");
-    if (!s) {
-        fatal("Could not open assembly file %.*s: %s", SV_ARG(asm_file), strerror(errno));
+    StringView asm_file = sv_printf("%.*s.s", SV_ARG(bare_file_name));
+    StringView obj_file = sv_printf("%.*s.o", SV_ARG(bare_file_name));
+    if (!fs_file_exists(asm_file) || !fs_file_exists(obj_file) || fs_is_newer(obj_file, asm_file)) {
+        FILE *s = fopen(sv_cstr(asm_file), "w+");
+        if (!s) {
+            fatal("Could not open assembly file %.*s: %s", SV_ARG(asm_file), strerror(errno));
+        }
+        if (fwrite(sv_cstr(asm_text), 1, asm_text.length, s) != asm_text.length) {
+            fatal("Could not write assembly text to %.*s: %s", SV_ARG(asm_file), strerror(ferror(s)));
+        }
+        fclose(s);
+        sv_free(asm_text);
     }
-    if (fwrite(sv_cstr(asm_text), 1, asm_text.length, s) != asm_text.length) {
-        fatal("Could not write assembly text to %.*s: %s", SV_ARG(asm_file), strerror(ferror(s)));
-    }
-    fclose(s);
     MUST(Int, execute(sv_from("as"), sv_cstr(asm_file), "-o", sv_cstr(obj_file)));
+    sv_free(asm_file);
+    sv_free(obj_file);
 }
 
 bool assembly_has_exports(Assembly *assembly)
