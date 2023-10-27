@@ -6,6 +6,7 @@ add_library(
         da.h
         error_or.c
         fn.c
+        fs.c
         hash.c
         io.c
         log.c
