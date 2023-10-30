@@ -6,6 +6,7 @@
 
 #include <binder.h>
 #include <log.h>
+#include <options.h>
 #include <sv.h>
 #include <type.h>
 
@@ -20,6 +21,7 @@ typedef struct bind_context {
 static BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent);
 static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindContext *ctx);
 static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name);
+static BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, StringView name);
 static BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name);
 static bool       resolve_expression_type(Operator, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret);
 static bool       resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec);
@@ -129,7 +131,23 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
             return node->for_statement.variable;
         }
     } break;
+    case BNT_IMPORT: {
+        for (BoundNode *module = node->import.modules; module; module = module->next) {
+            BoundNode *n = bound_node_find_here(module, type, name);
+            if (n) {
+                return n;
+            }
+        }
+    } break;
     case BNT_PROGRAM: {
+        if (type == BNT_IMPORT) {
+            for (BoundNode *n = node->program.imports; n; n = n->next) {
+                assert(n->type == BNT_IMPORT);
+                if (sv_eq(n->name, name)) {
+                    return n;
+                }
+            }
+        }
         for (BoundNode *module = node->program.modules; module; module = module->next) {
             BoundNode *n = bound_node_find_here(module, type, name);
             if (n) {
@@ -151,16 +169,43 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
     return NULL;
 }
 
-BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
+BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, StringView name)
 {
     BoundNode *ret = bound_node_find_here(node, type, name);
     if (ret) {
         return ret;
     }
-    if (node->parent) {
-        return bound_node_find(node->parent, type, name);
+    BoundNode *p = node->parent;
+    if (!p) {
+        return NULL;
     }
-    return NULL;
+    ret = bound_node_find_recurse_up(p, type, name);
+    return ret;
+}
+
+BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
+{
+    StringView pkg = sv_null();
+    if (sv_first(name, '.') > 0) {
+        StringList components = sv_split(name, sv_from("."));
+        name = sl_pop(&components);
+        pkg = sl_join(&components, sv_from("."));
+    }
+    BoundNode *ret = NULL;
+    if (sv_empty(pkg)) {
+        ret = bound_node_find_recurse_up(node, type, name);
+        if (ret) {
+            return ret;
+        }
+        if (has_option("no-std")) {
+            return NULL;
+        }
+        BoundNode *std = bound_node_find_recurse_up(node, BNT_IMPORT, sv_from("std"));
+        return (std) ? bound_node_find_here(std, type, name) : NULL;
+    } else {
+        BoundNode *import = bound_node_find_recurse_up(node, BNT_IMPORT, pkg);
+        return bound_node_find_here(import, type, name);
+    }
 }
 
 bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
@@ -422,6 +467,15 @@ BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
+BoundNode *bind_IMPORT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_IMPORT, NULL);
+    ret->name = stmt->name;
+
+    bind_nodes(ret, stmt->import.modules, &ret->import.modules, ctx);
+    return ret;
+}
+
 BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
@@ -450,18 +504,11 @@ BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
-    char        *mod_name = (char *) allocate(sv_length(stmt->name) + 1);
     BindContext *mod_ctx = context_make_subcontext(ctx);
-
-    strncpy(mod_name, stmt->name.ptr, sv_length(stmt->name));
-    mod_name[sv_length(stmt->name)] = 0;
-    if (sv_endswith(stmt->name, sv_from(".scribble"))) {
-        mod_name[sv_length(stmt->name) - 9] = 0;
+    ret->name = stmt->name;
+    if (sv_endswith(ret->name, sv_from(".scribble"))) {
+        ret->name.length = ret->name.length - 9;
     }
-    for (char *ptr = strchr(mod_name, '/'); ptr; ptr = strchr(mod_name, '/')) {
-        *ptr = '.';
-    }
-    ret->name = sv_from(mod_name);
     bind_nodes(ret, stmt->block.statements, &ret->block.statements, mod_ctx);
     return ret;
 }
@@ -538,13 +585,9 @@ void program_define_intrinsic(BoundNode *program, char const *name, BuiltinType 
 void program_define_intrinsics(BoundNode *program)
 {
     program_define_intrinsic(program, "close", BIT_I32, INT_CLOSE, (IntrinsicParam[]) { { "fh", BIT_I32 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "endln", BIT_U64, INT_ENDLN, (IntrinsicParam[]) { { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "fputs", BIT_I32, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "s", BIT_STRING }, { NULL, BIT_VOID } });
     program_define_intrinsic(program, "open", BIT_I32, INT_OPEN, (IntrinsicParam[]) { { "name", BIT_STRING }, { "mode", BIT_U32 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "puti", BIT_I32, INT_PUTI, (IntrinsicParam[]) { { "i", BIT_I32 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "putln", BIT_I32, INT_PUTLN, (IntrinsicParam[]) { { "s", BIT_STRING }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "read", BIT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "write", BIT_I64, INT_FPUTS, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "read", BIT_I64, INT_READ, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
+    program_define_intrinsic(program, "write", BIT_I64, INT_WRITE, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
 }
 
 void program_collect_types(BoundNode *program)
@@ -598,6 +641,7 @@ BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx
 
     program_define_intrinsics(ret);
     bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
+    bind_nodes(ret, program->program.imports, &ret->program.imports, ctx);
     program_collect_types(ret);
     return ret;
 }
@@ -902,6 +946,7 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
     case BNT_PROGRAM: {
         rebind_nodes(node, &node->program.modules, ctx);
+        rebind_nodes(node, &node->program.imports, ctx);
         return node;
     }
     case BNT_RETURN: {

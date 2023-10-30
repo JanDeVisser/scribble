@@ -1,7 +1,6 @@
 .align 4
 
-.global endln
-.global _endln
+.global scribble$endln
 
 //
 // endln - Prints a newline character
@@ -14,8 +13,7 @@
 // Work:
 //   x16 - syscall
 
-_endln:
-endln:
+scribble$endln:
     stp     fp,lr,[sp,#-16]!
     mov     fp,sp
 

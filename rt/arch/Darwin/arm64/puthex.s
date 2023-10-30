@@ -1,5 +1,5 @@
 .align 4
-.global puthex
+.global scribble$puthex
 
 //
 // puthex - Print integer in hexadecimal.
@@ -13,7 +13,7 @@ num .req x0  // Number to print.
 // Work:
 //   ---
 
-puthex:
+scribble$puthex:
     stp     fp,lr,[sp,#-48]!
     mov     fp,sp
 
@@ -24,6 +24,6 @@ puthex:
     mov     w0,#32
     mov     w3,#16
     bl      to_string
-    bl      puts
+    bl      scribble$puts
     ldp     fp,lr,[sp],#48
     ret

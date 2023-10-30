@@ -1,6 +1,5 @@
 .align 4
-.global puts
-.global _puts
+.global scribble$puts
 
 //
 // puts - Print string
@@ -15,8 +14,7 @@
 // Work:
 //   x16: Syscall
 
-puts:
-_puts:
+scribble$puts:
     stp     fp,lr,[sp,#-16]!
     mov     fp,sp
 

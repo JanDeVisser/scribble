@@ -1,0 +1,7 @@
+func main() : i32 
+{
+  var x: i32 = foo(12, 42);
+  puti(x);
+  endln();
+  return 0;
+}

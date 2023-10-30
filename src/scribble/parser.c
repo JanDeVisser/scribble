@@ -11,6 +11,7 @@
 
 #include <error_or.h>
 #include <fn.h>
+#include <fs.h>
 #include <io.h>
 #include <lexer.h>
 #include <log.h>
@@ -28,6 +29,8 @@ static SyntaxNode *parse_primary_expression(ParserContext *ctx);
 static void        parse_arguments(ParserContext *ctx, SyntaxNode *node, char start, char end);
 static SyntaxNode *parse_statement(ParserContext *ctx);
 static SyntaxNode *parse_type(ParserContext *ctx);
+static SyntaxNode *parse_import(ParserContext *ctx);
+static SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name);
 
 char const *SyntaxNodeType_name(SyntaxNodeType type)
 {
@@ -209,50 +212,9 @@ OperatorMapping operator_for_token(Token token)
     return s_operator_mapping[0];
 }
 
-void skip_semicolon(ParserContext *ctx)
+bool skip_semicolon(ParserContext *ctx)
 {
-    parser_context_expect_and_discard(ctx, TK_SYMBOL, ';');
-}
-
-StringView cleanup_string(StringView str)
-{
-    assert(sv_length(str) >= 2 && str.ptr[0] == '\"' && str.ptr[sv_length(str) - 1] == '\"');
-    int backslashes = 0;
-    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
-        if (str.ptr[ix] == '\\') {
-            ++ix;
-            ++backslashes;
-        }
-    }
-    if (!backslashes) {
-        StringView ret = { str.ptr + 1, str.length - 2 };
-        return ret;
-    }
-    bool   prev_backslash = false;
-    size_t len = sv_length(str) - 2 - backslashes;
-    char  *buffer = allocate(len);
-    char  *ptr = buffer;
-    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
-        if (prev_backslash || str.ptr[ix] != '\\') {
-            char ch;
-            switch (str.ptr[ix]) {
-            case 'n':
-                ch = '\n';
-                break;
-            case 't':
-                ch = '\t';
-                break;
-            default:
-                ch = str.ptr[ix];
-            }
-            *ptr++ = ch;
-            prev_backslash = false;
-        } else if (str.ptr[ix] == '\\') {
-            prev_backslash = true;
-        }
-    }
-    StringView ret = { buffer, len };
-    return ret;
+    return parser_context_expect_and_discard(ctx, TK_SYMBOL, ';');
 }
 
 /*
@@ -406,7 +368,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         switch (token.code) {
         case TC_DOUBLE_QUOTED_STRING:
             lexer_lex(ctx->lexer);
-            return syntax_node_make(SNT_STRING, cleanup_string(token.text), token);
+            return syntax_node_make(SNT_STRING, sv_decode_quoted_str(token.text), token);
         default:
             return NULL;
         }
@@ -470,8 +432,10 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
     ret->variable_decl.var_type = type;
     ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = is_const;
-    skip_semicolon(ctx);
-    return ret;
+    if (skip_semicolon(ctx)) {
+        return ret;
+    }
+    return NULL;
 }
 
 SyntaxNode *parse_if(ParserContext *ctx)
@@ -538,7 +502,9 @@ SyntaxNode *parse_return(ParserContext *ctx)
         lexer_lex(ctx->lexer);
     } else {
         expr = parse_expression(ctx);
-        skip_semicolon(ctx);
+        if (!skip_semicolon(ctx)) {
+            return NULL;
+        }
     }
     SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_from("return"), token);
     ret->return_stmt.expression = expr;
@@ -640,7 +606,9 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
         parser_context_add_error(ctx, token, sv_from("Expected '=', '(', or ':' after identifier"));
         return NULL;
     }
-    skip_semicolon(ctx);
+    if (!skip_semicolon(ctx)) {
+        return NULL;
+    }
     return ret;
 }
 
@@ -668,7 +636,9 @@ SyntaxNode *parse_statement(ParserContext *ctx)
             }
             token = lexer_next(ctx->lexer);
             ret = syntax_node_make((stmt_token.code == KW_BREAK) ? SNT_BREAK : SNT_CONTINUE, token.text, stmt_token);
-            skip_semicolon(ctx);
+            if (!skip_semicolon(ctx)) {
+                return NULL;
+            }
         } break;
         case KW_CONST:
             ret = parse_variable_declaration(ctx, true);
@@ -856,6 +826,9 @@ SyntaxNode *parse_function(ParserContext *ctx)
             return NULL;
         }
         token = lexer_lex(ctx->lexer);
+        if (!skip_semicolon(ctx)) {
+            return NULL;
+        }
         func->function.function_impl = syntax_node_make(
             SNT_NATIVE_FUNCTION,
             (StringView) { token.text.ptr + 1, token.text.length - 2 },
@@ -922,7 +895,52 @@ SyntaxNode *parse_struct_def(ParserContext *ctx)
     }
 }
 
-void parse_module(ParserContext *ctx, StringView buffer, StringView name)
+SyntaxNode *import_package(ParserContext *ctx, Token token, StringView path)
+{
+    StringView name = sv_replace(path, sv_from("/"), sv_from("."));
+    StringView file_name = sv_printf("%.*s.scribble", SV_ARG(path));
+    if (!fs_file_exists(file_name)) {
+        StringView scribble_dir = sv_from(getenv("SCRIBBLE_DIR"));
+        if (sv_empty(scribble_dir) || !fs_file_exists(scribble_dir)) {
+            scribble_dir = sv_from(SCRIBBLE_DIR);
+        }
+        if (sv_empty(scribble_dir) || !fs_file_exists(scribble_dir)) {
+            scribble_dir = sv_from("/usr/local/scribble");
+        }
+        if (sv_empty(scribble_dir) || !fs_file_exists(scribble_dir)) {
+            fatal("Broken scribble installation");
+        }
+        file_name = sv_printf("%.*s/share/%.*s", SV_ARG(scribble_dir), SV_ARG(file_name));
+    }
+    if (!fs_file_exists(file_name)) {
+        parser_context_add_error(ctx, token, sv_printf("Could not find import '%.*s'", SV_ARG(path)));
+        return NULL;
+    }
+    SyntaxNode *import = syntax_node_make(SNT_IMPORT, name, token);
+    char       *buffer = MUST(Char, read_file_by_name(sv_cstr(file_name)));
+    SyntaxNode *module = parse_module(ctx, sv_from(buffer), name);
+    import->next = ctx->program->program.imports;
+    ctx->program->program.imports = import;
+    module->next = import->import.modules;
+    import->import.modules = module;
+    return import;
+}
+
+SyntaxNode *parse_import(ParserContext *ctx)
+{
+    Token token = lexer_lex(ctx->lexer);
+    if (!parser_context_expect(ctx, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING)) {
+        return NULL;
+    }
+    token = lexer_lex(ctx->lexer);
+    StringView path = sv_decode_quoted_str(token.text);
+    if (!skip_semicolon(ctx)) {
+        return NULL;
+    }
+    return import_package(ctx, token, path);
+}
+
+SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
 {
     Token       token = { name, TK_MODULE, TC_NONE };
     SyntaxNode *module = syntax_node_make(SNT_MODULE, name, token);
@@ -944,10 +962,16 @@ void parse_module(ParserContext *ctx, StringView buffer, StringView name)
             }
         } else if (token_matches(token, TK_KEYWORD, KW_STRUCT)) {
             statement = parse_struct_def(ctx);
+        } else if (token_matches(token, TK_KEYWORD, KW_IMPORT)) {
+            statement = parse_import(ctx);
+        } else if (token_matches(token, TK_KEYWORD, KW_CONST)) {
+            statement = parse_variable_declaration(ctx, true);
+        } else if (token_matches(token, TK_KEYWORD, KW_VAR)) {
+            statement = parse_variable_declaration(ctx, false);
         } else if (token_matches_kind(token, TK_END_OF_FILE)) {
-            goto module_done;
+            return module;
         } else {
-            parser_context_add_error(ctx, token, sv_printf("Only 'func', 'var', 'const', and 'struct' are allowed on the top level of files, '%.*s' is not", SV_ARG(token.text)));
+            parser_context_add_error(ctx, token, sv_printf("Only 'import', 'func', 'var', 'const', and 'struct' are allowed on the top level of files, '%.*s' is not", SV_ARG(token.text)));
             while (true) {
                 lexer_lex(&lexer);
                 token = lexer_next(&lexer);
@@ -955,7 +979,7 @@ void parse_module(ParserContext *ctx, StringView buffer, StringView name)
                     break;
                 }
                 if (token_matches_kind(token, TK_END_OF_FILE)) {
-                    goto module_done;
+                    return module;
                 }
                 lexer_lex(&lexer);
             }
@@ -969,15 +993,13 @@ void parse_module(ParserContext *ctx, StringView buffer, StringView name)
             last_statement = statement;
         }
     }
-module_done:
-    module->next = ctx->program->program.modules;
-    ctx->program->program.modules = module;
+    return module;
 }
 
-void parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
+SyntaxNode *parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
 {
     char *buffer = MUST(Char, read_file_at(dir_fd, file));
-    parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
+    return parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
 }
 
 ParserContext parse(char const *dir_or_file)
@@ -991,6 +1013,7 @@ ParserContext parse(char const *dir_or_file)
     ret.source_name = sv_copy_cstr(dir_or_file);
     Token token = { ret.source_name, TK_PROGRAM, TC_NONE };
     ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(ret.source_name), token);
+    import_package(&ret, token, sv_from("std"));
 
     DIR *dir = opendir(dir_or_file);
     if (dir == NULL) {
@@ -999,8 +1022,9 @@ ParserContext parse(char const *dir_or_file)
             if (dir == NULL) {
                 fatal("Could not open current directory");
             }
-            ret.single_file = true;
-            parse_module_file(&ret, dirfd(dir), dir_or_file);
+            SyntaxNode *module = parse_module_file(&ret, dirfd(dir), dir_or_file);
+            module->next = ret.program->program.modules;
+            ret.program->program.modules = module;
             closedir(dir);
             return ret;
         }
@@ -1015,7 +1039,11 @@ ParserContext parse(char const *dir_or_file)
         size_t namlen = strlen(dp->d_name);
         if ((namlen > 8) && strcmp(dp->d_name + (namlen - 9), ".scribble") == 0) {
 #endif
-            parse_module_file(&ret, dirfd(dir), dp->d_name);
+            SyntaxNode *module = parse_module_file(&ret, dirfd(dir), dp->d_name);
+            if (module) {
+                module->next = ret.program->program.modules;
+                ret.program->program.modules = module;
+            }
         }
     }
     closedir(dir);

@@ -85,6 +85,7 @@ typedef struct operator_mapping {
     S(FUNCTION_IMPL)        \
     S(IF)                   \
     S(INTEGER)              \
+    S(IMPORT)               \
     S(LABEL)                \
     S(LOOP)                 \
     S(MODULE)               \
@@ -122,6 +123,10 @@ typedef struct syntax_node {
     union {
         struct {
             struct syntax_node *modules;
+        } import;
+        struct {
+            struct syntax_node *modules;
+            struct syntax_node *imports;
         } program;
         struct {
             struct syntax_node *statements;
@@ -208,8 +213,6 @@ typedef struct parser_context {
     ScribbleError *first_error;
     ScribbleError *last_error;
     StringView     source_name;
-    bool           single_file;
-    char const    *current_file;
 } ParserContext;
 
 extern size_t        next_index();

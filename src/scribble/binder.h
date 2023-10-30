@@ -27,6 +27,7 @@
     S(FUNCTION_IMPL)        \
     S(NAME)                 \
     S(IF)                   \
+    S(IMPORT)               \
     S(INTEGER)              \
     S(INTRINSIC)            \
     S(LOOP)                 \
@@ -60,11 +61,7 @@ typedef enum bound_node_type {
 #define INTRINSICS(S) \
     S(ALLOC)          \
     S(CLOSE)          \
-    S(ENDLN)          \
-    S(FPUTS)          \
     S(OPEN)           \
-    S(PUTI)           \
-    S(PUTLN)          \
     S(READ)           \
     S(WRITE)
 
@@ -86,8 +83,12 @@ typedef struct bound_node {
     struct intermediate *intermediate;
     union {
         struct {
+            struct bound_node *modules;
+        } import;
+        struct {
             struct bound_node *types;
             struct bound_node *intrinsics;
+            struct bound_node *imports;
             struct bound_node *modules;
         } program;
         struct {

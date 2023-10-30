@@ -1,7 +1,6 @@
 .align 4
 
-.global putln
-.global _putln
+.global scribble$putln
 
 //
 // putln - Print string followed by a newline character
@@ -17,14 +16,13 @@ buffer  .req x1     // Pointer to the string buffer
 //   x7 - characters printed
 //   x16 - syscall
 
-_putln:
-putln:
+scribble$putln:
     stp     fp,lr,[sp,#-16]!
     mov     fp,sp
 
-    bl      puts
+    bl      scribble$puts
     mov     x7,x0
-    bl      endln
+    bl      scribble$endln
     add     x0,x7,x0
     ldp     fp,lr,[sp],#16
     ret

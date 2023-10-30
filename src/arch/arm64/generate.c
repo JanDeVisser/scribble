@@ -39,38 +39,13 @@ void generate_ALLOC(ARM64Function *caller, ARM64Function *intrinsic)
     arm64function_syscall(intrinsic, SYSCALL_MMAP);
 }
 
-void generate_ENDLN(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_write_char(caller, 1, '\n');
-}
-
 void generate_CLOSE(ARM64Function *caller, ARM64Function *intrinsic)
 {
     arm64function_syscall(caller, SYSCALL_CLOSE);
 }
-
-void generate_FPUTS(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_syscall(caller, SYSCALL_WRITE);
-}
-
 void generate_OPEN(ARM64Function *caller, ARM64Function *intrinsic)
 {
     arm64function_add_instruction(caller, "bl", "scribble$open");
-}
-
-void generate_PUTI(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_add_instruction(caller, "bl", "putint");
-}
-
-void generate_PUTLN(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_add_instruction(caller, "mov", "x2,x1");
-    arm64function_add_instruction(caller, "mov", "x1,x0");
-    arm64function_add_instruction(caller, "mov", "x0,#0x01");
-    arm64function_syscall(caller, SYSCALL_WRITE);
-    arm64function_write_char(caller, 1, '\n');
 }
 
 void generate_READ(ARM64Function *caller, ARM64Function *intrinsic)

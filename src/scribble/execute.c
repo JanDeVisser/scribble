@@ -960,34 +960,12 @@ Datum *execute_ALLOC(ExecutionContext *ctx)
     return ret;
 }
 
-Datum *execute_ENDLN(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *ret = datum_allocate(U64_ID);
-    ret->u64 = endln();
-    return ret;
-}
-
 Datum *execute_CLOSE(ExecutionContext *ctx)
 {
     (void) ctx;
     Datum *fh = datum_stack_pop(&ctx->stack);
     Datum *ret = datum_allocate(I32_ID);
     ret->i32 = close((int) datum_signed_integer_value(fh));
-    datum_free(fh);
-    return ret;
-}
-
-Datum *execute_FPUTS(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *fh = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(fh));
-    Datum *s = datum_stack_pop(&ctx->stack);
-    assert(s->type == STRING_ID);
-    Datum *ret = datum_allocate(U32_ID);
-    ret->u32 = write((int) datum_signed_integer_value(fh), s->string.ptr, s->string.length);
-    datum_free(s);
     datum_free(fh);
     return ret;
 }
@@ -1006,31 +984,6 @@ Datum *execute_OPEN(ExecutionContext *ctx)
     ret->i32 = open(file_name, mode->i32);
     datum_free(mode);
     datum_free(name);
-    return ret;
-}
-
-Datum *execute_PUTI(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *i = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(i));
-    Datum *ret = datum_allocate(U64_ID);
-    ret->u64 = putint(datum_signed_integer_value(i));
-    datum_free(i);
-    return ret;
-}
-
-Datum *execute_PUTLN(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *s = datum_stack_pop(&ctx->stack);
-    assert(s->type == STRING_ID);
-    Datum *ret = datum_allocate(U32_ID);
-    ret->u32 = write(1, s->string.ptr, s->string.length);
-    if (ret->u32 == s->string.length) {
-        ret->u32 += write(1, "\n", 1);
-    }
-    datum_free(s);
     return ret;
 }
 

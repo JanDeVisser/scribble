@@ -332,6 +332,13 @@ void generate_IF(BoundNode *node, void *target)
     }
 }
 
+void generate_IMPORT(BoundNode *node, void *target)
+{
+    for (BoundNode *module = node->import.modules; module; module = module->next) {
+        generate_node(module, target);
+    }
+}
+
 void generate_INTEGER(BoundNode *node, void *target)
 {
     IROperation op;
@@ -448,6 +455,9 @@ void generate_PROGRAM(BoundNode *node, void *target)
     }
     for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
         generate_node(intrinsic, builtin);
+    }
+    for (BoundNode *import = node->program.imports; import; import = import->next) {
+        generate_node(import, target);
     }
     for (BoundNode *module = node->program.modules; module; module = module->next) {
         generate_node(module, target);

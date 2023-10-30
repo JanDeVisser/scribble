@@ -1,0 +1,6 @@
+func foo(x: i32, y: i32) : i32
+{
+  var z: i32 = x*x;
+  return x + y + z;
+}
+
