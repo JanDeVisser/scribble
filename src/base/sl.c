@@ -44,7 +44,7 @@ StringList *sl_extend(StringList *sl, StringList *with)
     return sl;
 }
 
-StringView sl_pop(StringList *sl, StringView sv)
+StringView sl_pop(StringList *sl)
 {
     if (sl_empty(sl)) {
         return sv_null();

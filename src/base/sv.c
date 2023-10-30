@@ -56,6 +56,68 @@ StringView sv_copy_cstr(char const *s)
     return sv_copy_chars(s, len);
 }
 
+StringView sv_decode_quoted_str(StringView str)
+{
+    assert(sv_length(str) >= 2 && str.ptr[0] == '\"' && str.ptr[sv_length(str) - 1] == '\"');
+    int backslashes = 0;
+    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
+        if (str.ptr[ix] == '\\') {
+            ++ix;
+            ++backslashes;
+        }
+    }
+    if (!backslashes) {
+        StringView ret = { str.ptr + 1, str.length - 2 };
+        return ret;
+    }
+    bool   prev_backslash = false;
+    size_t len = sv_length(str) - 2 - backslashes;
+    char  *buffer = allocate(len);
+    char  *ptr = buffer;
+    for (size_t ix = 1; ix < sv_length(str) - 1; ++ix) {
+        if (prev_backslash || str.ptr[ix] != '\\') {
+            char ch;
+            switch (str.ptr[ix]) {
+            case 'n':
+                ch = '\n';
+                break;
+            case 't':
+                ch = '\t';
+                break;
+            default:
+                ch = str.ptr[ix];
+            }
+            *ptr++ = ch;
+            prev_backslash = false;
+        } else if (str.ptr[ix] == '\\') {
+            prev_backslash = true;
+        }
+    }
+    StringView ret = { buffer, len };
+    return ret;
+}
+
+StringView sv_replace(StringView str, StringView from, StringView to)
+{
+    StringView ret = { 0 };
+    if (sv_empty(str) || sv_empty(from)) {
+        return str;
+    }
+    StringBuilder sb = sb_create();
+    size_t        ix = 0;
+    while (ix < sv_length(str)) {
+        if (ix + sv_length(from) <= sv_length(str) && !memcmp(str.ptr + ix, from.ptr, from.length)) {
+            sb_append_sv(&sb, to);
+            ix += from.length;
+        } else {
+            sb_append_chars(&sb, str.ptr + ix, 1);
+            ++ix;
+        }
+    }
+    ret = sb_view(&sb);
+    return ret;
+}
+
 void sv_free(StringView sv)
 {
     free_buffer((char *) sv.ptr);
