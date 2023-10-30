@@ -248,6 +248,17 @@ void arm64function_release_all_registers(ARM64Function *function)
 
 OptionalValueLocation arm64function_pop_location(ARM64Function *function)
 {
+    OptionalValueLocation ret = arm64function_peek_location(function);
+    if (ret.has_value) {
+        ARM64Scope *scope = &function->scope;
+        assert(scope);
+        scope->expression_stack = scope->expression_stack->next;
+    }
+    return ret;
+}
+
+OptionalValueLocation arm64function_peek_location(ARM64Function *function)
+{
     assert(function);
     assert(function->function->kind == FK_SCRIBBLE);
     ARM64Scope *scope = &function->scope;
@@ -256,7 +267,6 @@ OptionalValueLocation arm64function_pop_location(ARM64Function *function)
         return OptionalValueLocation_empty();
     }
     OptionalValueLocation ret = OptionalValueLocation_create(*scope->expression_stack);
-    scope->expression_stack = scope->expression_stack->next;
     return ret;
 }
 
@@ -563,4 +573,36 @@ void arm64function_marshall_return(ARM64Function *calling_function, ARM64Functio
     };
     arm64function_copy(calling_function, target, x0);
     arm64function_push_location(calling_function, target);
+}
+
+ValueLocation arm64function_location_for_type(ARM64Function *function, type_id type)
+{
+    ValueLocation ret = { 0 };
+    switch (typeid_kind(type)) {
+    case TK_PRIMITIVE: {
+        return (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+    } break;
+    case TK_AGGREGATE: {
+        size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
+        if (size_in_double_words <= 2) {
+            return (ValueLocation) {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range = arm64function_allocate_register_range(function, size_in_double_words),
+            };
+            break;
+        }
+        return (ValueLocation) {
+            .type = type,
+            .kind = VLK_STACK,
+        };
+    } break;
+    default:
+        NYI("load_variable for non-primitive, non-aggregate type");
+        break;
+    }
 }

@@ -343,6 +343,18 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             break;
         }
     } break;
+    case IR_CASE:
+    case IR_JUMP_F: {
+        Datum *cond = datum_stack_pop(&ctx->stack);
+        assert(cond->type == BOOL_ID);
+        if (!cond->bool_value) {
+            next.type = NIT_LABEL;
+            next.pointer = op->label;
+            datum_free(cond);
+            return next;
+        }
+        datum_free(cond);
+    } break;
     case IR_DECL_VAR: {
         char const *err = scope_declare_variable(ctx->scope, op->var_decl.name, op->var_decl.type.type_id);
         if (err) {
@@ -449,22 +461,20 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             MUST(TypeID, type_registry_get_variant(num_variants, options));
         }
     } break;
+    case IR_END_CASE: {
+        if (op->label) {
+            next.type = NIT_LABEL;
+            next.pointer = op->label;
+            return next;
+        }
+    } break;
+    case IR_END_MATCH:
+        break;
     case IR_JUMP: {
         next.type = NIT_LABEL;
         next.pointer = op->label;
         return next;
     }
-    case IR_JUMP_F: {
-        Datum *cond = datum_stack_pop(&ctx->stack);
-        assert(cond->type == BOOL_ID);
-        if (!cond->bool_value) {
-            next.type = NIT_LABEL;
-            next.pointer = op->label;
-            datum_free(cond);
-            return next;
-        }
-        datum_free(cond);
-    } break;
     case IR_JUMP_T: {
         Datum *cond = datum_stack_pop(&ctx->stack);
         if (cond->type == ERROR_ID) {
@@ -483,6 +493,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_free(cond);
     } break;
     case IR_LABEL:
+    case IR_MATCH:
         break;
     case IR_NEW_DATUM: {
         type_id tid = typeid_canonical_type_id(op->integer.value.unsigned_value);

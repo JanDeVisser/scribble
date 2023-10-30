@@ -16,15 +16,19 @@
 
 #define IR_OPERATION_TYPES(S) \
     S(CALL)                   \
+    S(CASE)                   \
     S(DECL_VAR)               \
     S(DEFINE_AGGREGATE)       \
     S(DEFINE_ALIAS)           \
     S(DEFINE_ARRAY)           \
     S(DEFINE_VARIANT)         \
+    S(END_CASE)               \
+    S(END_MATCH)              \
     S(JUMP)                   \
     S(JUMP_F)                 \
     S(JUMP_T)                 \
     S(LABEL)                  \
+    S(MATCH)                  \
     S(NEW_DATUM)              \
     S(OPERATOR)               \
     S(POP_VAR)                \
@@ -59,6 +63,7 @@ typedef struct ir_operation {
         size_t     label;
         double     double_value;
         bool       bool_value;
+        type_id    type;
         StringView sv;
         IRVarDecl  var_decl;
         struct {

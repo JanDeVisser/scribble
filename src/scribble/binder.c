@@ -165,19 +165,34 @@ BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
 
 bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
 {
-    if (op == OP_RANGE) {
+    switch (op) {
+    case OP_RANGE:
         if (lhs.type_id != rhs.type_id) {
             return false;
         }
         ret->type_id = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = lhs.type_id } }));
         ret->optional = false;
         return true;
+    case OP_EQUALS:
+    case OP_NOT_EQUALS:
+    case OP_LESS:
+    case OP_LESS_EQUALS:
+    case OP_GREATER:
+    case OP_GREATER_EQUALS: {
+        if (lhs.type_id != rhs.type_id) {
+            return false;
+        }
+        *ret = (TypeSpec) { .type_id = BOOL_ID, .optional = false };
+        return true;
     }
-    bool retval = lhs.type_id == rhs.type_id;
-    if (retval) {
+    default: {
+        if (lhs.type_id != rhs.type_id) {
+            return false;
+        }
         *ret = lhs;
+        return true;
     }
-    return retval;
+    }
 }
 
 bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
@@ -214,8 +229,38 @@ BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx
     return ret;
 }
 
+BoundNode *short_circuit_logical_operators(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_TERNARYEXPRESSION, parent);
+    BoundNode *lhs = bind_node(ret, stmt->binary_expr.lhs, ctx);
+    BoundNode *rhs = bind_node(ret, stmt->binary_expr.rhs, ctx);
+    if (lhs->type == BNT_UNBOUND_NODE || rhs->type == BNT_UNBOUND_NODE) {
+        return bound_node_make_unbound(parent, stmt, NULL);
+    }
+    if (typeid_canonical_type_id(lhs->typespec.type_id) != BOOL_ID || typeid_canonical_type_id(rhs->typespec.type_id) != BOOL_ID) {
+        fatal(LOC_SPEC "Both operands of a logical operator must be of type 'bool'", SN_LOC_ARG(stmt));
+    }
+    ret->typespec = (TypeSpec) { BOOL_ID, false };
+    ret->ternary_expr.condition = lhs;
+    if (stmt->binary_expr.operator== OP_LOGICAL_OR) {
+        ret->ternary_expr.if_true = bound_node_make(BNT_BOOL, ret);
+        ret->ternary_expr.if_true->name = sv_from("true");
+        ret->ternary_expr.if_true->typespec = (TypeSpec) { BOOL_ID, false };
+        ret->ternary_expr.if_false = rhs;
+    } else { // OP_LOGICAL_AND
+        ret->ternary_expr.if_true = rhs;
+        ret->ternary_expr.if_false = bound_node_make(BNT_BOOL, ret);
+        ret->ternary_expr.if_false->name = sv_from("false");
+        ret->ternary_expr.if_false->typespec = (TypeSpec) { BOOL_ID, false };
+    }
+    return ret;
+}
+
 BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
+    if (stmt->binary_expr.operator== OP_LOGICAL_OR || stmt->binary_expr.operator== OP_LOGICAL_AND) {
+        return short_circuit_logical_operators(parent, stmt, ctx);
+    }
     BoundNode *ret = bound_node_make(BNT_BINARYEXPRESSION, parent);
     BoundNode *lhs = bind_node(ret, stmt->binary_expr.lhs, ctx);
     BoundNode *rhs = bind_node(ret, stmt->binary_expr.rhs, ctx);
@@ -250,8 +295,7 @@ BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_BOOL, parent);
     ret->name = stmt->token.text;
-    ret->typespec.type_id = type_registry_id_of_builtin_type(BIT_BOOL);
-    ret->typespec.optional = false;
+    ret->typespec = (TypeSpec) { BOOL_ID, false };
     return ret;
 }
 
@@ -479,13 +523,12 @@ void program_define_intrinsic(BoundNode *program, char const *name, BuiltinType 
     intrinsic->typespec.type_id = type_registry_id_of_builtin_type(ret_type);
     intrinsic->typespec.optional = false;
     intrinsic->intrinsic.intrinsic = intrinsic_code;
+    BoundNode **last = &intrinsic->intrinsic.parameter;
     for (size_t ix = 0; params[ix].name; ++ix) {
         BoundNode *param = bound_node_make(BNT_PARAMETER, intrinsic);
-        param->next = intrinsic->intrinsic.parameter;
-        if (intrinsic->intrinsic.parameter) {
-            intrinsic->intrinsic.parameter->prev = param;
-        }
-        intrinsic->intrinsic.parameter = param;
+        param->prev = *last;
+        *last = param;
+        last = &param->next;
         param->name = sv_from(params[ix].name);
         param->typespec.type_id = type_registry_id_of_builtin_type(params[ix].type);
         param->typespec.optional = false;
@@ -605,6 +648,29 @@ BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
     }
     return NULL;
+}
+
+BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_TERNARYEXPRESSION, parent);
+    BoundNode *condition = bind_node(ret, stmt->ternary_expr.condition, ctx);
+    BoundNode *if_true = bind_node(ret, stmt->ternary_expr.if_true, ctx);
+    BoundNode *if_false = bind_node(ret, stmt->ternary_expr.if_false, ctx);
+    if (condition->type == BNT_UNBOUND_NODE || if_true->type == BNT_UNBOUND_NODE || if_false->type == BNT_UNBOUND_NODE) {
+        return bound_node_make_unbound(parent, stmt, NULL);
+    }
+    if (typeid_canonical_type_id(condition->typespec.type_id) != BOOL_ID) {
+        fatal(LOC_SPEC "Ternary expression condition must be of type 'bool'", SN_LOC_ARG(stmt));
+    }
+    if (typeid_canonical_type_id(if_true->typespec.type_id) != typeid_canonical_type_id(if_false->typespec.type_id)) {
+        fatal(LOC_SPEC "Ternary expression `true` and `false` values must be of the same type", SN_LOC_ARG(stmt));
+    }
+    ret->typespec = (TypeSpec) { .type_id = typeid_canonical_type_id(if_true->typespec.type_id), .optional = false };
+    ret->name = sv_from("?:");
+    ret->ternary_expr.condition = condition;
+    ret->ternary_expr.if_true = if_true;
+    ret->ternary_expr.if_false = if_false;
+    return ret;
 }
 
 BoundNode *bind_TYPE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)

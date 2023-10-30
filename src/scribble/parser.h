@@ -96,6 +96,7 @@ typedef struct operator_mapping {
     S(RETURN)               \
     S(STRING)               \
     S(STRUCT)               \
+    S(TERNARYEXPRESSION)    \
     S(TYPE)                 \
     S(TYPE_COMPONENT)       \
     S(UNARYEXPRESSION)      \
@@ -172,6 +173,11 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *components;
         } struct_def;
+        struct {
+            struct syntax_node *condition;
+            struct syntax_node *if_true;
+            struct syntax_node *if_false;
+        } ternary_expr;
         struct {
             struct syntax_node *var_type;
             struct syntax_node *init_expr;

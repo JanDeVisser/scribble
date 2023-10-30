@@ -91,13 +91,13 @@ char const *conditional_for_op_by_type(Operator op, type_id type)
     return conditional;
 }
 
-ValueLocation arm64_apply_string_op(ARM64Function *function, IROperation *op)
+ValueLocation arm64_apply_string_op(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type, ValueLocation *result)
 {
-    assert(op->operator.lhs == STRING_ID);
+    assert(lhs_type == STRING_ID);
     MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
     MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
 
-    switch (op->operator.op) {
+    switch (op) {
     case OP_ADD: {
         //        StringView concat(StringView s1, StringView s2)
         //        {
@@ -242,6 +242,19 @@ ValueLocation arm64_apply_string_op(ARM64Function *function, IROperation *op)
                 .type = STRING_ID,
                 .kind = VLK_STACK,
             });
+        if (result) {
+            arm64function_copy(
+                function,
+                *result,
+                (ValueLocation) {
+                    .type = STRING_ID,
+                    .kind = VLK_REGISTER_RANGE,
+                    .range = {
+                        .start = REG_X0,
+                        .end = REG_X1 + 1,
+                    } });
+            return *result;
+        }
         return (ValueLocation) {
             .type = STRING_ID,
             .kind = VLK_REGISTER_RANGE,
@@ -252,44 +265,56 @@ ValueLocation arm64_apply_string_op(ARM64Function *function, IROperation *op)
         };
     }
     default:
-        NYI("codegen for operator `%s` on strings", Operator_name(op->operator.op));
+        NYI("codegen for operator `%s` on strings", Operator_name(op));
     }
 }
 
-ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
+ValueLocation copy_location_if_result_set(ARM64Function *function, ValueLocation loc, ValueLocation *result)
 {
-    if (op->operator.lhs == STRING_ID) {
-        return arm64_apply_string_op(function, op);
+    if (result) {
+        arm64function_copy(function, *result, loc);
+        return *result;
+    }
+    return loc;
+}
+
+ValueLocation arm64operator_apply(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type, ValueLocation *result)
+{
+    if (lhs_type == STRING_ID) {
+        return arm64_apply_string_op(function, lhs_type, op, rhs_type, result);
     }
 
-    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function))
+    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function))
     assert(lhs.kind == VLK_REGISTER);
     assert(rhs.kind == VLK_REGISTER);
-    Register      result = arm64function_allocate_register(function);
+    assert(!result || result->kind == VLK_REGISTER);
+    assert(lhs.type == lhs_type);
+    assert(rhs.type == rhs_type);
+    Register      result_reg = (result) ? result->reg : arm64function_allocate_register(function);
     size_t        sz = typeid_sizeof(lhs.type);
     RegisterWidth width = (sz > 8) ? RW_64 : RW_32;
     bool          is_short = (sz < 4);
     bool          un_signed = BuiltinType_is_unsigned(typeid_builtin_type(lhs.type));
     char const   *l = reg_with_width(lhs.reg, width);
     char const   *r = reg_with_width(rhs.reg, width);
-    char const   *res = reg_with_width(result, width);
-    char const   *conditional = conditional_for_op_by_type(op->operator.op, lhs.type);
+    char const   *res = reg_with_width(result_reg, width);
+    char const   *conditional = conditional_for_op_by_type(op, lhs.type);
 
     arm64function_release_register(function, lhs.reg);
     arm64function_release_register(function, rhs.reg);
-    if (lhs.type == BOOL_ID && op->operator.op == OP_MULTIPLY) {
-        arm64function_add_instruction(function, "and", "%s,%s,%s", w_reg(result), w_reg(lhs.reg), w_reg(rhs.reg));
-        arm64function_add_instruction(function, "cmp", "%s,wzr", w_reg(result));
-        arm64function_add_instruction(function, "cset", "%s,ne", w_reg(result));
+    if (lhs.type == BOOL_ID && op == OP_MULTIPLY) {
+        arm64function_add_instruction(function, "and", "%s,%s,%s", w_reg(result_reg), w_reg(lhs.reg), w_reg(rhs.reg));
+        arm64function_add_instruction(function, "cmp", "%s,wzr", w_reg(result_reg));
+        arm64function_add_instruction(function, "cset", "%s,ne", w_reg(result_reg));
         arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
-            .reg = result,
+            .reg = result_reg,
         };
     }
-    if (lhs.type == BOOL_ID && op->operator.op == OP_LOGICAL_AND) {
+    if (lhs.type == BOOL_ID && op == OP_LOGICAL_AND) {
         //        and     w0, w0, 1
         //        cmp     w0, 0
         //        beq     .L296
@@ -320,10 +345,10 @@ ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
-            .reg = result,
+            .reg = result_reg,
         };
     }
-    if (lhs.type == BOOL_ID && op->operator.op == OP_LOGICAL_OR) {
+    if (lhs.type == BOOL_ID && op == OP_LOGICAL_OR) {
         //        and     w0, w0, 1
         //        cmp     w0, 0
         //        bne     .L300
@@ -357,18 +382,20 @@ ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
-            .reg = result,
+            .reg = result_reg,
         };
     }
-    char const *opcode = opcode_for_op_by_type(op->operator.op, un_signed, is_short);
+    char const *opcode = opcode_for_op_by_type(op, un_signed, is_short);
     if (opcode) {
-        arm64function_add_instruction(function, opcode, "%s,%s,%s", res, l, r);
         if (conditional) {
+            arm64function_add_instruction(function, opcode, "%s,%s", l, r);
             arm64function_add_instruction(function, "cset", "%s,%s", res, conditional);
             arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
+        } else {
+            arm64function_add_instruction(function, opcode, "%s,%s,%s", res, l, r);
         }
     } else {
-        switch (op->operator.op) {
+        switch (op) {
         case OP_MODULO: {
             opcode = opcode_for_op_by_type(OP_DIVIDE, un_signed, is_short);
             arm64function_add_instruction(function, opcode, "%s,%s,%s", res, l, r);
@@ -376,7 +403,7 @@ ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
             arm64function_add_instruction(function, "sub", "%s,%s,%s", res, l, res);
         } break;
         default:
-            NYI("codegen for operator `%s`", Operator_name(op->operator.op));
+            NYI("codegen for operator `%s`", Operator_name(op));
         }
     }
 
@@ -398,8 +425,8 @@ ValueLocation arm64_apply_op(ARM64Function *function, IROperation *op)
         }
     }
     return (ValueLocation) {
-        .type = lhs.type,
+        .type = (conditional) ? BOOL_ID : lhs.type,
         .kind = VLK_REGISTER,
-        .reg = result,
+        .reg = result_reg,
     };
 }

@@ -281,7 +281,29 @@ SyntaxNode *parse_expression(ParserContext *ctx)
     SyntaxNode *primary = parse_primary_expression(ctx);
     if (!primary)
         return NULL;
-    return parse_expression_1(ctx, primary, 0);
+    SyntaxNode *ret = parse_expression_1(ctx, primary, 0);
+    Token       token = lexer_next(ctx->lexer);
+    if (token_matches(token, TK_SYMBOL, ')')) {
+        return ret;
+    }
+    if (token_matches(token, TK_SYMBOL, '?')) {
+        lexer_lex(ctx->lexer);
+        SyntaxNode *if_true = parse_expression(ctx);
+        if (!if_true) {
+            return NULL;
+        }
+        parser_context_expect_and_discard(ctx, TK_SYMBOL, ':');
+        SyntaxNode *if_false = parse_expression(ctx);
+        if (!if_false) {
+            return NULL;
+        }
+        SyntaxNode *ternary = syntax_node_make(SNT_TERNARYEXPRESSION, sv_from(""), primary->token);
+        ternary->ternary_expr.condition = ret;
+        ternary->ternary_expr.if_true = if_true;
+        ternary->ternary_expr.if_false = if_false;
+        return ternary;
+    }
+    return ret;
 }
 
 SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence)
@@ -298,6 +320,9 @@ SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_prec
         OperatorMapping op_1 = operator_for_token(lookahead);
         while (op_1.binary && op_1.precedence > prec) {
             rhs = parse_expression_1(ctx, rhs, prec + 1);
+            if (!rhs) {
+                return NULL;
+            }
             lookahead = lexer_next(ctx->lexer);
             op_1 = operator_for_token(lookahead);
         }
@@ -399,7 +424,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         case '(': {
             lexer_lex(ctx->lexer);
             SyntaxNode *ret = parse_expression(ctx);
-            parser_context_expect(ctx, TK_SYMBOL, ')');
+            parser_context_expect_and_discard(ctx, TK_SYMBOL, ')');
             return ret;
         }
         default:
@@ -451,8 +476,7 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
 
 SyntaxNode *parse_if(ParserContext *ctx)
 {
-    Token token;
-    lexer_lex(ctx->lexer);
+    Token       token = lexer_lex(ctx->lexer);
     SyntaxNode *expr = parse_expression(ctx);
     if (!expr) {
         parser_context_add_error(ctx, token, sv_from("Expected condition in 'if' statement"));
@@ -493,7 +517,7 @@ SyntaxNode *parse_for(ParserContext *ctx)
         return NULL;
     }
     SyntaxNode *stmt = parse_statement(ctx);
-    if (!range) {
+    if (!stmt) {
         parser_context_add_error(ctx, token, sv_from("Expected statement for 'for' loop"));
         return NULL;
     }
@@ -606,7 +630,7 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
             ret = syntax_node_make(SNT_LABEL, name, token);
             lexer_lex(ctx->lexer);
             return ret;
-        } break;
+        }
         default:
             parser_context_add_error(ctx, token, sv_from("Expected '=', '(', or ':' after identifier"));
             return NULL;

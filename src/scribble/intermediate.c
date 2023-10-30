@@ -31,7 +31,7 @@ BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 
 void generate_node(BoundNode *node, void *target);
 
-static unsigned int s_label = 0;
+static unsigned int s_label = 1; // Start with 1 so that 0 can be used as a sentinel value.
 
 IRVarDecl *allocate_parameters(size_t num)
 {
@@ -493,6 +493,26 @@ void generate_STRUCT(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+void generate_TERNARYEXPRESSION(BoundNode *node, void *target)
+{
+    IRFunction  *fnc = (IRFunction *) target;
+    unsigned int else_label = next_label();
+    unsigned int end_label = next_label();
+
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_MATCH, .type = node->ternary_expr.if_true->typespec.type_id });
+    generate_node(node->ternary_expr.condition, target);
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = else_label });
+    generate_node(node->ternary_expr.if_true, target);
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_CASE, .label = end_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_LABEL, .label = else_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_PUSH_BOOL_CONSTANT, .bool_value = true });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = end_label });
+    generate_node(node->ternary_expr.if_false, target);
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_CASE, .label = 0 });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_LABEL, .label = end_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_MATCH });
+}
+
 void generate_TYPE(BoundNode *node, void *target)
 {
     ir_function_add_push_u64((IRFunction *) target, node->typespec.type_id);
@@ -644,6 +664,19 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
     case IR_CALL:
         sb_printf(&sb, SV_SPEC, SV_ARG(op->call.name));
         break;
+    case IR_CASE:
+    case IR_END_CASE:
+    case IR_JUMP:
+    case IR_JUMP_F:
+    case IR_JUMP_T:
+    case IR_LABEL:
+        sb_printf(&sb, "lbl_%zu", op->label);
+        break;
+    case IR_END_MATCH:
+        break;
+    case IR_MATCH:
+        sb_printf(&sb, SV_SPEC, SV_ARG(typeid_name(op->type)));
+        break;
     case IR_POP_VAR:
     case IR_PUSH_VAR:
     case IR_PUSH_STRING_CONSTANT:
@@ -668,12 +701,6 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         } else {
             sb_printf(&sb, "%" PRIi64, op->integer.value.signed_value);
         }
-        break;
-    case IR_JUMP:
-    case IR_JUMP_F:
-    case IR_JUMP_T:
-    case IR_LABEL:
-        sb_printf(&sb, "lbl_%zu", op->label);
         break;
     case IR_NEW_DATUM:
         sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);

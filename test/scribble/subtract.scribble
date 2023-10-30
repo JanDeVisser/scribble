@@ -1,0 +1,6 @@
+func main() : i32 {
+    var x = 7 - 5;
+    puti(x);
+    endln();
+    return x;
+}

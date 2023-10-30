@@ -385,6 +385,7 @@ typedef struct arm64_scope {
     struct arm64_scope    *scopes;
     struct arm64_scope    *current;
     ValueLocation         *expression_stack;
+    ValueLocation         *match_value_stack;
     struct arm64_scope    *next;
 } ARM64Scope;
 
@@ -515,6 +516,7 @@ extern Register              arm64function_allocate_register(ARM64Function *func
 extern RegisterRange         arm64function_allocate_register_range(ARM64Function *function, size_t num);
 extern void                  arm64function_release_register(ARM64Function *function, Register reg);
 extern void                  arm64function_release_all_registers(ARM64Function *function);
+extern OptionalValueLocation arm64function_peek_location(ARM64Function *function);
 extern OptionalValueLocation arm64function_pop_location(ARM64Function *function);
 extern void                  arm64function_push_location(ARM64Function *function, ValueLocation entry);
 extern void                  arm64function_push_register(ARM64Function *function, type_id type, Register reg);
@@ -524,6 +526,7 @@ extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);
 extern void                  arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function);
 extern void                  arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result);
+extern ValueLocation         arm64function_location_for_type(ARM64Function *function, type_id type);
 extern StringView            arm64variable_to_string(ARM64Variable *var);
 extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
 extern void                  arm64variable_load_variable(ARM64Variable *variable);

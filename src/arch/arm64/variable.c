@@ -92,35 +92,7 @@ void arm64variable_load_variable(ARM64Variable *variable)
     type_id        type = variable->var_decl.type.type_id;
     ARM64Function *function = variable->scope->function;
     ValueLocation  from_location = { 0 };
-    ValueLocation  to_location = { 0 };
-
-    switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
-        to_location = (ValueLocation) {
-            .type = type,
-            .kind = VLK_REGISTER,
-            .reg = arm64function_allocate_register(function),
-        };
-    } break;
-    case TK_AGGREGATE: {
-        size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
-        if (size_in_double_words <= 2) {
-            to_location = (ValueLocation) {
-                .type = type,
-                .kind = VLK_REGISTER_RANGE,
-                .range = arm64function_allocate_register_range(function, size_in_double_words),
-            };
-            break;
-        }
-        to_location = (ValueLocation) {
-            .type = type,
-            .kind = VLK_STACK,
-        };
-    } break;
-    default:
-        NYI("load_variable for non-primitive, non-aggregate type");
-        break;
-    }
+    ValueLocation  to_location = arm64function_location_for_type(function, type);
 
     switch (variable->kind) {
     case VK_PARAMETER:

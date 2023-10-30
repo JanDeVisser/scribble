@@ -153,6 +153,11 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
     arm64function_marshall_return(calling_function, called_function, op->call.discard_result);
 }
 
+void generate_CASE(ARM64Function *function, IROperation *op)
+{
+    generate_JUMP_F(function, op);
+}
+
 void generate_DECL_VAR(ARM64Function *function, IROperation *op)
 {
 }
@@ -173,6 +178,30 @@ void generate_DEFINE_VARIANT(ARM64Function *function, IROperation *op)
 {
 }
 
+void generate_END_CASE(ARM64Function *function, IROperation *op)
+{
+    ARM64Scope *scope = function->scribble.current_scope;
+    assert(scope);
+    ValueLocation *case_location = scope->match_value_stack;
+    assert(case_location);
+    MUST_OPTIONAL(ValueLocation, expression_value, arm64function_pop_location(function));
+    arm64function_copy(function, *case_location, expression_value);
+    if (op->label) {
+        arm64function_add_instruction(function, "b", "%.*s_%zu",
+            SV_ARG(arm64function_label(function)), op->label);
+    }
+}
+
+void generate_END_MATCH(ARM64Function *function, IROperation *op)
+{
+    ARM64Scope *scope = function->scribble.current_scope;
+    assert(scope);
+    ValueLocation *match_location = scope->match_value_stack;
+    assert(match_location);
+    scope->match_value_stack = match_location->next;
+    arm64function_push_location(function, *match_location);
+}
+
 void generate_JUMP(ARM64Function *function, IROperation *op)
 {
     arm64function_add_instruction(function, "b", "%.*s_%zu",
@@ -182,17 +211,39 @@ void generate_JUMP(ARM64Function *function, IROperation *op)
 void generate_JUMP_F(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
+    assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
+    assert(location.type == BOOL_ID);
+    ValueLocation l = location;
+    if (location.kind != VLK_REGISTER) {
+        l.kind = VLK_REGISTER;
+        l.reg = arm64function_allocate_register(function);
+        arm64function_copy(function, l, location);
+    }
     arm64function_add_instruction(function, "cbz", "%s,%.*s_%zu",
-        reg(location.reg),
+        reg(l.reg),
         SV_ARG(arm64function_label(function)), op->label);
+    if (location.kind != VLK_REGISTER) {
+        arm64function_release_register(function, l.reg);
+    }
 }
 
 void generate_JUMP_T(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
+    assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
+    assert(location.type == BOOL_ID);
+    ValueLocation l = location;
+    if (location.kind != VLK_REGISTER) {
+        l.kind = VLK_REGISTER;
+        l.reg = arm64function_allocate_register(function);
+        arm64function_copy(function, l, location);
+    }
     arm64function_add_instruction(function, "cbnz", "%s,%.*s_%zu",
-        reg(location.reg),
+        reg(l.reg),
         SV_ARG(arm64function_label(function)), op->label);
+    if (location.kind != VLK_REGISTER) {
+        arm64function_release_register(function, l.reg);
+    }
 }
 
 void generate_LABEL(ARM64Function *function, IROperation *op)
@@ -202,13 +253,25 @@ void generate_LABEL(ARM64Function *function, IROperation *op)
             SV_ARG(arm64function_label(function)), op->label));
 }
 
+void generate_MATCH(ARM64Function *function, IROperation *op)
+{
+    ARM64Scope *scope = function->scribble.current_scope;
+    assert(scope);
+
+    ValueLocation *new_match_location = allocate_new(ValueLocation);
+    ValueLocation  loc = arm64function_location_for_type(function, op->type);
+    memcpy(new_match_location, &loc, sizeof(ValueLocation));
+    new_match_location->next = scope->match_value_stack;
+    scope->match_value_stack = new_match_location;
+}
+
 void generate_NEW_DATUM(ARM64Function *function, IROperation *op)
 {
 }
 
 void generate_OPERATOR(ARM64Function *function, IROperation *op)
 {
-    ValueLocation result = arm64_apply_op(function, op);
+    ValueLocation result = arm64operator_apply(function, op->operator.lhs, op->operator.op, op->operator.rhs, NULL);
     arm64function_push_location(function, result);
 }
 
@@ -496,6 +559,7 @@ void initialize_assembly(Assembly *assembly)
         if (function->kind == FK_SCRIBBLE) {
             arm_function->scribble.code = code_create(arm_function);
         }
+        arm_function->scope.function = arm_function;
         generate_function_declaration(arm_function, function);
     }
 }

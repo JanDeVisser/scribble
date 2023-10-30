@@ -37,6 +37,7 @@
     S(RETURN)               \
     S(STRING)               \
     S(STRUCT)               \
+    S(TERNARYEXPRESSION)    \
     S(TYPE)                 \
     S(TYPE_COMPONENT)       \
     S(UNARYEXPRESSION)      \
@@ -137,6 +138,11 @@ typedef struct bound_node {
         struct {
             struct bound_node *components;
         } compound_def;
+        struct {
+            struct bound_node *condition;
+            struct bound_node *if_true;
+            struct bound_node *if_false;
+        } ternary_expr;
         struct {
             type_id alias_of;
         } type_alias;
