@@ -1,0 +1,9 @@
+func fibonacci(n: i32) : i32 {
+    return (n <= 1) ? n : fibonacci(n-1) + fibonacci(n-2);
+}
+
+func main() : i32 {
+    puti(fibonacci(20));
+    endln();
+    return 0;
+}
