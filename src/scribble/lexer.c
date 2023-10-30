@@ -281,9 +281,9 @@ Token lexer_peek(Lexer *lexer)
                 return lexer_set_current(lexer, (Token) { { buffer, 2 }, TK_COMMENT, TC_UNTERMINATED_BLOCK_COMMENT });
             }
             size_t ix = 3;
-            for (; buffer[ix] && buffer[ix - 1] != '*' && buffer[ix] != '/'; ++ix)
+            for (; buffer[ix] && (buffer[ix - 1] != '*' || buffer[ix] != '/'); ++ix)
                 ;
-            return lexer_set_current(lexer, (Token) { { buffer, ix + 1 }, TK_COMMENT, (buffer[ix]) ? TC_UNTERMINATED_BLOCK_COMMENT : TC_BLOCK_COMMENT });
+            return lexer_set_current(lexer, (Token) { { buffer, ix + 1 }, TK_COMMENT, (buffer[ix]) ? TC_BLOCK_COMMENT : TC_UNTERMINATED_BLOCK_COMMENT });
         }
         default:
             break;
