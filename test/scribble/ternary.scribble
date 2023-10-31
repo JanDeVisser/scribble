@@ -1,6 +1,6 @@
 func main() : i32 {
-  var a = 2;
-  var b = (a < 5) ? 3 : 4;
-  fputs(1, "b: "); puti(b); endln();
+``  const a = 2;
+  var b = (a < 5) ? 2 + 1 : 5 - 1;
+  puts("b: "); puti(b); endln();
   return b;
 }
