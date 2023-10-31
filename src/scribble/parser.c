@@ -357,7 +357,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             }
             return ret;
         }
-        `` case TC_HEXNUMBER : {
+        case TC_HEXNUMBER: {
             SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
             ret->integer.un_signed = true;
             ret->integer.width = 4 * (token.text.length - 2);
