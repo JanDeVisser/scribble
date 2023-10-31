@@ -45,12 +45,7 @@ char const            *scope_push_variable(Scope *scope, StringView name, DatumS
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) static Datum *execute_##i(ExecutionContext *ctx);
-__attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-
-    Datum *datum_stack_pop(DatumStack *stack)
+Datum *datum_stack_pop(DatumStack *stack)
 {
     if (!stack->top) {
         Datum *error = datum_allocate(ERROR_ID);
@@ -320,9 +315,6 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         switch (function->kind) {
         case FK_SCRIBBLE:
             func_ret = execute_function(ctx, (IRFunction *) function);
-            break;
-        case FK_INTRINSIC:
-            func_ret = execute_intrinsic(ctx, function);
             break;
         case FK_NATIVE: {
             Datum **args = allocate_array(Datum *, function->num_parameters);
@@ -781,9 +773,6 @@ bool debug_processor(ExecutionContext *ctx, IRFunction *function, size_t ix)
                 case FK_NATIVE: {
                     printf(SV_SPEC " -> %.*s\n", SV_ARG(fnc->name), SV_ARG(fnc->native_name));
                 } break;
-                case FK_INTRINSIC: {
-                    printf(SV_SPEC " -> intrinsic %s\n", SV_ARG(fnc->name), Intrinsic_name(fnc->intrinsic));
-                } break;
                 }
             }
         } break;
@@ -931,98 +920,6 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     ret.type = FRT_NORMAL;
     ret.return_value = NULL;
     ctx->scope = current;
-    return ret;
-}
-
-Datum *execute_ALLOC(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *ret = datum_allocate(POINTER_ID);
-    Datum *size = datum_stack_pop(&ctx->stack);
-    ret->pointer = allocate(datum_unsigned_integer_value(size));
-    datum_free(size);
-    return ret;
-}
-
-Datum *execute_CLOSE(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *fh = datum_stack_pop(&ctx->stack);
-    Datum *ret = datum_allocate(I32_ID);
-    ret->i32 = close((int) datum_signed_integer_value(fh));
-    datum_free(fh);
-    return ret;
-}
-
-Datum *execute_OPEN(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *name = datum_stack_pop(&ctx->stack);
-    assert(name->type == STRING_ID);
-    Datum *mode = datum_stack_pop(&ctx->stack);
-    assert(mode->type == I32_ID);
-    Datum *ret = datum_allocate(I32_ID);
-    char  *file_name = alloca(name->string.length) + 1;
-    file_name[name->string.length] = 0;
-    memcpy(file_name, name->string.ptr, name->string.length);
-    ret->i32 = open(file_name, mode->i32);
-    datum_free(mode);
-    datum_free(name);
-    return ret;
-}
-
-Datum *execute_READ(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *fh = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(fh));
-    Datum *buffer = datum_stack_pop(&ctx->stack);
-    assert(buffer->type == POINTER_ID);
-    Datum *bytes = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(bytes));
-    Datum *ret = datum_allocate(I64_ID);
-    ret->i64 = read((int) datum_signed_integer_value(fh), buffer->pointer, datum_unsigned_integer_value(fh));
-    datum_free(bytes);
-    datum_free(buffer);
-    datum_free(fh);
-    return ret;
-}
-
-Datum *execute_WRITE(ExecutionContext *ctx)
-{
-    (void) ctx;
-    Datum *fh = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(fh));
-    Datum *buffer = datum_stack_pop(&ctx->stack);
-    assert(buffer->type == POINTER_ID);
-    Datum *bytes = datum_stack_pop(&ctx->stack);
-    assert(datum_is_integer(bytes));
-    Datum *ret = datum_allocate(I64_ID);
-    ret->i64 = write((int) datum_signed_integer_value(fh), buffer->pointer, datum_unsigned_integer_value(fh));
-    datum_free(bytes);
-    datum_free(buffer);
-    datum_free(fh);
-    return ret;
-}
-
-FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRFunction *intrinsic)
-{
-    FunctionReturn ret = { 0 };
-    ret.type = FRT_NORMAL;
-    Datum *ret_val = NULL;
-
-    switch (intrinsic->intrinsic) {
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i)           \
-    case INT_##i:                   \
-        ret_val = execute_##i(ctx); \
-        break;
-        INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-    default:
-        NYI("Intrinsic");
-    }
-    ret.return_value = ret_val;
     return ret;
 }
 

@@ -33,3 +33,5 @@ func open(s: string, mode: i32) : i32 -> "scribble$open";
 func close(fh: i32) : i32 -> "scribble$close";
 func read(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
 func write(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
+
+func alloc(sz: i32) : pchar -> "scribble$alloc";

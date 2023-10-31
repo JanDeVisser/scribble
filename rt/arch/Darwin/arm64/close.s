@@ -7,27 +7,24 @@
 .include "arch/Darwin/arm64/syscalls.inc"
 
 .align 4
-.global scribble$write
+.global scribble$close
 
 //
-// scribble$write - Call the write(2) syscall
+// scribble$close - Call the close(2) syscall
 //
 // In:
 fh      .req x0     // File descriptor
-buffer  .req x1     // Pointer to buffer
-num     .req x2     // Number of bytes to write
 
 // Out:
-//   x0: >0: Number of bytes written. Can be less than num
-//       <0: -errno
+//   x0: 0 for success, otherwise -errno
 
 // Work:
 //   ---
 
-scribble$write:
+scribble$close:
     stp         fp,lr,[sp,#-16]!
     mov         fp,sp
-    mov         x16,syscall_write
+    mov         x16,syscall_close
     svc         #0x00
     mov         sp,fp
     ldp         fp,lr,[sp],#16

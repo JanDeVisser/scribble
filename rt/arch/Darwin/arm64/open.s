@@ -1,6 +1,13 @@
+/*
+ * Copyright (c) 2023, Jan de Visser <jan@finiandarcy.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+.include "arch/Darwin/arm64/syscalls.inc"
+
 .align 4
 .global scribble$open
-.global _scribble$open
 
 //
 // scribble$open - Call the open(2) syscall
@@ -17,7 +24,6 @@ mode    .req x2     // File open mode
 //   ---
 
 scribble$open:
-_scribble$open:
     stp         fp,lr,[sp,#-16]!
     mov         fp,sp
     add         x3,name,len
@@ -47,7 +53,7 @@ __open_copied_name_to_stack:
     mov         x0,sp
  __open_name_is_cstr:
     mov         mode,x1
-    mov         x16,#0x0005
+    mov         x16,syscall_open
     svc         #0x00
     mov         sp,fp
     ldp         fp,lr,[sp],#16

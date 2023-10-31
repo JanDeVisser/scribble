@@ -98,7 +98,6 @@ typedef struct ir_object {
 typedef enum ir_function_kind {
     FK_SCRIBBLE = 0,
     FK_NATIVE,
-    FK_INTRINSIC
 } IRFunctionKind;
 
 typedef struct ir_function {
@@ -112,7 +111,6 @@ typedef struct ir_function {
     union {
         DA_IROperation operations;
         StringView     native_name;
-        Intrinsic      intrinsic;
     };
 } IRFunction;
 

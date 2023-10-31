@@ -360,34 +360,6 @@ __attribute__((unused)) void generate_INTEGER(BoundNode *node, IRObject *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-__attribute__((unused)) void generate_INTRINSIC(BoundNode *node, IRObject *target)
-{
-    IRModule *module = (IRModule *) target;
-    size_t    fnc_ix = da_append_IRFunction(
-        &module->functions,
-        (IRFunction) {
-               .module = module,
-               .kind = FK_INTRINSIC,
-               .name = node->name,
-               .type = node->typespec,
-               .intrinsic = node->intrinsic.intrinsic,
-        });
-
-    IRFunction *intrinsic = module->functions.elements + fnc_ix;
-    for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
-        ++intrinsic->num_parameters;
-    }
-    if (intrinsic->num_parameters) {
-        intrinsic->parameters = allocate_parameters(intrinsic->num_parameters);
-        int ix = 0;
-        for (BoundNode *param = node->intrinsic.parameter; param; param = param->next) {
-            intrinsic->parameters[ix].name = param->name;
-            intrinsic->parameters[ix].type = param->typespec;
-            ++ix;
-        }
-    }
-}
-
 __attribute__((unused)) void generate_LOOP(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
@@ -461,9 +433,6 @@ __attribute__((unused)) void generate_PROGRAM(BoundNode *node, IRObject *target)
     IRFunction *statik = builtin->functions.elements + builtin->$static;
     for (BoundNode *type = node->program.types; type; type = type->next) {
         generate_node(type, (IRObject *) statik);
-    }
-    for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
-        generate_node(intrinsic, (IRObject *) builtin);
     }
     for (BoundNode *import = node->program.imports; import; import = import->next) {
         generate_node(import, target);
@@ -833,9 +802,6 @@ void ir_function_list(IRFunction *function, size_t mark)
     } break;
     case FK_NATIVE: {
         printf("  Native Function => %.*s\n", SV_ARG(function->native_name));
-    } break;
-    case FK_INTRINSIC: {
-        printf("  Intrinsic %s\n", Intrinsic_name(function->intrinsic));
     } break;
     default:
         UNREACHABLE();

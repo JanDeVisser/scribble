@@ -29,7 +29,6 @@
     S(IF)                   \
     S(IMPORT)               \
     S(INTEGER)              \
-    S(INTRINSIC)            \
     S(LOOP)                 \
     S(MODULE)               \
     S(NATIVE_FUNCTION)      \
@@ -58,20 +57,6 @@ typedef enum bound_node_type {
         BNT_LAST
 } BoundNodeType;
 
-#define INTRINSICS(S) \
-    S(ALLOC)          \
-    S(CLOSE)          \
-    S(OPEN)           \
-    S(READ)           \
-    S(WRITE)
-
-typedef enum intrinsic {
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) INT_##i,
-    INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-} Intrinsic;
-
 typedef struct bound_node {
     BoundNodeType        type;
     StringView           name;
@@ -87,7 +72,6 @@ typedef struct bound_node {
         } import;
         struct {
             struct bound_node *types;
-            struct bound_node *intrinsics;
             struct bound_node *imports;
             struct bound_node *modules;
         } program;
@@ -99,10 +83,6 @@ typedef struct bound_node {
             struct bound_node *parameter;
             struct bound_node *function_impl;
         } function;
-        struct {
-            struct bound_node *parameter;
-            Intrinsic          intrinsic;
-        } intrinsic;
         struct {
             struct bound_node *lhs;
             struct bound_node *rhs;
@@ -166,7 +146,6 @@ typedef struct bound_node {
 typedef void (*BindingObserver)(int, BoundNode *);
 
 extern char const     *BoundNodeType_name(BoundNodeType type);
-extern char const     *Intrinsic_name(Intrinsic intrinsic);
 extern BoundNode      *bind(SyntaxNode *program);
 extern BindingObserver register_binding_observer(BindingObserver observer);
 

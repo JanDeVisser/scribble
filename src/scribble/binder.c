@@ -51,20 +51,6 @@ char const *BoundNodeType_name(BoundNodeType type)
     }
 }
 
-char const *Intrinsic_name(Intrinsic intrinsic)
-{
-    switch (intrinsic) {
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) \
-    case INT_##i:         \
-        return #i;        \
-        INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-    default:
-        UNREACHABLE();
-    }
-}
-
 BindContext *context_make_subcontext(BindContext *ctx)
 {
     BindContext *ret = allocate(sizeof(BindContext));
@@ -154,14 +140,6 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
             BoundNode *n = bound_node_find_here(module, type, name);
             if (n) {
                 return n;
-            }
-        }
-        if (type == BNT_FUNCTION) {
-            for (BoundNode *n = node->program.intrinsics; n; n = n->next) {
-                assert(n->type == BNT_INTRINSIC);
-                if (sv_eq(n->name, name)) {
-                    return n;
-                }
             }
         }
     } break;
@@ -605,42 +583,6 @@ BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext 
     return ret;
 }
 
-typedef struct intrinsic_param {
-    char const *name;
-    BuiltinType type;
-} IntrinsicParam;
-
-void program_define_intrinsic(BoundNode *program, char const *name, BuiltinType ret_type,
-    Intrinsic intrinsic_code, IntrinsicParam params[])
-{
-    BoundNode *intrinsic;
-    intrinsic = bound_node_make(BNT_INTRINSIC, program);
-    intrinsic->next = program->program.intrinsics;
-    program->program.intrinsics = intrinsic;
-    intrinsic->name = sv_from(name);
-    intrinsic->typespec.type_id = type_registry_id_of_builtin_type(ret_type);
-    intrinsic->typespec.optional = false;
-    intrinsic->intrinsic.intrinsic = intrinsic_code;
-    BoundNode **last = &intrinsic->intrinsic.parameter;
-    for (size_t ix = 0; params[ix].name; ++ix) {
-        BoundNode *param = bound_node_make(BNT_PARAMETER, intrinsic);
-        param->prev = *last;
-        *last = param;
-        last = &param->next;
-        param->name = sv_from(params[ix].name);
-        param->typespec.type_id = type_registry_id_of_builtin_type(params[ix].type);
-        param->typespec.optional = false;
-    }
-}
-
-void program_define_intrinsics(BoundNode *program)
-{
-    program_define_intrinsic(program, "close", BIT_I32, INT_CLOSE, (IntrinsicParam[]) { { "fh", BIT_I32 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "open", BIT_I32, INT_OPEN, (IntrinsicParam[]) { { "name", BIT_STRING }, { "mode", BIT_U32 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "read", BIT_I64, INT_READ, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
-    program_define_intrinsic(program, "write", BIT_I64, INT_WRITE, (IntrinsicParam[]) { { "fh", BIT_I32 }, { "buffer", BIT_POINTER }, { "bytes", BIT_U64 }, { NULL, BIT_VOID } });
-}
-
 void program_collect_types(BoundNode *program)
 {
     BoundNode **last_type = &program->program.types;
@@ -690,7 +632,6 @@ BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
     ret->name = program->name;
 
-    program_define_intrinsics(ret);
     bind_nodes(ret, program->program.modules, &ret->program.modules, ctx);
     bind_nodes(ret, program->program.imports, &ret->program.imports, ctx);
     program_collect_types(ret);
