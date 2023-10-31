@@ -9,71 +9,16 @@
 #include <operator.h>
 #include <sv.h>
 
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i) static void generate_##i(ARM64Function *caller, ARM64Function *intrinsic);
-__attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-
 #undef IR_OPERATION_TYPE
 #define IR_OPERATION_TYPE(t) static void generate_##t(ARM64Function *function, IROperation *op);
     IR_OPERATION_TYPES(IR_OPERATION_TYPE)
 #undef IR_OPERATION_TYPE
 
         static void generate_code(ARM64Function *arm_function);
-static void generate_intrinsic_call(ARM64Function *caller, ARM64Function *intrinsic);
 static void generate_native(ARM64Function *arm_function);
 static void generate_function_declaration(ARM64Function *arm_function, IRFunction *function);
 
 DECLARE_SHARED_ALLOCATOR(arm64)
-
-void generate_ALLOC(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    // syscall SYS_mmap
-    arm64function_add_text(intrinsic,
-        "mov    x1,x0\n"
-        "mov    x0,xzr\n"
-        "mov    w2,#3\n"
-        "mov    w3,#0x1002\n"
-        "mov    w4,#-1\n"
-        "mov    x5,xzr\n");
-    arm64function_syscall(intrinsic, SYSCALL_MMAP);
-}
-
-void generate_CLOSE(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_syscall(caller, SYSCALL_CLOSE);
-}
-void generate_OPEN(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_add_instruction(caller, "bl", "scribble$open");
-}
-
-void generate_READ(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_syscall(caller, 0x04);
-}
-
-void generate_WRITE(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    arm64function_syscall(caller, 0x04);
-}
-
-void generate_intrinsic_call(ARM64Function *caller, ARM64Function *intrinsic)
-{
-    IRFunction *function = intrinsic->function;
-    assert(function->kind == FK_INTRINSIC);
-    switch (function->intrinsic) {
-#undef INTRINSIC_ENUM
-#define INTRINSIC_ENUM(i)                \
-    case INT_##i:                        \
-        generate_##i(caller, intrinsic); \
-        break;
-        INTRINSICS(INTRINSIC_ENUM)
-#undef INTRINSIC_ENUM
-    default:
-        UNREACHABLE();
-    }
-}
 
 void generate_native(ARM64Function *function)
 {
@@ -118,9 +63,6 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
         } else {
             arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(called_function->function->native_name));
         }
-    } break;
-    case FK_INTRINSIC: {
-        generate_intrinsic_call(calling_function, called_function);
     } break;
     default:
         UNREACHABLE();
@@ -549,8 +491,6 @@ void generate_assembly(Assembly *assembly)
         } break;
         case FK_NATIVE: {
             generate_native(function);
-        } break;
-        case FK_INTRINSIC: {
         } break;
         default:
             UNREACHABLE();

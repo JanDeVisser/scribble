@@ -98,6 +98,5 @@ typedef struct function_return {
 int            execute(IRProgram program);
 Datum         *evaluate_function(IRFunction function);
 FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function);
-FunctionReturn execute_intrinsic(ExecutionContext *ctx, IRFunction *intrinsic);
 
 #endif /* __EXECUTE_H__ */
