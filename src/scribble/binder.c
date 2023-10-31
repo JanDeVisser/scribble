@@ -5,6 +5,8 @@
  */
 
 #include <binder.h>
+#include <execute.h>
+#include <intermediate.h>
 #include <log.h>
 #include <options.h>
 #include <sv.h>
@@ -301,6 +303,55 @@ BoundNode *short_circuit_logical_operators(BoundNode *parent, SyntaxNode *stmt, 
     return ret;
 }
 
+BoundNode *datum_to_node(Datum *d, BoundNode *parent)
+{
+    BoundNode *ret;
+    if (datum_kind(d) == TK_PRIMITIVE) {
+        BuiltinType bit = typeid_builtin_type(d->type);
+        bool        is_int = BuiltinType_is_integer(bit);
+        if (is_int) {
+            ret = bound_node_make(BNT_INTEGER, parent);
+            ret->name = datum_sprint(d);
+            ret->typespec = (TypeSpec) { .type_id = type_registry_id_of_builtin_type(bit), .optional = false };
+            return ret;
+        }
+        switch (bit) {
+        case BIT_BOOL:
+            ret = bound_node_make(BNT_BOOL, parent);
+            ret->name = datum_sprint(d);
+            ret->typespec = (TypeSpec) { .type_id = BOOL_ID, .optional = false };
+            return ret;
+        case BIT_FLOAT:
+            ret = bound_node_make(BNT_DECIMAL, parent);
+            ret->name = datum_sprint(d);
+            ret->typespec = (TypeSpec) { .type_id = FLOAT_ID, .optional = false };
+            return ret;
+        default:
+            break;
+        }
+    }
+    if (d->type == STRING_ID) {
+        ret = bound_node_make(BNT_STRING, parent);
+        ret->name = datum_sprint(d);
+        ret->typespec = (TypeSpec) { .type_id = STRING_ID, .optional = false };
+        return ret;
+    }
+    return NULL;
+}
+
+BoundNode *evaluate_node(BoundNode *node)
+{
+    IRFunction expression = evaluate(node);
+    Datum     *evaluated = evaluate_function(expression);
+    if (evaluated) {
+        BoundNode *evaluated_node = datum_to_node(evaluated, node->parent);
+        if (evaluated_node) {
+            return evaluated_node;
+        }
+    }
+    return node;
+}
+
 BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     if (stmt->binary_expr.operator== OP_LOGICAL_OR || stmt->binary_expr.operator== OP_LOGICAL_AND) {
@@ -324,7 +375,7 @@ BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContex
     ret->binary_expr.lhs = lhs;
     ret->binary_expr.rhs = rhs;
     ret->binary_expr.operator= stmt->binary_expr.operator;
-    return ret;
+    return evaluate_node(ret);
 }
 
 BoundNode *bind_BLOCK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
@@ -659,8 +710,7 @@ BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_STRING, parent);
     ret->name = stmt->name;
-    ret->typespec.type_id = type_registry_id_of_builtin_type(BIT_STRING);
-    ret->typespec.optional = false;
+    ret->typespec = (TypeSpec) { .type_id = type_registry_id_of_builtin_type(BIT_STRING), .optional = false };
     return ret;
 }
 
@@ -714,7 +764,7 @@ BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindConte
     ret->ternary_expr.condition = condition;
     ret->ternary_expr.if_true = if_true;
     ret->ternary_expr.if_false = if_false;
-    return ret;
+    return evaluate_node(ret);
 }
 
 BoundNode *bind_TYPE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
@@ -746,7 +796,25 @@ BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
-    BoundNode *ret = bound_node_make(BNT_VARIABLE, parent);
+
+    BoundNode *ret;
+    if (stmt->variable.names->next == NULL && decl->variable_decl.is_const) {
+        switch (decl->variable_decl.init_expr->type) {
+        case BNT_BOOL:
+        case BNT_DECIMAL:
+        case BNT_INTEGER:
+        case BNT_STRING: {
+            ret = bound_node_make(decl->variable_decl.init_expr->type, parent);
+            ret->typespec = decl->variable_decl.init_expr->typespec;
+            ret->name = decl->variable_decl.init_expr->name;
+            return ret;
+        }
+        default:
+            break;
+        }
+    }
+
+    ret = bound_node_make(BNT_VARIABLE, parent);
     ret->variable.decl = decl;
     ret->name = stmt->name;
 
@@ -832,6 +900,7 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     ret->typespec = var_type;
     ret->name = stmt->name;
     ret->variable_decl.init_expr = expr;
+    ret->variable_decl.is_const = stmt->variable_decl.is_const;
     return ret;
 }
 

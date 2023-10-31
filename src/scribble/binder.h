@@ -153,6 +153,7 @@ typedef struct bound_node {
         } variable;
         struct {
             struct bound_node *init_expr;
+            bool               is_const;
         } variable_decl;
         struct {
             struct bound_node *condition;
