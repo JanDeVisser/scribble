@@ -9,3 +9,27 @@ func putln(s: string) : i32 -> "scribble$putln";
 func endln() : i32 -> "scribble$endln";
 func puti(i: i32) : i32 -> "scribble$puti";
 func puthex(i: u64) : i32 -> "scribble$puthex";
+
+const O_RDONLY: u32 = 0x00000000;
+const O_RDWR: u32 = 0x00000002;
+const O_WRONLY: u32 = 0x00000001;
+const O_SEARCH: u32 = 0x40100000;
+const O_EXEC: u32 = 0x40000000;
+const O_NONBLOCK: u32 = 0x00000004;
+const O_APPEND: u32 = 0x00000008;
+const O_CREAT: u32 = 0x00000200;
+const O_TRUNC: u32 = 0x00000400;
+const O_EXCL: u32 = 0x00000800;
+const O_SHLOCK: u32 = 0x00000010;
+const O_EXLOCK: u32 = 0x00000020;
+const O_DIRECTORY: u32 = 0x00100000;
+const O_NOFOLLOW: u32 = 0x00000100;
+const O_SYMLINK: u32 = 0x00200000;
+const O_EVTONLY: u32 = 0x00008000;
+const O_CLOEXEC: u32 = 0x01000000;
+const O_NOFOLLOW_ANY: u32 = 0x20000000;
+
+func open(s: string, mode: i32) : i32 -> "scribble$open";
+func close(fh: i32) : i32 -> "scribble$close";
+func read(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
+func write(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
