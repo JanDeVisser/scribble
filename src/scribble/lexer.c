@@ -57,16 +57,28 @@ char const *TokenCode_name(int code)
 
 Token scan_number(char const *buffer)
 {
-    int       ix = 0;
     TokenCode code = TC_INTEGER;
+    int       ix = 0;
+    int (*predicate)(int) = isdigit;
+    if (buffer[1] && buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X')) {
+        if (!buffer[2] || !isxdigit(buffer[2])) {
+            return (Token) { { buffer, 1 }, TK_NUMBER, code };
+        }
+        code = TC_HEXNUMBER;
+        predicate = isxdigit;
+        ix = 2;
+    }
+
     while (true) {
         char ch = buffer[ix];
-        if (!isdigit(ch) && ((ch != '.') || (code == TC_DECIMAL))) {
+        if (!predicate(ch) && ((ch != '.') || (code == TC_DECIMAL))) {
             // FIXME lex '1..10' as '1', '..', '10'. It will now lex as '1.', '.', '10'
-            Token ret = { { buffer, ix }, TK_NUMBER, code };
-            return ret;
+            return (Token) { { buffer, ix }, TK_NUMBER, code };
         }
         if (ch == '.') {
+            if (code == TC_HEXNUMBER) {
+                return (Token) { { buffer, ix }, TK_NUMBER, code };
+            }
             code = TC_DECIMAL;
         }
         ++ix;
