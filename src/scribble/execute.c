@@ -54,7 +54,7 @@ __attribute__((unused)) INTRINSICS(INTRINSIC_ENUM)
 {
     if (!stack->top) {
         Datum *error = datum_allocate(ERROR_ID);
-        error->error = "Stack underflow";
+        error->error.exception = "Stack underflow";
         return error;
     }
     Datum *ret = stack->top->datum;
@@ -173,7 +173,7 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
         if (v) {
             Datum *d = datum_stack_pop(stack);
             if (d->type == ERROR_ID) {
-                return d->error;
+                return d->error.exception;
             }
             if (v->value) {
                 datum_free(v->value);
@@ -194,7 +194,7 @@ char const *scope_pop_variable_component(Scope *scope, StringView name, size_t i
         if (v) {
             Datum *d = datum_stack_pop(stack);
             if (d->type == ERROR_ID) {
-                return d->error;
+                return d->error.exception;
             }
             Datum *component;
             switch (datum_kind(v->value)) {
@@ -306,6 +306,12 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     next.pointer = 1;
     switch (op->operation) {
     case IR_CALL: {
+        if (!ctx->program) {
+            return (NextInstructionPointer) {
+                .type = NIT_EXCEPTION,
+                .exception = "Cannot call functions when evaluating expression"
+            };
+        }
         call_stack_push(&ctx->call_stack, ctx->function, ctx->index);
         IRFunction *function = NULL;
         function = ir_program_function_by_name(ctx->program, op->sv);
@@ -479,7 +485,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         Datum *cond = datum_stack_pop(&ctx->stack);
         if (cond->type == ERROR_ID) {
             next.type = NIT_EXCEPTION;
-            next.exception = cond->error;
+            next.exception = cond->error.exception;
             datum_free(cond);
             return next;
         }
@@ -828,22 +834,11 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             err = scope_pop_variable(ctx->scope, var_decl->name, &ctx->stack);
         }
         if (err) {
-            printf("Exception caught: %s\n", err);
-            printf("\nCall stack:\n");
-            call_stack_dump(&ctx->call_stack);
-            if (ctx->stack.top) {
-                printf("\nCurrent data stack:\n");
-                printf("-------------------\n");
-                datum_stack_dump(&ctx->stack);
-                printf("-------------------\n");
-            } else {
-                printf("\nCurrent data stack EMPTY\n");
-            }
             FunctionReturn ret = { 0 };
             ret.type = FRT_EXCEPTION;
-            Datum exception = { 0 };
-            exception.type = BIT_ERROR;
-            exception.error = err;
+            ret.exception = datum_allocate(BIT_ERROR);
+            ret.exception->error.exception = err;
+            ret.exception->error.operation = NULL;
             ctx->scope = current;
             return ret;
         }
@@ -915,27 +910,16 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ctx->scope = current;
                 return ret;
             }
-            case NIT_EXCEPTION:
-                printf("Exception caught: %s\n", pointer.exception);
-                printf("\nInstruction:\n");
-                ir_operation_print(function->operations.elements + ix);
-                printf("\nCall stack:\n");
-                call_stack_dump(&ctx->call_stack);
-                if (ctx->stack.top) {
-                    printf("\nCurrent data stack:\n");
-                    printf("-------------------\n");
-                    datum_stack_dump(&ctx->stack);
-                    printf("-------------------\n");
-                } else {
-                    printf("\nCurrent data stack EMPTY\n");
-                }
+            case NIT_EXCEPTION: {
                 FunctionReturn ret = { 0 };
                 ret.type = FRT_EXCEPTION;
                 Datum exception = { 0 };
                 exception.type = BIT_ERROR;
-                exception.error = pointer.exception;
+                exception.error.exception = pointer.exception;
+                exception.error.operation = function->operations.elements + ix;
                 ctx->scope = current;
                 return ret;
+            }
             }
         } break;
         }
@@ -1075,10 +1059,41 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     if (OPT_DEBUG) {
         ctx.execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
     }
-    execute_function(&ctx, main);
+    FunctionReturn ret = execute_function(&ctx, main);
+    if (ret.type == FRT_EXCEPTION) {
+        printf("Exception caught: %s\n", ret.exception->error.exception);
+        if (ret.exception->error.operation) {
+            printf("\nInstruction:\n");
+            ir_operation_print((IROperation *) ret.exception->error.operation);
+        }
+        printf("\nCall stack:\n");
+        call_stack_dump(&ctx.call_stack);
+        if (ctx.stack.top) {
+            printf("\nCurrent data stack:\n");
+            printf("-------------------\n");
+            datum_stack_dump(&ctx.stack);
+            printf("-------------------\n");
+        } else {
+            printf("\nCurrent data stack EMPTY\n");
+        }
+        return -1;
+    }
     Datum *d = datum_stack_pop(&ctx.stack);
     if (datum_is_integer(d)) {
         return (int) datum_signed_integer_value(d);
     }
     return 0;
+}
+
+Datum *evaluate_function(IRFunction function)
+{
+    Scope            root_scope = { 0 };
+    ExecutionContext ctx = { 0 };
+    ctx.root_scope = &root_scope;
+    ctx.execution_mode = EM_RUN;
+    FunctionReturn ret = execute_function(&ctx, &function);
+    if (ret.type == FRT_EXCEPTION) {
+        return NULL;
+    }
+    return datum_stack_pop(&ctx.stack);
 }

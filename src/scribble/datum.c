@@ -573,7 +573,7 @@ StringView datum_sprint(Datum *d)
             sb_append_cstr(&sb, "** void **");
             break;
         case BIT_ERROR:
-            sb_append_cstr(&sb, d->error);
+            sb_append_cstr(&sb, d->error.exception);
             break;
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \

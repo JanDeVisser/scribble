@@ -12,8 +12,8 @@
 #include <options.h>
 
 DA_IMPL(IROperation)
-DA_IMPL(IRFunction);
-DA_IMPL(IRModule);
+DA_IMPL(IRFunction)
+DA_IMPL(IRModule)
 
 typedef struct intermediate {
     union {
@@ -25,11 +25,11 @@ typedef struct intermediate {
 } Intermediate;
 
 #undef BOUNDNODETYPE_ENUM
-#define BOUNDNODETYPE_ENUM(type) static void generate_##type(BoundNode *parent, void *target);
-BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
+#define BOUNDNODETYPE_ENUM(type) static __attribute__((unused)) void generate_##type(BoundNode *node, IRObject *target);
+__attribute__((unused)) BOUNDNODETYPES(BOUNDNODETYPE_ENUM)
 #undef BOUNDNODETYPE_ENUM
 
-void generate_node(BoundNode *node, void *target);
+    __attribute__((unused)) void generate_node(BoundNode *node, IRObject *target);
 
 static unsigned int s_label = 1; // Start with 1 so that 0 can be used as a sentinel value.
 
@@ -73,7 +73,7 @@ void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_ARRAY(BoundNode *node, void *target)
+__attribute__((unused)) void generate_ARRAY(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -84,7 +84,7 @@ void generate_ARRAY(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_ASSIGNMENT(BoundNode *node, void *target)
+__attribute__((unused)) void generate_ASSIGNMENT(BoundNode *node, IRObject *target)
 {
     generate_node(node->assignment.expression, target);
     IROperation op;
@@ -93,7 +93,7 @@ void generate_ASSIGNMENT(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_BINARYEXPRESSION(BoundNode *node, void *target)
+__attribute__((unused)) void generate_BINARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IROperation op;
     generate_node(node->binary_expr.lhs, target);
@@ -105,7 +105,7 @@ void generate_BINARYEXPRESSION(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_BLOCK(BoundNode *node, void *target)
+__attribute__((unused)) void generate_BLOCK(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -118,7 +118,7 @@ void generate_BLOCK(BoundNode *node, void *target)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_BOOL(BoundNode *node, void *target)
+__attribute__((unused)) void generate_BOOL(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_BOOL_CONSTANT;
@@ -126,7 +126,7 @@ void generate_BOOL(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_BREAK(BoundNode *node, void *target)
+__attribute__((unused)) void generate_BREAK(BoundNode *node, IRObject *target)
 {
     assert(node->block.statements->intermediate);
     IROperation op;
@@ -135,7 +135,7 @@ void generate_BREAK(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_COMPOUND_INITIALIZER(BoundNode *node, void *target)
+__attribute__((unused)) void generate_COMPOUND_INITIALIZER(BoundNode *node, IRObject *target)
 {
     for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
         generate_node(arg, target);
@@ -146,7 +146,7 @@ void generate_COMPOUND_INITIALIZER(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_CONTINUE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_CONTINUE(BoundNode *node, IRObject *target)
 {
     assert(node->block.statements->intermediate);
     IROperation op;
@@ -155,7 +155,7 @@ void generate_CONTINUE(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_DECIMAL(BoundNode *node, void *target)
+__attribute__((unused)) void generate_DECIMAL(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_FLOAT_CONSTANT;
@@ -163,7 +163,7 @@ void generate_DECIMAL(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_FOR(BoundNode *node, void *target)
+__attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -242,12 +242,13 @@ void generate_FOR(BoundNode *node, void *target)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_FUNCTION(BoundNode *node, void *target)
+__attribute__((unused)) void generate_FUNCTION(BoundNode *node, IRObject *target)
 {
     IRModule *module = (IRModule *) target;
     size_t    fnc_ix = da_append_IRFunction(
         &module->functions,
         (IRFunction) {
+               .obj_type = OT_FUNCTION,
                .module = module,
                .kind = (node->function.function_impl->type == BNT_NATIVE_FUNCTION) ? FK_NATIVE : FK_SCRIBBLE,
                .name = node->name,
@@ -267,10 +268,10 @@ void generate_FUNCTION(BoundNode *node, void *target)
             ++ix;
         }
     }
-    generate_node(node->function.function_impl, fnc);
+    generate_node(node->function.function_impl, (IRObject *) fnc);
 }
 
-void generate_FUNCTION_CALL(BoundNode *node, void *target)
+__attribute__((unused)) void generate_FUNCTION_CALL(BoundNode *node, IRObject *target)
 {
     size_t     argc = 0;
     BoundNode *last = NULL;
@@ -288,7 +289,7 @@ void generate_FUNCTION_CALL(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_FUNCTION_IMPL(BoundNode *node, void *target)
+__attribute__((unused)) void generate_FUNCTION_IMPL(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -302,7 +303,7 @@ void generate_FUNCTION_IMPL(BoundNode *node, void *target)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_IF(BoundNode *node, void *target)
+__attribute__((unused)) void generate_IF(BoundNode *node, IRObject *target)
 {
     IRFunction  *fnc = (IRFunction *) target;
     IROperation  op;
@@ -332,28 +333,34 @@ void generate_IF(BoundNode *node, void *target)
     }
 }
 
-void generate_IMPORT(BoundNode *node, void *target)
+__attribute__((unused)) void generate_IMPORT(BoundNode *node, IRObject *target)
 {
     for (BoundNode *module = node->import.modules; module; module = module->next) {
         generate_node(module, target);
     }
 }
 
-void generate_INTEGER(BoundNode *node, void *target)
+__attribute__((unused)) void generate_INTEGER(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
     op.integer.type = typeid_builtin_type(typeid_canonical_type_id(node->typespec.type_id));
+    int         base = 10;
+    char const *ptr = node->name.ptr;
+    if (sv_startswith(node->name, sv_from("0x")) || sv_startswith(node->name, sv_from("0X"))) {
+        base = 16;
+        ptr += 2;
+    }
     if (BuiltinType_is_unsigned(op.integer.type)) {
-        op.integer.value.unsigned_value = strtoul(node->name.ptr, NULL, 10);
+        op.integer.value.unsigned_value = strtoul(ptr, NULL, base);
     } else {
-        op.integer.value.signed_value = strtol(node->name.ptr, NULL, 10);
+        op.integer.value.signed_value = strtol(ptr, NULL, base);
     }
     Integer_boundscheck(op.integer);
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_INTRINSIC(BoundNode *node, void *target)
+__attribute__((unused)) void generate_INTRINSIC(BoundNode *node, IRObject *target)
 {
     IRModule *module = (IRModule *) target;
     size_t    fnc_ix = da_append_IRFunction(
@@ -381,7 +388,7 @@ void generate_INTRINSIC(BoundNode *node, void *target)
     }
 }
 
-void generate_LOOP(BoundNode *node, void *target)
+__attribute__((unused)) void generate_LOOP(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     node->intermediate = allocate(sizeof(Intermediate));
@@ -400,44 +407,46 @@ void generate_LOOP(BoundNode *node, void *target)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_MODULE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_MODULE(BoundNode *node, IRObject *target)
 {
     IRProgram *program = (IRProgram *) target;
     size_t     mod_ix = da_append_IRModule(
         &program->modules,
         (IRModule) {
+                .obj_type = OT_MODULE,
                 .program = program,
                 .name = node->name,
                 .$static = -1,
         });
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
-        generate_node(stmt, program->modules.elements + mod_ix);
+        generate_node(stmt, (IRObject *) (program->modules.elements + mod_ix));
     }
 }
 
-void generate_NAME(BoundNode *node, void *target)
+__attribute__((unused)) void generate_NAME(BoundNode *node, IRObject *target)
 {
     UNREACHABLE();
 }
 
-void generate_NATIVE_FUNCTION(BoundNode *node, void *target)
+__attribute__((unused)) void generate_NATIVE_FUNCTION(BoundNode *node, IRObject *target)
 {
     IRFunction *function = (IRFunction *) target;
     assert(function->kind == FK_NATIVE);
     function->native_name = node->name;
 }
 
-void generate_PARAMETER(BoundNode *node, void *target)
+__attribute__((unused)) void generate_PARAMETER(BoundNode *node, IRObject *target)
 {
 }
 
-void generate_PROGRAM(BoundNode *node, void *target)
+__attribute__((unused)) void generate_PROGRAM(BoundNode *node, IRObject *target)
 {
     IRProgram *program = (IRProgram *) target;
     assert(program->modules.size == 0 && program->modules.cap > 0);
     size_t builtin_ix = da_append_IRModule(
         &program->modules,
         (IRModule) {
+            .obj_type = OT_MODULE,
             .program = program,
             .name = sv_printf("$%.*s_builtins", SV_ARG(program->name)),
         });
@@ -451,10 +460,10 @@ void generate_PROGRAM(BoundNode *node, void *target)
             .name = sv_from("$static") });
     IRFunction *statik = builtin->functions.elements + builtin->$static;
     for (BoundNode *type = node->program.types; type; type = type->next) {
-        generate_node(type, statik);
+        generate_node(type, (IRObject *) statik);
     }
     for (BoundNode *intrinsic = node->program.intrinsics; intrinsic; intrinsic = intrinsic->next) {
-        generate_node(intrinsic, builtin);
+        generate_node(intrinsic, (IRObject *) builtin);
     }
     for (BoundNode *import = node->program.imports; import; import = import->next) {
         generate_node(import, target);
@@ -464,7 +473,7 @@ void generate_PROGRAM(BoundNode *node, void *target)
     }
 }
 
-void generate_RETURN(BoundNode *node, void *target)
+__attribute__((unused)) void generate_RETURN(BoundNode *node, IRObject *target)
 {
     if (node->return_stmt.expression) {
         generate_node(node->return_stmt.expression, target);
@@ -475,7 +484,7 @@ void generate_RETURN(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_STRING(BoundNode *node, void *target)
+__attribute__((unused)) void generate_STRING(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_STRING_CONSTANT;
@@ -483,7 +492,7 @@ void generate_STRING(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_STRUCT(BoundNode *node, void *target)
+__attribute__((unused)) void generate_STRUCT(BoundNode *node, IRObject *target)
 {
     BoundNode *last;
     size_t     components = 0;
@@ -503,7 +512,7 @@ void generate_STRUCT(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_TERNARYEXPRESSION(BoundNode *node, void *target)
+__attribute__((unused)) void generate_TERNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IRFunction  *fnc = (IRFunction *) target;
     unsigned int else_label = next_label();
@@ -523,7 +532,7 @@ void generate_TERNARYEXPRESSION(BoundNode *node, void *target)
     ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_MATCH });
 }
 
-void generate_TYPE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_TYPE(BoundNode *node, IRObject *target)
 {
     ir_function_add_push_u64((IRFunction *) target, node->typespec.type_id);
     IROperation op;
@@ -532,7 +541,7 @@ void generate_TYPE(BoundNode *node, void *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-void generate_TYPE_COMPONENT(BoundNode *node, void *target)
+__attribute__((unused)) void generate_TYPE_COMPONENT(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -542,22 +551,22 @@ void generate_TYPE_COMPONENT(BoundNode *node, void *target)
     ir_function_add_push_u64(fnc, node->typespec.type_id);
 }
 
-void generate_UNARYEXPRESSION(BoundNode *node, void *target)
+__attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
 }
 
-void generate_UNBOUND_NODE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
 }
 
-void generate_UNBOUND_TYPE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_UNBOUND_TYPE(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
 }
 
-void generate_VARIABLE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_VARIABLE(BoundNode *node, IRObject *target)
 {
     IROperation op;
     if (node->variable.names->next) {
@@ -580,8 +589,11 @@ void generate_VARIABLE(BoundNode *node, void *target)
     }
 }
 
-void generate_VARIABLE_DECL(BoundNode *node, void *target)
+__attribute__((unused)) void generate_VARIABLE_DECL(BoundNode *node, IRObject *target)
 {
+    if (target->obj_type != OT_FUNCTION) {
+        return;
+    }
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
     op.operation = IR_DECL_VAR;
@@ -589,19 +601,19 @@ void generate_VARIABLE_DECL(BoundNode *node, void *target)
     op.var_decl.type = node->typespec;
     ir_function_add_operation(fnc, op);
     if (node->variable_decl.init_expr) {
-        generate_node(node->variable_decl.init_expr, fnc);
+        generate_node(node->variable_decl.init_expr, (IRObject *) fnc);
         op.operation = IR_POP_VAR;
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
     }
 }
 
-void generate_VARIANT(BoundNode *node, void *target)
+__attribute__((unused)) void generate_VARIANT(BoundNode *node, IRObject *target)
 {
     generate_STRUCT(node, target);
 }
 
-void generate_WHILE(BoundNode *node, void *target)
+__attribute__((unused)) void generate_WHILE(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
@@ -624,7 +636,7 @@ void generate_WHILE(BoundNode *node, void *target)
     ir_function_add_operation(fnc, op);
 }
 
-void generate_node(BoundNode *node, void *target)
+__attribute__((unused)) void generate_node(BoundNode *node, IRObject *target)
 {
     trace(CAT_IR, "Generating IR for %s node '" SV_SPEC "'", BoundNodeType_name(node->type), SV_ARG(node->name));
     switch (node->type) {
@@ -641,12 +653,28 @@ void generate_node(BoundNode *node, void *target)
 IRProgram generate(BoundNode *program)
 {
     IRProgram ret = { 0 };
+    ret.obj_type = OT_PROGRAM;
     ret.name = program->name;
     da_resize_IRModule(&ret.modules, 8);
-    generate_node(program, &ret);
+    generate_node(program, (IRObject *) &ret);
     if (has_option("list-ir")) {
         ir_program_list(ret);
     }
+    return ret;
+}
+
+IRFunction evaluate(BoundNode *expr)
+{
+    IRFunction ret = {
+        .obj_type = OT_FUNCTION,
+        .module = NULL,
+        .kind = FK_SCRIBBLE,
+        .name = sv_from("** eval **"),
+        .type = expr->typespec,
+        .num_parameters = 0,
+        .parameters = NULL,
+    };
+    generate_node(expr, (IRObject *) &ret);
     return ret;
 }
 

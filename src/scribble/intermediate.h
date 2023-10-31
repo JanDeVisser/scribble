@@ -84,6 +84,17 @@ typedef struct ir_operation {
 
 DA(IROperation)
 
+typedef enum ir_object_type {
+    OT_PROGRAM = 0,
+    OT_IMPORT = 1,
+    OT_MODULE = 2,
+    OT_FUNCTION = 3
+} IRObjectType;
+
+typedef struct ir_object {
+    IRObjectType obj_type;
+} IRObject;
+
 typedef enum ir_function_kind {
     FK_SCRIBBLE = 0,
     FK_NATIVE,
@@ -91,6 +102,7 @@ typedef enum ir_function_kind {
 } IRFunctionKind;
 
 typedef struct ir_function {
+    IRObjectType      obj_type;
     struct ir_module *module;
     IRFunctionKind    kind;
     StringView        name;
@@ -107,6 +119,7 @@ typedef struct ir_function {
 DA(IRFunction)
 
 typedef struct ir_module {
+    IRObjectType       obj_type;
     struct ir_program *program;
     StringView         name;
     int                $static;
@@ -116,8 +129,9 @@ typedef struct ir_module {
 DA(IRModule)
 
 typedef struct ir_program {
-    StringView  name;
-    DA_IRModule modules;
+    IRObjectType obj_type;
+    StringView   name;
+    DA_IRModule  modules;
 } IRProgram;
 
 extern char const *ir_operation_type_name(IROperationType optype);
@@ -135,5 +149,6 @@ extern IRFunction *ir_module_function_by_name(IRModule *module, StringView name)
 extern void        ir_program_list(IRProgram program);
 extern IRFunction *ir_program_function_by_name(IRProgram *program, StringView name);
 extern IRProgram   generate(BoundNode *program);
+extern IRFunction  evaluate(BoundNode *expr);
 
 #endif /* __INTERMEDIATE_H__ */
