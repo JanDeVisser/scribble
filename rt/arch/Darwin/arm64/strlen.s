@@ -28,7 +28,7 @@ scribble$strlen:
 
     mov         ptr,s
  loop:
-    ldrb        ch,[ptr,#1]!
+    ldrb        ch,[ptr],#1
     cbnz        ch,loop
 
 done:
