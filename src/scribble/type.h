@@ -117,6 +117,17 @@ typedef enum {
     S(U64, u64, uint64_t, false, "llu", 8) \
     S(I64, i64, int64_t, true, "lld", 8)
 
+#define INTEGERTYPES_WITH_BOOL(S) \
+    S(U8)                         \
+    S(I8)                         \
+    S(U16)                        \
+    S(I16)                        \
+    S(U32)                        \
+    S(I32)                        \
+    S(U64)                        \
+    S(I64)                        \
+    S(BOOL)
+
 typedef enum /* : uint16_t */ {
     BIT_NOTYPE = 0x0000,
 #undef BUILTINTYPE_ENUM
@@ -281,6 +292,24 @@ static inline TypeKind type_kind(ExpressionType *type)
 static inline bool type_has_kind(ExpressionType *type, TypeKind kind)
 {
     return typeid_has_kind(type->type_id, kind);
+}
+
+static inline bool typeid_is_specialization(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return et->num_arguments > 0;
+}
+
+static inline type_id typeid_specializes(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return et->specialization_of;
+}
+
+static inline bool typeid_is_template(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return et->num_parameters > 0;
 }
 
 static inline void Integer_boundscheck(Integer integer)

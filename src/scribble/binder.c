@@ -188,36 +188,103 @@ BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
     }
 }
 
+typedef struct binary_operator_signature {
+    Operator    op;
+    BuiltinType lhs;
+    BuiltinType rhs;
+    BuiltinType result;
+} BinaryOperatorSignature;
+
+#define ARITHMETIC_OPS(T)                                       \
+    { .op = OP_ADD, .lhs = T, .rhs = T, .result = T },          \
+        { .op = OP_SUBTRACT, .lhs = T, .rhs = T, .result = T }, \
+        { .op = OP_MULTIPLY, .lhs = T, .rhs = T, .result = T }, \
+        { .op = OP_DIVIDE, .lhs = T, .rhs = T, .result = T },
+
+#define COMPARISON_OPS(T)                                                    \
+    { .op = OP_EQUALS, .lhs = T, .rhs = T, .result = BIT_BOOL },             \
+        { .op = OP_NOT_EQUALS, .lhs = T, .rhs = T, .result = BIT_BOOL },     \
+        { .op = OP_GREATER_EQUALS, .lhs = T, .rhs = T, .result = BIT_BOOL }, \
+        { .op = OP_LESS_EQUALS, .lhs = T, .rhs = T, .result = BIT_BOOL },    \
+        { .op = OP_LESS, .lhs = T, .rhs = T, .result = BIT_BOOL },           \
+        { .op = OP_GREATER, .lhs = T, .rhs = T, .result = BIT_BOOL },
+
+#define BITWISE_OPS(T)                                            \
+    { .op = OP_BITWISE_AND, .lhs = T, .rhs = T, .result = T },    \
+        { .op = OP_BITWISE_OR, .lhs = T, .rhs = T, .result = T }, \
+        { .op = OP_BITWISE_XOR, .lhs = T, .rhs = T, .result = T },
+
+#define SHIFT_OPS(T)                                                   \
+    { .op = OP_BIT_SHIFT_LEFT, .lhs = T, .rhs = BIT_U8, .result = T }, \
+        { .op = OP_BIT_SHIFT_RIGHT, .lhs = T, .rhs = BIT_U8, .result = T },
+
+// clang-format off
+static BinaryOperatorSignature s_operator_signatures[] = {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt) ARITHMETIC_OPS(BIT_##dt)
+INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    { .op = OP_MODULO, .lhs = BIT_##dt, .rhs = BIT_##dt, .result = BIT_##dt },
+    INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt) COMPARISON_OPS(BIT_##dt)
+    INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt) BITWISE_OPS(BIT_##dt)
+    INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) SHIFT_OPS(BIT_##dt)
+    INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    { .op = OP_RANGE, .lhs = BIT_##dt, .rhs = BIT_##dt, .result = BIT_RANGE },
+    INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+
+    ARITHMETIC_OPS(BIT_FLOAT)
+    COMPARISON_OPS(BIT_FLOAT)
+
+    { .op = OP_ADD, .lhs = BIT_STRING, .rhs = BIT_STRING, .result = BIT_STRING },
+    { .op = OP_MULTIPLY, .lhs = BIT_STRING, .rhs = BIT_I32, .result = BIT_STRING },
+    COMPARISON_OPS(BIT_STRING)
+
+    { .op = OP_ADD, .lhs = BIT_POINTER, .rhs = BIT_U64, .result = BIT_POINTER },
+    { .op = OP_SUBTRACT, .lhs = BIT_POINTER, .rhs = BIT_U64, .result = BIT_POINTER },
+    COMPARISON_OPS(BIT_POINTER)
+
+    { .op = OP_LOGICAL_AND, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
+    { .op = OP_LOGICAL_OR, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
+
+    { .op = OP_INVALID, .lhs = BIT_NOTYPE, .rhs = BIT_NOTYPE, .result = BIT_NOTYPE }
+};
+// clang-format on
+
 bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
 {
-    switch (op) {
-    case OP_RANGE:
-        if (lhs.type_id != rhs.type_id) {
-            return false;
+    BuiltinType bit_lhs = typeid_builtin_type(lhs.type_id);
+    BuiltinType bit_rhs = typeid_builtin_type(rhs.type_id);
+
+    for (size_t ix = 0; s_operator_signatures[ix].op != OP_INVALID; ++ix) {
+        if (s_operator_signatures[ix].op == op && s_operator_signatures[ix].lhs == bit_lhs && s_operator_signatures[ix].rhs == bit_rhs) {
+            type_id result = type_registry_id_of_builtin_type(s_operator_signatures[ix].result);
+            if (typeid_is_template(result)) {
+                if (typeid_is_specialization(lhs.type_id) && typeid_specializes(lhs.type_id) == result) {
+                    *ret = lhs;
+                    return true;
+                } else if (typeid_is_specialization(lhs.type_id) && typeid_specializes(rhs.type_id) == result) {
+                    *ret = rhs;
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                *ret = (TypeSpec) { .type_id = result, .optional = false };
+                return true;
+            }
         }
-        ret->type_id = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = lhs.type_id } }));
-        ret->optional = false;
-        return true;
-    case OP_EQUALS:
-    case OP_NOT_EQUALS:
-    case OP_LESS:
-    case OP_LESS_EQUALS:
-    case OP_GREATER:
-    case OP_GREATER_EQUALS: {
-        if (lhs.type_id != rhs.type_id) {
-            return false;
-        }
-        *ret = (TypeSpec) { .type_id = BOOL_ID, .optional = false };
-        return true;
     }
-    default: {
-        if (lhs.type_id != rhs.type_id) {
-            return false;
-        }
-        *ret = lhs;
-        return true;
-    }
-    }
+    return false;
 }
 
 bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)

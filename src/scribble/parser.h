@@ -50,6 +50,7 @@
     S(ADDRESS_OF, TK_SYMBOL, '@')                      \
     S(UNARY_MEMBER_ACCESS, TK_SYMBOL, '.')
 
+// clang-format off
 typedef enum {
 #undef ENUM_BINARY_OPERATOR
 #define ENUM_BINARY_OPERATOR(op, a, p, k, c) OP_##op,
@@ -57,10 +58,11 @@ typedef enum {
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
 #define ENUM_UNARY_OPERATOR(op, k, c) OP_##op,
-        UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
+    UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
 #undef ENUM_UNARY_OPERATOR
-            OP_COUNT
+    OP_COUNT
 } Operator;
+// clang-format on
 
 typedef struct operator_mapping {
     Operator operator;
