@@ -1,5 +1,5 @@
 func main() : i32 {
-``  const a = 2;
+  const a = 2;
   var b = (a < 5) ? 2 + 1 : 5 - 1;
   puts("b: "); puti(b); endln();
   return b;
