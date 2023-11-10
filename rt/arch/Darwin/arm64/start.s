@@ -1,12 +1,18 @@
+/*
+ * Copyright (c) 2023, Jan de Visser <jan@finiandarcy.com>
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
 .global _start
 
 .include "arch/Darwin/arm64/syscalls.inc"
 
 argc    .req w11
+argc64  .req x11
 argv    .req x12
-ix      .req w13
-ptr     .req x14
-str     .req x15
+ptr     .req x13
+str     .req x14
 len     .req x0
 
 .align 2
@@ -21,7 +27,7 @@ _start:
     stp     ptr,len,[sp,#-16]!
     cbz     argc,done
 
-    add     str,argv,x11,lsl 3
+    add     str,argv,argc64,lsl 3
  loop:
     ldr     ptr,[str,#-8]!
     mov     x0,ptr
@@ -31,14 +37,10 @@ _start:
     b.ne    loop
 
  done:
-    mov     ptr,xzr
-    mov     len,xzr
-    stp     ptr,len,[sp,#-16]!
-
     # bl      static_initializer
 
-    mov     w0,argc
-    mov     x1,sp
+    mov     x0,sp
+    mov     w1,argc
     bl      main
 
     mov     x16, syscall_exit

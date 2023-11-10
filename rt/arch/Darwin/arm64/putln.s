@@ -6,8 +6,8 @@
 // putln - Print string followed by a newline character
 //
 // In:
-len     .req w0     // Length of the string
-buffer  .req x1     // Pointer to the string buffer
+buffer  .req x0     // Pointer to the string buffer
+len     .req w1     // Length of the string
 
 // Out:
 //   x0: Number of characters printed.

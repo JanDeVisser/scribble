@@ -5,8 +5,8 @@
 // puts - Print string
 //
 // In:
-//   x0: String length
-//   x1: Pointer to string buffer
+//   x0: Pointer to string buffer
+//   w1: String length
 
 // Out:
 //   x0: Number of characters printed.
@@ -18,9 +18,10 @@ scribble$puts:
     stp     fp,lr,[sp,#-16]!
     mov     fp,sp
 
-    cmp     x1,#0
+    cmp     x0,#0
     b.eq    __puts_print_null
-    mov     x2,x0
+    mov     x2,x1
+    mov     x1,x0
 
 __puts_print:
     mov     x0,#1
