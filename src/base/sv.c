@@ -56,6 +56,15 @@ StringView sv_copy_cstr(char const *s)
     return sv_copy_chars(s, len);
 }
 
+StringView sv_replicate(StringView s, int repeats)
+{
+    StringBuilder sb = sb_create();
+    for (int ix = 0; ix < repeats; ++ix) {
+        sb_append_sv(&sb, s);
+    }
+    return sb.view;
+}
+
 StringView sv_decode_quoted_str(StringView str)
 {
     assert(sv_length(str) >= 2 && str.ptr[0] == '\"' && str.ptr[sv_length(str) - 1] == '\"');

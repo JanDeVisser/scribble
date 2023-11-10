@@ -35,6 +35,7 @@ extern StringView  sv_copy_chars(char const *ptr, size_t len);
 extern StringView  sv_copy_cstr(char const *s);
 extern StringView  sv_printf(char const *fmt, ...);
 extern StringView  sv_vprintf(char const *fmt, va_list args);
+extern StringView  sv_replicate(StringView s, int repeats);
 extern StringView  sv_from(char const *s);
 extern StringView  sv_decode_quoted_str(StringView str);
 extern StringView  sv_replace(StringView str, StringView from, StringView to);
