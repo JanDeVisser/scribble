@@ -8,6 +8,7 @@ func puts(s: string) : i32 -> "scribble$puts";
 func putln(s: string) : i32 -> "scribble$putln";
 func endln() : i32 -> "scribble$endln";
 func puti(i: i32) : i32 -> "scribble$puti";
+func putu64(i: u64) : i32 -> "scribble$puti";
 func puthex(i: u64) : i32 -> "scribble$puthex";
 
 const O_RDONLY: u32 = 0x00000000;

@@ -18,8 +18,7 @@ typedef int (*qsort_fnc_t)(void const *, void const *);
     S(PRIMITIVE, 0x00) \
     S(AGGREGATE, 0x01) \
     S(VARIANT, 0x02)   \
-    S(ARRAY, 0x04)     \
-    S(ALIAS, 0x08)
+    S(ALIAS, 0x04)
 
 typedef enum /* : uint8_t */ {
 #undef TYPEKINDS_ENUM
@@ -30,7 +29,8 @@ typedef enum /* : uint8_t */ {
 
 #define COMPONENTKINDS(S) \
     S(TYPE)               \
-    S(TEMPLATE_PARAM)
+    S(TEMPLATE_PARAM)     \
+    S(PARAMETERIZED_TYPE)
 
 typedef enum {
 #undef COMPONENTKINDS_ENUM
@@ -65,9 +65,8 @@ typedef enum {
 //   0x1F00 - Aggregate id
 //   0x1x0F - Number of components
 
-//   0x2000 - Array types
-//   0x4000 - Variant types
-//   0x8000 - Other types
+//   0x2000 - Variant types
+//   0x4000 - Aliases
 //
 // Bottom 16 bits position in type registry.
 
@@ -79,22 +78,25 @@ typedef enum {
 #define ALL_INTEGERS_MASK 0x0600
 #define WIDTH_MASK 0x00FF
 
-#define BUILTINTYPES(S)       \
-    S(VOID, void, 0x0001)     \
-    S(ERROR, error, 0x0002)   \
-    S(FLOAT, float, 0x0003)   \
-    S(I8, i8, 0x0208)         \
-    S(U8, u8, 0x0308)         \
-    S(I16, i16, 0x0210)       \
-    S(U16, u16, 0x0310)       \
-    S(I32, i32, 0x0220)       \
-    S(U32, u32, 0x0320)       \
-    S(I64, i64, 0x0240)       \
-    S(U64, u64, 0x0340)       \
-    S(BOOL, bool, 0x0408)     \
-    S(POINTER, ptr, 0x0440)   \
-    S(STRING, string, 0x1102) \
-    S(RANGE, range, 0x1202)
+#define BUILTINTYPES(S)             \
+    S(VOID, void, 0x0001)           \
+    S(SELF, self, 0x0002)           \
+    S(PARAMETER, parameter, 0x0003) \
+    S(ERROR, error, 0x0004)         \
+    S(FLOAT, float, 0x0005)         \
+    S(I8, i8, 0x0208)               \
+    S(U8, u8, 0x0308)               \
+    S(I16, i16, 0x0210)             \
+    S(U16, u16, 0x0310)             \
+    S(I32, i32, 0x0220)             \
+    S(U32, u32, 0x0320)             \
+    S(I64, i64, 0x0240)             \
+    S(U64, u64, 0x0340)             \
+    S(BOOL, bool, 0x0408)           \
+    S(POINTER, ptr, 0x0440)         \
+    S(STRING, string, 0x1102)       \
+    S(RANGE, range, 0x1202)         \
+    S(ARRAY, array, 0x1302)
 
 #define NUMERICTYPES(S)   \
     S(U8, u8, uint8_t)    \
@@ -139,16 +141,6 @@ typedef enum /* : uint16_t */ {
 typedef uint32_t               type_id;
 typedef struct expression_type ExpressionType;
 
-// Used for both TK_COMPOSITE and TK_VARIANT.
-typedef struct type_component {
-    ComponentKind kind;
-    StringView    name;
-    union {
-        type_id    type_id;
-        StringView param;
-    };
-} TypeComponent;
-
 typedef struct template_parameter {
     StringView        name;
     TemplateParamType type;
@@ -156,13 +148,31 @@ typedef struct template_parameter {
 
 typedef struct template_argument {
     StringView        name;
-    TemplateParamType param_type;
+    TemplateParamType arg_type;
     union {
         StringView string_value;
         int64_t    int_value;
         type_id    type;
     };
 } TemplateArgument;
+
+// Used for both TK_COMPOSITE and TK_VARIANT.
+typedef struct type_component {
+    ComponentKind kind;
+    StringView    name;
+    union {
+        type_id    type_id;
+        StringView param;
+
+        // Can only have a typecomponent which is parameterized using one
+        // parameter. Update once we need more than one.
+        struct {
+            type_id    template_type;
+            StringView parameter;
+            StringView argument;
+        } parameterized_type;
+    };
+} TypeComponent;
 
 typedef struct expression_type {
     type_id            type_id;
@@ -178,10 +188,6 @@ typedef struct expression_type {
             size_t         num_components;
             TypeComponent *components;
         } components;
-        struct {
-            TypeComponent base_type;
-            size_t        size;
-        } array;
         type_id alias_for_id;
     };
 } ExpressionType;
@@ -192,9 +198,9 @@ typedef struct {
 } TypeSpec;
 
 typedef struct signature {
-    size_t           argc;
-    ExpressionType **types;
-    ExpressionType  *ret_type;
+    size_t   argc;
+    type_id *arg_types;
+    type_id  ret_type;
 } Signature;
 
 #define BUILTINTYPE_ENUM(type, name, code) extern type_id type##_ID;
@@ -230,8 +236,7 @@ extern type_id            type_registry_id_of_integer_type(size_t width, bool un
 extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
 extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
 extern ErrorOrTypeID      type_registry_alias(StringView name, type_id aliased);
-extern ErrorOrTypeID      type_registry_array(StringView name, type_id base_type, size_t size);
-extern ErrorOrTypeID      type_registry_make_type(StringView name, TypeKind kind);
+extern ErrorOrTypeID      type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components);
 extern type_id            typeid_canonical_type_id(type_id type);
 extern ExpressionType    *typeid_canonical_type(type_id type);
 extern void               type_registry_init();
@@ -240,7 +245,6 @@ extern StringView         typespec_name(TypeSpec typespec);
 extern StringView         typespec_to_string(TypeSpec typespec);
 extern void               typespec_print(FILE *f, TypeSpec typespec);
 extern bool               type_is_concrete(ExpressionType *type);
-extern bool               typeid_is_concrete(type_id type);
 extern ErrorOrSize        type_sizeof(ExpressionType *type);
 extern ErrorOrSize        type_alignat(ExpressionType *type);
 extern ErrorOrSize        type_offsetof_name(ExpressionType *type, StringView name);
@@ -248,7 +252,6 @@ extern ErrorOrSize        type_offsetof_index(ExpressionType *type, size_t index
 extern TemplateParameter *type_get_parameter(ExpressionType *type, StringView param);
 extern TemplateArgument  *type_get_argument(ExpressionType *type, StringView arg);
 extern TypeComponent     *type_get_component(ExpressionType *type, StringView component);
-extern ErrorOrTypeID      type_set_struct_components(type_id struct_id, size_t num, TypeComponent *components);
 extern ErrorOrTypeID      type_set_template_parameters(type_id template_id, size_t num, TemplateParameter *parameters);
 extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t num, TemplateArgument *arguments);
 
@@ -280,8 +283,13 @@ static size_t typeid_ix(type_id type)
 static size_t typeid_sizeof(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
-    size_t          sz = MUST(Size, type_sizeof(et));
-    return sz;
+    return MUST(Size, type_sizeof(et));
+}
+
+static size_t typeid_offsetof(type_id type, size_t index)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return MUST(Size, type_offsetof_index(et, index));
 }
 
 static inline TypeKind type_kind(ExpressionType *type)
@@ -292,6 +300,12 @@ static inline TypeKind type_kind(ExpressionType *type)
 static inline bool type_has_kind(ExpressionType *type, TypeKind kind)
 {
     return typeid_has_kind(type->type_id, kind);
+}
+
+static inline bool typeid_is_concrete(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    return type_is_concrete(et);
 }
 
 static inline bool typeid_is_specialization(type_id type)

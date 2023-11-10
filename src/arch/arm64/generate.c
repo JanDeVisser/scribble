@@ -10,11 +10,13 @@
 #include <sv.h>
 
 #undef IR_OPERATION_TYPE
-#define IR_OPERATION_TYPE(t) static void generate_##t(ARM64Function *function, IROperation *op);
-    IR_OPERATION_TYPES(IR_OPERATION_TYPE)
+#define IR_OPERATION_TYPE(t) static __attribute__((unused)) void generate_##t(ARM64Function *function, IROperation *op);
+IR_OPERATION_TYPES(IR_OPERATION_TYPE)
 #undef IR_OPERATION_TYPE
 
-        static void generate_code(ARM64Function *arm_function);
+// clang-format off
+static void generate_code(ARM64Function *arm_function);
+// clang-format on
 static void generate_native(ARM64Function *arm_function);
 static void generate_function_declaration(ARM64Function *arm_function, IRFunction *function);
 
@@ -48,7 +50,13 @@ void generate_native(ARM64Function *function)
     }
 }
 
-void generate_CALL(ARM64Function *calling_function, IROperation *op)
+__attribute__((unused)) void generate_BINARY_OPERATOR(ARM64Function *function, IROperation *op)
+{
+    ValueLocation result = arm64operator_apply(function, op->binary_operator.lhs, op->binary_operator.op, op->binary_operator.rhs, NULL);
+    arm64function_push_location(function, result);
+}
+
+__attribute__((unused)) void generate_CALL(ARM64Function *calling_function, IROperation *op)
 {
     ARM64Function *called_function = arm64context_function_by_name(calling_function->assembly->ctx, op->sv);
     assert(called_function);
@@ -70,32 +78,32 @@ void generate_CALL(ARM64Function *calling_function, IROperation *op)
     arm64function_marshall_return(calling_function, called_function, op->call.discard_result);
 }
 
-void generate_CASE(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_CASE(ARM64Function *function, IROperation *op)
 {
     generate_JUMP_F(function, op);
 }
 
-void generate_DECL_VAR(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_DECL_VAR(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_DEFINE_AGGREGATE(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_DEFINE_AGGREGATE(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_DEFINE_ALIAS(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_DEFINE_ALIAS(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_DEFINE_ARRAY(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_DEFINE_ARRAY(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_DEFINE_VARIANT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_DEFINE_VARIANT(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_END_CASE(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_END_CASE(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
@@ -109,7 +117,7 @@ void generate_END_CASE(ARM64Function *function, IROperation *op)
     }
 }
 
-void generate_END_MATCH(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_END_MATCH(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
@@ -119,13 +127,13 @@ void generate_END_MATCH(ARM64Function *function, IROperation *op)
     arm64function_push_location(function, *match_location);
 }
 
-void generate_JUMP(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_JUMP(ARM64Function *function, IROperation *op)
 {
     arm64function_add_instruction(function, "b", "%.*s_%zu",
         SV_ARG(arm64function_label(function)), op->label);
 }
 
-void generate_JUMP_F(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_JUMP_F(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
     assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
@@ -144,7 +152,7 @@ void generate_JUMP_F(ARM64Function *function, IROperation *op)
     }
 }
 
-void generate_JUMP_T(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_JUMP_T(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
     assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
@@ -163,14 +171,14 @@ void generate_JUMP_T(ARM64Function *function, IROperation *op)
     }
 }
 
-void generate_LABEL(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_LABEL(ARM64Function *function, IROperation *op)
 {
     arm64function_add_label(function,
         sv_printf("%.*s_%zu",
             SV_ARG(arm64function_label(function)), op->label));
 }
 
-void generate_MATCH(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_MATCH(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
@@ -182,28 +190,22 @@ void generate_MATCH(ARM64Function *function, IROperation *op)
     scope->match_value_stack = new_match_location;
 }
 
-void generate_NEW_DATUM(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_NEW_DATUM(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_OPERATOR(ARM64Function *function, IROperation *op)
-{
-    ValueLocation result = arm64operator_apply(function, op->operator.lhs, op->operator.op, op->operator.rhs, NULL);
-    arm64function_push_location(function, result);
-}
-
-void generate_POP_VAR(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_POP_VAR(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
     ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
     arm64variable_store_variable(var, location);
 }
 
-void generate_POP_VAR_COMPONENT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_POP_VAR_COMPONENT(ARM64Function *function, IROperation *op)
 {
 }
 
-void generate_PUSH_BOOL_CONSTANT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_BOOL_CONSTANT(ARM64Function *function, IROperation *op)
 {
     arm64function_push_location(
         function,
@@ -214,7 +216,7 @@ void generate_PUSH_BOOL_CONSTANT(ARM64Function *function, IROperation *op)
         });
 }
 
-void generate_PUSH_FLOAT_CONSTANT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_FLOAT_CONSTANT(ARM64Function *function, IROperation *op)
 {
     arm64function_push_location(
         function,
@@ -225,7 +227,7 @@ void generate_PUSH_FLOAT_CONSTANT(ARM64Function *function, IROperation *op)
         });
 }
 
-void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
 {
     Register reg = arm64function_allocate_register(function);
 
@@ -247,7 +249,7 @@ void generate_PUSH_INT_CONSTANT(ARM64Function *function, IROperation *op)
     arm64function_push_location(function, result);
 }
 
-void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
 {
     RegisterRange regs = arm64function_allocate_register_range(function, 2);
     size_t        str_id = assembly_add_string(function->assembly, op->sv);
@@ -277,17 +279,26 @@ void generate_PUSH_STRING_CONSTANT(ARM64Function *function, IROperation *op)
     arm64function_push_registers(function, STRING_ID, regs);
 }
 
-void generate_PUSH_VAR(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_VAR(ARM64Function *function, IROperation *op)
 {
     ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
     arm64variable_load_variable(var);
 }
 
-void generate_PUSH_VAR_COMPONENT(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_PUSH_VAR_COMPONENT(ARM64Function *function, IROperation *op)
 {
+    ARM64Variable  *var = arm64function_variable_by_name(function, op->var_component.name);
+    type_id         type = var->var_decl.type.type_id;
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    ValueLocation   var_ptr = arm64variable_pointer(var);
+    assert(var_ptr.kind == VLK_POINTER);
+    size_t ix = op->var_component.component;
+    var_ptr.pointer.offset += (int64_t) typeid_offsetof(type, ix);
+    var_ptr.type = et->components.components[ix].type_id;
+    arm64function_load_from_pointer(function, var_ptr);
 }
 
-void generate_RETURN(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_RETURN(ARM64Function *function, IROperation *op)
 {
     MUST_OPTIONAL(ValueLocation, expr, arm64function_pop_location(function))
     ValueLocation x0 = {
@@ -299,7 +310,7 @@ void generate_RETURN(ARM64Function *function, IROperation *op)
     arm64function_return(function);
 }
 
-void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
@@ -310,12 +321,18 @@ void generate_SCOPE_BEGIN(ARM64Function *function, IROperation *op)
     function->scribble.current_scope = new_scope;
 }
 
-void generate_SCOPE_END(ARM64Function *function, IROperation *op)
+__attribute__((unused)) void generate_SCOPE_END(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
     scope->current = NULL;
     function->scribble.current_scope = scope->up;
+}
+
+__attribute__((unused)) void generate_UNARY_OPERATOR(ARM64Function *function, IROperation *op)
+{
+    ValueLocation result = arm64operator_apply(function, op->unary_operator.operand, op->unary_operator.op, VOID_ID, NULL);
+    arm64function_push_location(function, result);
 }
 
 void generate_code(ARM64Function *arm_function)

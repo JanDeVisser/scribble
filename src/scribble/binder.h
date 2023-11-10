@@ -12,7 +12,6 @@
 #define __BINDER_H__
 
 #define BOUNDNODETYPES(S)   \
-    S(ARRAY)                \
     S(ASSIGNMENT)           \
     S(BINARYEXPRESSION)     \
     S(BLOCK)                \
@@ -89,10 +88,6 @@ typedef struct bound_node {
             Operator operator;
         } binary_expr;
         struct {
-            type_id base_type;
-            size_t  size;
-        } array_def;
-        struct {
             struct bound_node *expression;
         } assignment;
         struct {
@@ -127,6 +122,10 @@ typedef struct bound_node {
         struct {
             type_id alias_of;
         } type_alias;
+        struct {
+            struct bound_node *operand;
+            Operator operator;
+        } unary_expr;
         struct {
             struct bound_node *decl;
             struct bound_node *names;

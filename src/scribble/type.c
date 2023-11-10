@@ -12,6 +12,8 @@
 #include <allocate.h>
 
 static ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type);
+static ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, BuiltinType builtin_type);
+static ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponent *components);
 
 typedef struct {
     size_t           size;
@@ -84,11 +86,9 @@ bool BuiltinType_is_unsigned(BuiltinType type)
 ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type)
 {
     uint8_t         kind = builtin_type >> 12;
-    type_id         id = TRY(TypeID, type_registry_make_type(name, kind));
+    type_id         id = TRY(TypeID, type_registry_make_type(name, kind, builtin_type));
     ExpressionType *type = type_registry_get_type_by_id(id);
     assert(type);
-    type->type_id |= ((uint32_t) builtin_type) << 16;
-    type->builtin_type = builtin_type;
     RETURN(TypeID, type->type_id);
 }
 
@@ -152,7 +152,7 @@ int sort_type_ids(type_id const *t1, type_id const *t2)
     return (tix1 > tix2) ? 1 : ((tix2 > tix1) ? -1 : 0);
 }
 
-ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
+ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, BuiltinType builtin_type)
 {
     if (type_registry_get_type_by_name(name)) {
         ERROR(TypeID, TypeError, 0, "Type already exists");
@@ -170,7 +170,8 @@ ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind)
     }
     ExpressionType *type = type_registry.types[type_registry.size];
     type->name = sv_copy(name);
-    type->type_id = type_registry.size | (kind << 28);
+    type->type_id = type_registry.size | (kind << 28) | (builtin_type << 16);
+    type->builtin_type = builtin_type;
     NEXT_CUSTOM_IX = ++type_registry.size;
     RETURN(TypeID, type->type_id);
 }
@@ -195,23 +196,39 @@ void type_registry_init()
     MUST(TypeID, type_registry_alias(sv_from("ulong"), U64_ID));
     assert(typeid_has_kind(STRING_ID, TK_AGGREGATE));
     assert(typeid_has_kind(RANGE_ID, TK_AGGREGATE));
+    assert(typeid_has_kind(ARRAY_ID, TK_AGGREGATE));
 
     MUST(TypeID,
         type_set_template_parameters(POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
+    PCHAR_ID = MUST(TypeID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .arg_type = TPT_TYPE, .type = U8_ID } }));
+    MUST(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID));
     MUST(TypeID,
         type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
     MUST(TypeID,
-        type_set_struct_components(RANGE_ID, 2,
+        type_set_components(RANGE_ID, 2,
             (TypeComponent[]) {
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("min"), .param = sv_from("T") },
                 { .kind = CK_TEMPLATE_PARAM, .name = sv_from("max"), .param = sv_from("T") } }));
     MUST(TypeID,
-        type_set_struct_components(STRING_ID, 2,
+        type_set_components(STRING_ID, 2,
             (TypeComponent[]) {
-                { .kind = CK_TYPE, .name = sv_from("ptr"), .type_id = POINTER_ID },
+                { .kind = CK_TYPE, .name = sv_from("ptr"), .type_id = PCHAR_ID },
                 { .kind = CK_TYPE, .name = sv_from("length"), .type_id = U64_ID } }));
-    PCHAR_ID = MUST(TypeID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = U8_ID } }));
-    MUST(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID));
+    MUST(TypeID,
+        type_set_template_parameters(ARRAY_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
+    MUST(TypeID,
+        type_set_components(ARRAY_ID, 2,
+            (TypeComponent[]) {
+                {
+                    .kind = CK_PARAMETERIZED_TYPE,
+                    .name = sv_from("ptr"),
+                    .parameterized_type = {
+                        .template_type = POINTER_ID,
+                        .parameter = sv_from("T"),
+                        .argument = sv_from("T"),
+                    },
+                },
+                { .kind = CK_TYPE, .name = sv_from("size"), .type_id = U64_ID } }));
 
     FIRST_CUSTOM_IX = type_registry.size;
     NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
@@ -248,6 +265,9 @@ StringView typespec_to_string(TypeSpec typespec)
 {
     ExpressionType *et = type_registry_get_type_by_id(typespec.type_id);
     assert(et);
+    if (typeid_specializes(typespec.type_id) == ARRAY_ID) {
+        return sv_printf("%.*s%s", SV_ARG(et->name), typespec.optional ? "?" : "");
+    }
     return sv_printf("%.*s%s", SV_ARG(et->name), typespec.optional ? "?" : "");
 }
 
@@ -261,27 +281,19 @@ void typespec_print(FILE *f, TypeSpec typespec)
 
 bool type_is_concrete(ExpressionType *type)
 {
-    return typeid_is_concrete(type->type_id);
-}
-
-bool typeid_is_concrete(type_id type)
-{
-    ExpressionType *et = type_registry_get_type_by_id(type);
-    if (typeid_has_kind(type, TK_PRIMITIVE) || et->specialization_of == 0)
+    if (type_has_kind(type, TK_PRIMITIVE) || type->specialization_of == 0)
         return true;
-    switch (type_kind(et)) {
+    switch (type_kind(type)) {
     case TK_ALIAS:
-        return typeid_is_concrete(typeid_canonical_type_id(type));
-    case TK_ARRAY:
-        return et->array.base_type.kind == CK_TYPE;
+        return type_is_concrete(typeid_canonical_type(type->type_id));
     case TK_AGGREGATE:
     case TK_VARIANT: {
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            if (et->components.components[ix].kind != CK_TYPE) {
+        for (size_t ix = 0; ix < type->components.num_components; ++ix) {
+            if (type->components.components[ix].kind != CK_TYPE) {
                 return false;
             }
         }
-        return false;
+        return true;
     }
     default:
         UNREACHABLE();
@@ -295,16 +307,10 @@ ErrorOrSize type_sizeof(ExpressionType *type)
         RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_sizeof(typeid_canonical_type(type->type_id));
-    case TK_ARRAY: {
-        if (type->array.base_type.kind != CK_TYPE) {
-            ERROR(Size, TypeError, 0, "Cannot get size of template type");
-        }
-        size_t component_size = TRY(Size, type_sizeof(type_registry_get_type_by_id(type->array.base_type.type_id)));
-        RETURN(Size, component_size * type->array.size);
-    }
     case TK_AGGREGATE: {
         size_t size = 0;
         size_t align = TRY(Size, type_alignat(type));
+
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
             if (type->components.components[ix].kind != CK_TYPE) {
                 ERROR(Size, TypeError, 0, "Cannot get size of template type");
@@ -344,11 +350,6 @@ ErrorOrSize type_alignat(ExpressionType *type)
         RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_alignat(typeid_canonical_type(type->type_id));
-    case TK_ARRAY:
-        if (type->array.base_type.kind != CK_TYPE) {
-            ERROR(Size, TypeError, 0, "Cannot get size of template type");
-        }
-        return type_alignat(type_registry_get_type_by_id(type->array.base_type.type_id));
     case TK_AGGREGATE:
     case TK_VARIANT: {
         size_t align = 0;
@@ -378,7 +379,7 @@ ErrorOrSize type_offsetof_index(ExpressionType *type, size_t index)
         ERROR(Size, TypeError, 0, "Type '%.*s' has no component with index %d", SV_ARG(type->name), index);
     }
     if (!type_is_concrete(type)) {
-        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset", SV_ARG(type->name));
     }
     size_t offset = 0;
     size_t align = TRY(Size, type_alignat(type));
@@ -415,57 +416,6 @@ ErrorOrSize type_offsetof_name(ExpressionType *type, StringView name)
         offset += component_size;
     }
     ERROR(Size, TypeError, 0, "Type '%.*s' has no component with name '%.*s'", SV_ARG(type->name), SV_ARG(name));
-}
-
-ErrorOrTypeID type_set_struct_components(type_id struct_id, size_t num, TypeComponent *components)
-{
-    ExpressionType *struct_type = type_registry_get_type_by_id(struct_id);
-    if (!struct_type) {
-        ERROR(TypeID, TypeError, 0, "Invalid type ID");
-    }
-    if (typeid_kind(struct_id) != TK_AGGREGATE) {
-        ERROR(TypeID, TypeError, 0, "Type is not a composite");
-    }
-    for (size_t ix = 0; ix < num; ++ix) {
-        TypeComponent *component = &components[ix];
-        switch (component->kind) {
-        case CK_TYPE: {
-            ExpressionType *expr_type = type_registry_get_type_by_id(component->type_id);
-            if (!expr_type) {
-                ERROR(TypeID, TypeError, 0, "Unknown type for struct component");
-            }
-        } break;
-        case CK_TEMPLATE_PARAM: {
-            TemplateParameter *param = type_get_parameter(struct_type, component->param);
-            if (!param) {
-                ERROR(TypeID, TypeError, 0, "Unknown template parameter");
-            }
-            if (param->type != TPT_TYPE) {
-                ERROR(TypeID, TypeError, 0, "Template parameter is not a type");
-            }
-        } break;
-        default:
-            UNREACHABLE();
-        }
-    }
-
-    struct_type->components.num_components = num;
-    struct_type->components.components = allocate_array(TypeComponent, num);
-    for (size_t ix = 0; ix < num; ++ix) {
-        struct_type->components.components[ix].kind = components[ix].kind;
-        struct_type->components.components[ix].name = sv_copy(components[ix].name);
-        switch (components[ix].kind) {
-        case CK_TYPE: {
-            struct_type->components.components[ix].type_id = components[ix].type_id;
-        } break;
-        case CK_TEMPLATE_PARAM: {
-            struct_type->components.components[ix].param = sv_copy(components[ix].param);
-        } break;
-        default:
-            UNREACHABLE();
-        }
-    }
-    RETURN(TypeID, struct_type->type_id);
 }
 
 ErrorOrTypeID type_set_template_parameters(type_id template_id, size_t num, TemplateParameter *parameters)
@@ -552,7 +502,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         for (size_t param_ix = 0; param_ix < num; ++param_ix) {
             TemplateParameter *param = template_type->template_parameters + param_ix;
             if (sv_eq(arguments[ix].name, param->name)) {
-                if (param->type != arguments[ix].param_type) {
+                if (param->type != arguments[ix].arg_type) {
                     release_allocator(alloc_state);
                     ERROR(TypeID, TypeError, 0, "Template parameter type mismatch");
                 }
@@ -573,9 +523,9 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
                 assert(arg_ix < type_registry.types[ix]->num_arguments);
                 TemplateArgument *arg = type_arguments + arg_ix;
                 TemplateArgument *other_arg = type_registry.types[ix]->template_arguments + arg_ix;
-                assert(arg->param_type == other_arg->param_type);
+                assert(arg->arg_type == other_arg->arg_type);
                 assert(sv_eq(arg->name, other_arg->name));
-                switch (arg->param_type) {
+                switch (arg->arg_type) {
                 case TPT_TYPE:
                     matches = arg->type == other_arg->type;
                     break;
@@ -608,7 +558,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
         comma = ",";
         sb_append_sv(&name, arg->name);
         sb_append_cstr(&name, "=");
-        switch (arg->param_type) {
+        switch (arg->arg_type) {
         case TPT_TYPE: {
             ExpressionType *t = type_registry_get_type_by_id(arg->type);
             sb_append_sv(&name, t->name);
@@ -625,7 +575,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     }
     sb_append_cstr(&name, ">");
 
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name.view, type_kind(template_type)));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name.view, typeid_kind(template_id), typeid_builtin_type(template_id)));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->specialization_of = template_type->type_id;
@@ -635,24 +585,6 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     case TK_ALIAS:
         type->alias_for_id = template_type->alias_for_id;
         break;
-    case TK_ARRAY: {
-        type->array.size = template_type->array.size;
-        switch (template_type->array.base_type.kind) {
-        case CK_TYPE:
-            type->array.base_type = template_type->array.base_type;
-            break;
-        case CK_TEMPLATE_PARAM: {
-            TemplateArgument *base_type = type_get_argument(type, template_type->array.base_type.name);
-            if (base_type) {
-                type->array.base_type.kind = CK_TYPE;
-                type->array.base_type.type_id = template_type->array.base_type.type_id;
-                break;
-            } else {
-                type->array.base_type = template_type->array.base_type;
-            }
-        } break;
-        }
-    }
     case TK_AGGREGATE:
     case TK_VARIANT: {
         type->components.num_components = template_type->components.num_components;
@@ -670,6 +602,18 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
                     type_comp->name = template_comp->name;
                     type_comp->kind = CK_TYPE;
                     type_comp->type_id = arg->type;
+                } else {
+                    *type_comp = *template_comp;
+                }
+            } break;
+            case CK_PARAMETERIZED_TYPE: {
+                TemplateArgument *arg = type_get_argument(type, template_comp->parameterized_type.argument);
+                if (arg) {
+                    type_comp->name = template_comp->name;
+                    type_comp->kind = CK_TYPE;
+                    TemplateArgument template_arg = *arg;
+                    template_arg.name = template_comp->parameterized_type.parameter;
+                    type_comp->type_id = MUST(TypeID, type_specialize_template(template_comp->parameterized_type.template_type, 1, &template_arg));
                 } else {
                     *type_comp = *template_comp;
                 }
@@ -723,7 +667,7 @@ ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
     }
     sb_append_cstr(&name, ">");
 
-    type_id         new_variant_id = TRY(TypeID, type_registry_make_type(name.view, TK_VARIANT));
+    type_id         new_variant_id = TRY(TypeID, type_registry_make_type(name.view, TK_VARIANT, BIT_NOTYPE));
     ExpressionType *new_variant = type_registry_get_type_by_id(new_variant_id);
     assert(new_variant);
     new_variant->components.num_components = num;
@@ -748,19 +692,75 @@ ErrorOrTypeID type_registry_get_variant2(type_id t1, type_id t2)
 
 ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 {
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS, BIT_NOTYPE));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->alias_for_id = aliased;
     RETURN(TypeID, new_id);
 }
 
-ErrorOrTypeID type_registry_array(StringView name, type_id base_type, size_t size)
+ErrorOrTypeID type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components)
 {
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ARRAY));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS, BIT_NOTYPE));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
-    type->array.base_type.type_id = base_type;
-    type->array.size = size;
-    RETURN(TypeID, new_id);
+    return type_set_components(new_id, num, components);
+}
+
+ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponent *components)
+{
+    ExpressionType *type = type_registry_get_type_by_id(aggregate_id);
+    for (size_t ix = 0; ix < num; ++ix) {
+        TypeComponent *component = components + ix;
+        switch (component->kind) {
+        case CK_TYPE: {
+            ExpressionType *expr_type = type_registry_get_type_by_id(component->type_id);
+            if (!expr_type) {
+                ERROR(TypeID, TypeError, 0, "Unknown type for struct component");
+            }
+        } break;
+        case CK_TEMPLATE_PARAM: {
+            TemplateParameter *param = type_get_parameter(type, component->param);
+            if (!param) {
+                ERROR(TypeID, TypeError, 0, "Unknown template parameter");
+            }
+            if (param->type != TPT_TYPE) {
+                ERROR(TypeID, TypeError, 0, "Template parameter is not a type");
+            }
+        } break;
+        case CK_PARAMETERIZED_TYPE: {
+            ExpressionType    *template_type = type_registry_get_type_by_id(component->parameterized_type.template_type);
+            TemplateParameter *param = type_get_parameter(template_type, component->parameterized_type.parameter);
+            if (!param) {
+                ERROR(TypeID, TypeError, 0, "Unknown template parameter");
+            }
+            if (param->type != TPT_TYPE) {
+                ERROR(TypeID, TypeError, 0, "Template parameter is not a type");
+            }
+        } break;
+        default:
+            UNREACHABLE();
+        }
+    }
+
+    type->components.num_components = num;
+    type->components.components = allocate_array(TypeComponent, num);
+    for (size_t ix = 0; ix < num; ++ix) {
+        type->components.components[ix].kind = components[ix].kind;
+        type->components.components[ix].name = sv_copy(components[ix].name);
+        switch (components[ix].kind) {
+        case CK_TYPE: {
+            type->components.components[ix].type_id = components[ix].type_id;
+        } break;
+        case CK_TEMPLATE_PARAM: {
+            type->components.components[ix].param = sv_copy(components[ix].param);
+        } break;
+        case CK_PARAMETERIZED_TYPE: {
+            type->components.components[ix].parameterized_type = components[ix].parameterized_type;
+        } break;
+        default:
+            UNREACHABLE();
+        }
+    }
+    RETURN(TypeID, type->type_id);
 }

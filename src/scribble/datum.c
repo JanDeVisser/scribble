@@ -12,6 +12,10 @@
 #define ENUM_BINARY_OPERATOR(op, a, p, k, c) static Datum *datum_##op(Datum *, Datum *);
 BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
+#undef ENUM_UNARY_OPERATOR
+#define ENUM_UNARY_OPERATOR(op, k, c) static Datum *datum_##op(Datum *, Datum *);
+UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
+#undef ENUM_UNARY_OPERATOR
 
 typedef Datum *(*BinaryDatumFunction)(Datum *, Datum *);
 
@@ -25,6 +29,10 @@ static OperatorFunctions s_functions[] = {
 #define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_##op, datum_##op },
     BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
+#undef ENUM_UNARY_OPERATOR
+#define ENUM_UNARY_OPERATOR(op, k, c) { OP_##op, datum_##op },
+        UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
+#undef ENUM_UNARY_OPERATOR
 };
 
 #define BLOCKSIZES(S) S(1) S(2) S(4) S(8) S(16) S(32) S(64) S(128) S(256) S(515) S(1024)
@@ -73,19 +81,11 @@ void datum_initialize(Datum *d)
         if (d->type == STRING_ID) {
             break;
         }
-        d->composite.num_components = et->components.num_components;
-        d->composite.components = allocate_datums(d->composite.num_components);
-        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
-            d->composite.components[ix].type = typeid_canonical_type_id(et->components.components[ix].type_id);
-            datum_initialize(d->composite.components + ix);
-        }
-    } break;
-    case TK_ARRAY: {
-        d->array.size = et->array.size;
-        d->array.components = allocate_datums(d->array.size);
-        for (size_t ix = 0; ix < d->array.size; ++ix) {
-            d->array.components[ix].type = et->array.base_type.type_id;
-            datum_initialize(d->array.components + ix);
+        d->aggregate.num_components = et->components.num_components;
+        d->aggregate.components = allocate_datums(d->aggregate.num_components);
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+            d->aggregate.components[ix].type = typeid_canonical_type_id(et->components.components[ix].type_id);
+            datum_initialize(d->aggregate.components + ix);
         }
     } break;
     case TK_VARIANT:
@@ -181,21 +181,17 @@ Datum *datum_copy(Datum *dest, Datum *src)
         }
     } break;
     case TK_AGGREGATE: {
-        if (src->type == STRING_ID) {
+        switch (typeid_builtin_type(src->type)) {
+        case BIT_STRING:
             dest->string = src->string;
             break;
-        }
-        dest->composite.num_components = src->composite.num_components;
-        dest->composite.components = allocate_datums(src->composite.num_components);
-        for (size_t ix = 0; ix < dest->composite.num_components; ++ix) {
-            datum_copy(dest->composite.components + ix, src->composite.components + ix);
-        }
-    } break;
-    case TK_ARRAY: {
-        dest->array.size = src->array.size;
-        dest->array.components = allocate_datums(src->array.size);
-        for (size_t ix = 0; ix < dest->array.size; ++ix) {
-            datum_copy(dest->array.components + ix, src->array.components + ix);
+        default: {
+            dest->aggregate.num_components = src->aggregate.num_components;
+            dest->aggregate.components = allocate_datums(src->aggregate.num_components);
+            for (size_t ix = 0; ix < dest->aggregate.num_components; ++ix) {
+                datum_copy(dest->aggregate.components + ix, src->aggregate.components + ix);
+            }
+        } break;
         }
     } break;
     case TK_VARIANT:
@@ -225,17 +221,38 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     Datum *geq = datum_LESS_EQUALS(d1, d2);
     assert(geq->bool_value);
     datum_free(geq);
-    type_id type = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .param_type = TPT_TYPE, .type = d1->type } }));
+    type_id type = MUST(TypeID, type_specialize_template(RANGE_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .arg_type = TPT_TYPE, .type = d1->type } }));
     assert(typeid_has_kind(type, TK_AGGREGATE));
     Datum *ret = datum_allocate(type);
-    datum_copy(ret->composite.components, d1);
-    datum_copy(ret->composite.components + 1, d2);
+    datum_copy(ret->aggregate.components, d1);
+    datum_copy(ret->aggregate.components + 1, d2);
     return ret;
 }
 
-Datum *datum_SUBSCRIPT(Datum *, Datum *)
+Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
 {
-    NYI("datum_SUBSCRIPT");
+    size_t ix = datum_unsigned_integer_value(d2);
+    switch (typeid_builtin_type(d1->type)) {
+    case BIT_STRING: {
+        if (ix >= d1->string.length) {
+            fatal("String index out of bounds");
+        }
+        Datum *ret = datum_allocate(U8_ID);
+        ret->u8 = *(d1->string.ptr + ix);
+        return ret;
+    } break;
+    case BIT_ARRAY: {
+        if (ix >= d1->aggregate.num_components) {
+            fatal("Array index out of bounds");
+        }
+        ExpressionType *t = type_registry_get_type_by_id(d1->type);
+        type_id         underlying = t->template_arguments[0].type;
+        Datum          *ret = datum_allocate(underlying);
+        return datum_copy(ret, d1->aggregate.components + ix);
+    }
+    default:
+        fatal("Cannot get cardinality of data of type '%s' yet", BuiltinType_name(d1->type));
+    }
 }
 
 Datum *datum_CALL(Datum *, Datum *)
@@ -264,6 +281,7 @@ Datum *datum_ADD(Datum *d1, Datum *d2)
 
 Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
 {
+    trace(CAT_EXECUTE, "Subtract %.*s from %.*", SV_ARG(typeid_name(d1->type)), SV_ARG(typeid_name(d2->type)));
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
@@ -549,6 +567,107 @@ Datum *datum_BIT_SHIFT_RIGHT(Datum *d1, Datum *d2)
     return ret;
 }
 
+Datum *datum_INVALID_UNARY(Datum *d1, Datum *d2)
+{
+    UNREACHABLE();
+}
+
+Datum *datum_IDENTITY(Datum *d, Datum *)
+{
+    Datum *ret = datum_allocate(d->type);
+    return datum_copy(ret, d);
+}
+
+Datum *datum_NEGATE(Datum *d, Datum *)
+{
+    assert(datum_is_builtin(d));
+    Datum *ret = datum_allocate(d->type);
+    switch (typeid_builtin_type(ret->type)) {
+#undef NUMERICTYPE
+#define NUMERICTYPE(dt, n, ct) \
+    case BIT_##dt:             \
+        ret->n = (ct) (-d->n); \
+        break;
+        NUMERICTYPES(NUMERICTYPE)
+#undef NUMERICTYPE
+    default:
+        fatal("Cannot negate data of type '%s' yet", BuiltinType_name(d->type));
+    }
+    return ret;
+}
+
+Datum *datum_CARDINALITY(Datum *d, Datum *)
+{
+    Datum *ret = datum_allocate(U64_ID);
+    switch (typeid_builtin_type(d->type)) {
+    case BIT_STRING:
+        ret->u64 = d->string.length;
+        break;
+    case BIT_ARRAY:
+        ret->u64 = d->aggregate.num_components;
+        break;
+    default:
+        fatal("Cannot get cardinality of data of type '%s' yet", BuiltinType_name(d->type));
+    }
+    return ret;
+}
+
+Datum *datum_UNARY_INCREMENT(Datum *d1, Datum *d2)
+{
+    return NULL;
+}
+
+Datum *datum_UNARY_DECREMENT(Datum *d, Datum *)
+{
+    return NULL;
+}
+
+Datum *datum_LOGICAL_INVERT(Datum *d, Datum *)
+{
+    Datum *ret = datum_allocate(BOOL_ID);
+    switch (typeid_builtin_type(d->type)) {
+    case BIT_BOOL:
+        ret->bool_value = !d->bool_value;
+        break;
+    default:
+        fatal("Cannot invert data of type '%s'", BuiltinType_name(d->type));
+    }
+    return ret;
+}
+
+Datum *datum_BITWISE_INVERT(Datum *d, Datum *)
+{
+    assert(datum_is_builtin(d));
+    Datum *ret = datum_allocate(d->type);
+    switch (typeid_builtin_type(ret->type)) {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
+    case BIT_##dt:                                      \
+        ret->n = (ct) (~d->n);                          \
+        break;
+        INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    default:
+        fatal("Cannot negate data of type '%s' yet", BuiltinType_name(d->type));
+    }
+    return ret;
+}
+
+Datum *datum_DEREFERENCE(Datum *d1, Datum *d2)
+{
+    return NULL;
+}
+
+Datum *datum_ADDRESS_OF(Datum *d1, Datum *d2)
+{
+    return NULL;
+}
+
+Datum *datum_UNARY_MEMBER_ACCESS(Datum *d1, Datum *d2)
+{
+    return NULL;
+}
+
 Datum *datum_apply(Datum *d1, Operator op, Datum *d2)
 {
     assert(s_functions[(size_t) op].op == op);
@@ -603,26 +722,15 @@ StringView datum_sprint(Datum *d)
         sb_append_cstr(&sb, "{");
         char const     *comma = "";
         ExpressionType *et = type_registry_get_type_by_id(d->type);
-        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
             sb_append_cstr(&sb, comma);
             comma = ",";
             sb_append_cstr(&sb, " ");
             sb_append_sv(&sb, et->components.components[ix].name);
             sb_append_cstr(&sb, ": ");
-            sb_append_sv(&sb, datum_sprint(d->composite.components + ix));
+            sb_append_sv(&sb, datum_sprint(d->aggregate.components + ix));
         }
         sb_append_cstr(&sb, " }");
-    } break;
-    case TK_ARRAY: {
-        sb_append_cstr(&sb, "[");
-        char const *comma = "";
-        for (size_t ix = 0; ix < d->array.size; ++ix) {
-            sb_append_cstr(&sb, comma);
-            comma = ",";
-            sb_append_cstr(&sb, " ");
-            sb_append_sv(&sb, datum_sprint(d->array.components + ix));
-        }
-        sb_append_cstr(&sb, " ]");
     } break;
     case TK_VARIANT: {
         ExpressionType *et = type_registry_get_type_by_id(d->variant->type);
@@ -675,16 +783,10 @@ void datum_free_contents(Datum *d)
 {
     switch (datum_kind(d)) {
     case TK_AGGREGATE: {
-        for (size_t ix = 0; ix < d->composite.num_components; ++ix) {
-            datum_free(d->composite.components + ix);
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+            datum_free(d->aggregate.components + ix);
         }
-        free_datums(d->composite.components, d->composite.num_components);
-    } break;
-    case TK_ARRAY: {
-        for (size_t ix = 0; ix < d->array.size; ++ix) {
-            datum_free(d->array.components + ix);
-        }
-        free_datums(d->array.components, d->array.size);
+        free_datums(d->aggregate.components, d->aggregate.num_components);
     } break;
     case TK_VARIANT: {
         datum_free(d->variant);

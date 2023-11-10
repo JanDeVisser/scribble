@@ -41,11 +41,7 @@ typedef struct datum {
         struct {
             size_t        num_components;
             struct datum *components;
-        } composite;
-        struct {
-            size_t        size;
-            struct datum *components;
-        } array;
+        } aggregate;
         struct datum *variant;
     };
 } Datum;
@@ -74,11 +70,6 @@ static inline bool datum_is_builtin(Datum *d)
 static inline bool datum_is_composite(Datum *d)
 {
     return typeid_has_kind(d->type, TK_AGGREGATE);
-}
-
-static inline bool datum_is_array(Datum *d)
-{
-    return typeid_has_kind(d->type, TK_ARRAY);
 }
 
 static inline bool datum_is_variant(Datum *d)

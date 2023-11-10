@@ -524,12 +524,17 @@ extern void                  arm64function_push_registers(ARM64Function *functio
 extern void                  arm64function_enter(ARM64Function *func);
 extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);
+extern ValueLocation         arm64function_call(ARM64Function *calling_function, StringView called_function, type_id return_type);
 extern void                  arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function);
 extern void                  arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result);
 extern ValueLocation         arm64function_location_for_type(ARM64Function *function, type_id type);
+extern ValueLocation         arm64function_return_location(ARM64Function *function, type_id type);
+extern ValueLocation         arm64function_allocate_space(ARM64Function *function, type_id type);
+extern void                  arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr);
 extern StringView            arm64variable_to_string(ARM64Variable *var);
 extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
 extern void                  arm64variable_load_variable(ARM64Variable *variable);
+extern ValueLocation         arm64variable_pointer(ARM64Variable *variable);
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);

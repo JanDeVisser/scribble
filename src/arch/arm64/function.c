@@ -298,6 +298,23 @@ void arm64function_push_registers(ARM64Function *function, type_id type, Registe
         });
 }
 
+ValueLocation arm64function_allocate_space(ARM64Function *function, type_id type)
+{
+    size_t sz = align_at(typeid_sizeof(type), 16);
+    arm64function_add_instruction(function, "sub", "sp,sp,#0x%X", sz);
+    return (ValueLocation) {
+        .type = type,
+        .kind = VLK_STACK,
+    };
+}
+
+void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)
+{
+    ValueLocation to_location = arm64function_location_for_type(function, ptr.type);
+    arm64function_copy(function, to_location, ptr);
+    arm64function_push_location(function, to_location);
+}
+
 void arm64function_enter(ARM64Function *function)
 {
     function->scribble.current_scope = &function->scope;
@@ -317,11 +334,11 @@ void arm64function_enter(ARM64Function *function)
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = function->scope.depth - param->parameter.offset }
+                .offset = function->scribble.stack_depth - param->parameter.offset }
         };
         arm64function_add_comment(function, "Unmarshalling parameter %.*s: %.*s -> offset %ld",
             SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
-            function->scope.depth - param->parameter.offset);
+            function->scribble.stack_depth - param->parameter.offset);
         switch (param->parameter.method) {
         case PPM_REGISTER: {
             ValueLocation arg_location = {
@@ -446,6 +463,22 @@ void arm64function_leave(ARM64Function *function)
     code_add_instruction(function->scribble.code, "ret", "");
     code_select_code(function->scribble.code);
     // arm64context_pop_stack_depth(ctx);
+}
+
+ValueLocation arm64function_call(ARM64Function *calling_function, StringView called_function, type_id return_type)
+{
+    for (Register r = REG_X9; r <= REG_X16; ++r) {
+        if (calling_function->scribble.registers[(int) r]) {
+            arm64function_push(calling_function, r);
+        }
+    }
+    arm64function_add_instruction(calling_function, "bl", "%.*s", SV_ARG(called_function));
+    for (Register r = REG_X15; r > REG_X8; --r) {
+        if (calling_function->scribble.registers[(int) r]) {
+            arm64function_pop(calling_function, r);
+        }
+    }
+    return arm64function_return_location(calling_function, return_type);
 }
 
 void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function)
@@ -577,7 +610,6 @@ void arm64function_marshall_return(ARM64Function *calling_function, ARM64Functio
 
 ValueLocation arm64function_location_for_type(ARM64Function *function, type_id type)
 {
-    ValueLocation ret = { 0 };
     switch (typeid_kind(type)) {
     case TK_PRIMITIVE: {
         return (ValueLocation) {
@@ -585,7 +617,7 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
             .kind = VLK_REGISTER,
             .reg = arm64function_allocate_register(function),
         };
-    } break;
+    }
     case TK_AGGREGATE: {
         size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
         if (size_in_double_words <= 2) {
@@ -594,15 +626,50 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
                 .kind = VLK_REGISTER_RANGE,
                 .range = arm64function_allocate_register_range(function, size_in_double_words),
             };
-            break;
         }
         return (ValueLocation) {
             .type = type,
             .kind = VLK_STACK,
         };
-    } break;
+    }
     default:
-        NYI("load_variable for non-primitive, non-aggregate type");
+        NYI("arm64function_location_for_type for non-primitive, non-aggregate type");
+    }
+}
+
+ValueLocation arm64function_return_location(ARM64Function *function, type_id type)
+{
+    switch (typeid_kind(type)) {
+    case TK_PRIMITIVE: {
+        return (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER,
+            .reg = REG_X0,
+        };
+    }
+    case TK_AGGREGATE: {
+        size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
+        if (size_in_double_words <= 2) {
+            return (ValueLocation) {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range = {
+                    .start = REG_X0,
+                    .end = REG_X0 + 2,
+                },
+            };
+        }
+        return (ValueLocation) {
+            .type = type,
+            .kind = VLK_POINTER,
+            .pointer = {
+                .reg = REG_X8,
+                .offset = 0,
+            },
+        };
+    }
+    default:
+        NYI("arm64function_return_location for non-primitive, non-aggregate type");
         break;
     }
 }

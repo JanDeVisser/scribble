@@ -202,10 +202,10 @@ static OperatorMapping s_operator_mapping[] = {
             { OP_COUNT, false, TK_UNKNOWN, TC_NONE, -1 }
 };
 
-OperatorMapping operator_for_token(Token token)
+OperatorMapping operator_for_token(Token token, bool binary)
 {
     for (int ix = 0; s_operator_mapping[ix].operator!= OP_COUNT; ++ix) {
-        if (token_matches(token, s_operator_mapping[ix].token_kind, s_operator_mapping[ix].token_code)) {
+        if (token_matches(token, s_operator_mapping[ix].token_kind, s_operator_mapping[ix].token_code) && s_operator_mapping[ix].binary == binary) {
             return s_operator_mapping[ix];
         }
     }
@@ -271,7 +271,7 @@ SyntaxNode *parse_expression(ParserContext *ctx)
 SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence)
 {
     Token           lookahead = lexer_next(ctx->lexer);
-    OperatorMapping op = operator_for_token(lookahead);
+    OperatorMapping op = operator_for_token(lookahead, true);
     while (op.binary && op.precedence >= min_precedence) {
         lexer_lex(ctx->lexer);
 
@@ -279,14 +279,17 @@ SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_prec
         int         prec = op.precedence;
 
         lookahead = lexer_next(ctx->lexer);
-        OperatorMapping op_1 = operator_for_token(lookahead);
+        OperatorMapping op_1 = operator_for_token(lookahead, true);
         while (op_1.binary && op_1.precedence > prec) {
             rhs = parse_expression_1(ctx, rhs, prec + 1);
             if (!rhs) {
                 return NULL;
             }
             lookahead = lexer_next(ctx->lexer);
-            op_1 = operator_for_token(lookahead);
+            op_1 = operator_for_token(lookahead, true);
+        }
+        if (op.operator== OP_SUBSCRIPT) {
+            parser_context_expect_and_discard(ctx, TK_SYMBOL, ']');
         }
         SyntaxNode *expr = syntax_node_make(SNT_BINARYEXPRESSION, sv_from(""), lhs->token);
         expr->binary_expr.lhs = lhs;
@@ -294,7 +297,7 @@ SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_prec
         expr->binary_expr.operator= op.operator;
         lhs = expr;
         lookahead = lexer_next(ctx->lexer);
-        op = operator_for_token(lookahead);
+        op = operator_for_token(lookahead, true);
     }
     return lhs;
 }
@@ -398,8 +401,20 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             parser_context_expect_and_discard(ctx, TK_SYMBOL, ')');
             return ret;
         }
-        default:
+        default: {
+            OperatorMapping op = operator_for_token(token, false);
+            if (op.operator!= OP_INVALID) {
+                lexer_lex(ctx->lexer);
+                SyntaxNode *operand = parse_expression(ctx);
+                if (operand) {
+                    SyntaxNode *unary_expr = syntax_node_make(SNT_UNARYEXPRESSION, token.text, token);
+                    unary_expr->unary_expr.operand = operand;
+                    unary_expr->unary_expr.operator= op.operator;
+                    return unary_expr;
+                }
+            }
             return NULL;
+        }
         }
     default:
         return NULL;
@@ -691,7 +706,16 @@ SyntaxNode *parse_type(ParserContext *ctx)
         return NULL;
     }
     Token token = lexer_lex(ctx->lexer);
-    return syntax_node_make(SNT_TYPE, token.text, token);
+    if (!lexer_next_matches(ctx->lexer, TK_SYMBOL, '[')) {
+        return syntax_node_make(SNT_TYPE, token.text, token);
+    }
+    lexer_lex(ctx->lexer);
+    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ']')) {
+        return NULL;
+    }
+    SyntaxNode *ret = syntax_node_make(SNT_TYPE, token.text, token);
+    ret->type_descr.array = true;
+    return ret;
 }
 
 SyntaxNode *parse_param(ParserContext *ctx, StringView name)
@@ -990,7 +1014,6 @@ SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
                 if (token_matches_kind(token, TK_END_OF_FILE)) {
                     return module;
                 }
-                lexer_lex(&lexer);
             }
         }
         if (statement) {

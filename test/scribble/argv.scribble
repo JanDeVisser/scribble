@@ -1,6 +1,7 @@
-func main(argc: i32, argv: pchar) : i32
+func main(argv: string[]) : i32
 {
-    puti(argc);
-    endln();
+    for x in 0u64 .. #argv {
+        putln(argv[x]);
+    }
     return 0;
 }

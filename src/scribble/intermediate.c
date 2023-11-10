@@ -73,17 +73,6 @@ void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
     ir_function_add_operation(fnc, op);
 }
 
-__attribute__((unused)) void generate_ARRAY(BoundNode *node, IRObject *target)
-{
-    IRFunction *fnc = (IRFunction *) target;
-    IROperation op;
-    ir_function_add_push_u64(fnc, node->array_def.base_type);
-    ir_function_add_push_u64(fnc, node->array_def.size);
-    op.operation = IR_DEFINE_ARRAY;
-    op.sv = node->name;
-    ir_function_add_operation((IRFunction *) target, op);
-}
-
 __attribute__((unused)) void generate_ASSIGNMENT(BoundNode *node, IRObject *target)
 {
     generate_node(node->assignment.expression, target);
@@ -98,10 +87,10 @@ __attribute__((unused)) void generate_BINARYEXPRESSION(BoundNode *node, IRObject
     IROperation op;
     generate_node(node->binary_expr.lhs, target);
     generate_node(node->binary_expr.rhs, target);
-    op.operation = IR_OPERATOR;
-    op.operator.op = node->binary_expr.operator;
-    op.operator.lhs = node->binary_expr.lhs->typespec.type_id;
-    op.operator.rhs = node->binary_expr.rhs->typespec.type_id;
+    op.operation = IR_BINARY_OPERATOR;
+    op.binary_operator.op = node->binary_expr.operator;
+    op.binary_operator.lhs = node->binary_expr.lhs->typespec.type_id;
+    op.binary_operator.rhs = node->binary_expr.rhs->typespec.type_id;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -193,11 +182,11 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     node->intermediate = allocate_new(Intermediate);
     node->intermediate->loop.loop = next_label();
     node->intermediate->loop.done = next_label();
-    op.operation = IR_LABEL;
-    op.label = node->intermediate->loop.loop;
-    ir_function_add_operation(fnc, op);
     op.operation = IR_POP_VAR;
     op.sv = node->for_statement.variable->name;
+    ir_function_add_operation(fnc, op);
+    op.operation = IR_LABEL;
+    op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
     op.operation = IR_PUSH_VAR;
     op.sv = node->for_statement.variable->name;
@@ -206,9 +195,9 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     op.var_component.name = sv_from("$range");
     op.var_component.component = 1;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_OPERATOR;
-    op.operator.op = OP_LESS;
-    op.operator.lhs = op.operator.rhs = range_of->type_id;
+    op.operation = IR_BINARY_OPERATOR;
+    op.binary_operator.op = OP_LESS;
+    op.binary_operator.lhs = op.binary_operator.rhs = range_of->type_id;
 
     ir_function_add_operation(fnc, op);
     op.operation = IR_JUMP_F;
@@ -229,9 +218,12 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
         op.integer.value.signed_value = 1;
     }
     ir_function_add_operation(fnc, op);
-    op.operation = IR_OPERATOR;
-    op.operator.op = OP_ADD;
-    op.operator.lhs = op.operator.rhs = range_of->type_id;
+    op.operation = IR_BINARY_OPERATOR;
+    op.binary_operator.op = OP_ADD;
+    op.binary_operator.lhs = op.binary_operator.rhs = range_of->type_id;
+    ir_function_add_operation(fnc, op);
+    op.operation = IR_POP_VAR;
+    op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
 
     op.operation = IR_JUMP;
@@ -239,6 +231,8 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     ir_function_add_operation(fnc, op);
     op.operation = IR_LABEL;
     op.label = node->intermediate->loop.done;
+    ir_function_add_operation(fnc, op);
+    op.operation = IR_SCOPE_END;
     ir_function_add_operation(fnc, op);
 }
 
@@ -503,26 +497,20 @@ __attribute__((unused)) void generate_TERNARYEXPRESSION(BoundNode *node, IRObjec
 
 __attribute__((unused)) void generate_TYPE(BoundNode *node, IRObject *target)
 {
-    ir_function_add_push_u64((IRFunction *) target, node->typespec.type_id);
-    IROperation op;
-    op.operation = IR_DEFINE_ALIAS;
-    op.sv = node->name;
-    ir_function_add_operation((IRFunction *) target, op);
 }
 
 __attribute__((unused)) void generate_TYPE_COMPONENT(BoundNode *node, IRObject *target)
 {
-    IRFunction *fnc = (IRFunction *) target;
-    IROperation op;
-    op.operation = IR_PUSH_STRING_CONSTANT;
-    op.sv = node->name;
-    ir_function_add_operation(fnc, op);
-    ir_function_add_push_u64(fnc, node->typespec.type_id);
 }
 
 __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
-    IRFunction *fnc = (IRFunction *) target;
+    IROperation op;
+    generate_node(node->unary_expr.operand, target);
+    op.operation = IR_UNARY_OPERATOR;
+    op.unary_operator.op = node->unary_expr.operator;
+    op.unary_operator.operand = node->unary_expr.operand->typespec.type_id;
+    ir_function_add_operation((IRFunction *) target, op);
 }
 
 __attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *node, IRObject *target)
@@ -712,8 +700,11 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
     case IR_NEW_DATUM:
         sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
         break;
-    case IR_OPERATOR:
-        sb_printf(&sb, "%s(%.*s, %.*s)", Operator_name(op->operator.op), SV_ARG(typeid_name(op->operator.lhs)), SV_ARG(typeid_name(op->operator.rhs)));
+    case IR_BINARY_OPERATOR:
+        sb_printf(&sb, "%s(%.*s, %.*s)", Operator_name(op->binary_operator.op), SV_ARG(typeid_name(op->binary_operator.lhs)), SV_ARG(typeid_name(op->binary_operator.rhs)));
+        break;
+    case IR_UNARY_OPERATOR:
+        sb_printf(&sb, "%s(%.*s)", Operator_name(op->unary_operator.op), SV_ARG(typeid_name(op->unary_operator.operand)));
         break;
     case IR_RETURN:
         sb_printf(&sb, "%s", (op->bool_value) ? "true" : "false");

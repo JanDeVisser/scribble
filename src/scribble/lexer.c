@@ -194,9 +194,9 @@ Token directive_handle(Lexer *lexer)
     if (directive_end == 0) {
         if (buffer[0]) {
             StringView directive = { buffer, 1 };
-            fatal(LOC_SPEC "No preprocessor directive after '#' but '" SV_SPEC "'", SV_ARG(directive));
+            fatal(LOC_SPEC "No preprocessor directive after '$' but '" SV_SPEC "'", SV_ARG(directive));
         } else {
-            fatal(LOC_SPEC "'#' character cannot end source");
+            fatal(LOC_SPEC "'$' character cannot end source");
         }
     }
     StringView directive = { buffer, directive_end };
@@ -300,7 +300,7 @@ Token lexer_peek(Lexer *lexer)
         default:
             break;
         }
-    case '#': {
+    case '$': {
         lexer_advance_source(lexer, 1);
         return lexer_set_current(lexer, directive_handle(lexer));
     }

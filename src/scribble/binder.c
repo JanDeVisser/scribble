@@ -25,7 +25,7 @@ static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, B
 static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name);
 static BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, StringView name);
 static BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name);
-static bool       resolve_expression_type(Operator, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret);
+static bool       resolve_binary_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret);
 static bool       resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec);
 static int        bind_nodes(BoundNode *parent, SyntaxNode *first, BoundNode **first_dst, BindContext *ctx);
 static BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx);
@@ -195,6 +195,12 @@ typedef struct binary_operator_signature {
     BuiltinType result;
 } BinaryOperatorSignature;
 
+typedef struct unary_operator_signature {
+    Operator    op;
+    BuiltinType operand;
+    BuiltinType result;
+} UnaryOperatorSignature;
+
 #define ARITHMETIC_OPS(T)                                       \
     { .op = OP_ADD, .lhs = T, .rhs = T, .result = T },          \
         { .op = OP_SUBTRACT, .lhs = T, .rhs = T, .result = T }, \
@@ -256,11 +262,29 @@ INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
     { .op = OP_LOGICAL_AND, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
     { .op = OP_LOGICAL_OR, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
 
+    { .op = OP_SUBSCRIPT, .lhs = BIT_ARRAY, .rhs = BIT_I32, .result = BIT_PARAMETER },
+    { .op = OP_SUBSCRIPT, .lhs = BIT_ARRAY, .rhs = BIT_U32, .result = BIT_PARAMETER },
+    { .op = OP_SUBSCRIPT, .lhs = BIT_ARRAY, .rhs = BIT_U64, .result = BIT_PARAMETER },
+
     { .op = OP_INVALID, .lhs = BIT_NOTYPE, .rhs = BIT_NOTYPE, .result = BIT_NOTYPE }
+};
+
+static UnaryOperatorSignature s_unary_operator_signatures[] = {
+#undef INTEGERTYPE
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size)                  \
+    { .op = OP_IDENTITY, .operand = BIT_##dt, .result = BIT_##dt },      \
+    { .op = OP_NEGATE, .operand = BIT_##dt, .result = BIT_##dt },        \
+    { .op = OP_BITWISE_INVERT, .operand = BIT_##dt, .result = BIT_##dt },
+    INTEGERTYPES(INTEGERTYPE)
+#undef INTEGERTYPE
+    { .op = OP_LOGICAL_INVERT, .operand = BIT_BOOL, .result = BIT_BOOL },
+    { .op = OP_CARDINALITY, .operand = BIT_ARRAY, .result = BIT_U64 },
+    { .op = OP_CARDINALITY, .operand = BIT_STRING, .result = BIT_U64 },
+    { .op = OP_INVALID, .operand = BIT_NOTYPE, .result = BIT_NOTYPE }
 };
 // clang-format on
 
-bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
+bool resolve_binary_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret)
 {
     BuiltinType bit_lhs = typeid_builtin_type(lhs.type_id);
     BuiltinType bit_rhs = typeid_builtin_type(rhs.type_id);
@@ -272,12 +296,61 @@ bool resolve_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *
                 if (typeid_is_specialization(lhs.type_id) && typeid_specializes(lhs.type_id) == result) {
                     *ret = lhs;
                     return true;
-                } else if (typeid_is_specialization(lhs.type_id) && typeid_specializes(rhs.type_id) == result) {
+                } else if (typeid_is_specialization(rhs.type_id) && typeid_specializes(rhs.type_id) == result) {
                     *ret = rhs;
+                    return true;
+                } else {
+                    // FIXME A lot of assumptions here.
+                    ret->type_id = MUST(TypeID,
+                        type_specialize_template(
+                            result,
+                            1,
+                            (TemplateArgument[]) {
+                                {
+                                    .name = sv_from("T"),
+                                    .arg_type = TPT_TYPE,
+                                    .type = lhs.type_id,
+                                },
+                            }));
+                    return true;
+                }
+            } else if (result == BIT_PARAMETER) {
+                assert(typeid_is_specialization(lhs.type_id));
+                ExpressionType *type = type_registry_get_type_by_id(lhs.type_id);
+                assert(type->num_arguments == 1);
+                assert(type->template_arguments[0].arg_type == TPT_TYPE);
+                *ret = (TypeSpec) { .type_id = type->template_arguments[0].type, .optional = false };
+                return true;
+            } else {
+                *ret = (TypeSpec) { .type_id = result, .optional = false };
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool resolve_unary_expression_type(Operator op, TypeSpec operand, TypeSpec *ret)
+{
+    BuiltinType bit_operand = typeid_builtin_type(operand.type_id);
+
+    for (size_t ix = 0; s_unary_operator_signatures[ix].op != OP_INVALID; ++ix) {
+        if (s_unary_operator_signatures[ix].op == op && s_unary_operator_signatures[ix].operand == bit_operand) {
+            type_id result = type_registry_id_of_builtin_type(s_operator_signatures[ix].result);
+            if (typeid_is_template(result)) {
+                if (typeid_is_specialization(operand.type_id) && typeid_specializes(operand.type_id) == result) {
+                    *ret = operand;
                     return true;
                 } else {
                     return false;
                 }
+            } else if (result == BIT_PARAMETER) {
+                assert(typeid_is_specialization(operand.type_id));
+                ExpressionType *type = type_registry_get_type_by_id(operand.type_id);
+                assert(type->num_arguments == 1);
+                assert(type->template_arguments[0].arg_type == TPT_TYPE);
+                *ret = (TypeSpec) { .type_id = type->template_arguments[0].type, .optional = false };
+                return true;
             } else {
                 *ret = (TypeSpec) { .type_id = result, .optional = false };
                 return true;
@@ -294,6 +367,21 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
     if (!type) {
         fprintf(stderr, "Unknown type '" SV_SPEC "'", SV_ARG(type_node->name));
         return false;
+    }
+    if (type_node->type_descr.array) {
+        type_id array_of_type = MUST(TypeID,
+            type_specialize_template(
+                ARRAY_ID,
+                1,
+                (TemplateArgument[]) {
+                    {
+                        .name = sv_from("T"),
+                        .arg_type = TPT_TYPE,
+                        .type = type->type_id,
+                    } }));
+        (*typespec).type_id = typeid_canonical_type_id(array_of_type);
+        (*typespec).optional = false;
+        return true;
     }
     (*typespec).type_id = typeid_canonical_type_id(type->type_id);
     (*typespec).optional = false;
@@ -409,7 +497,7 @@ BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContex
         return bound_node_make_unbound(parent, stmt, NULL);
     }
     TypeSpec type;
-    if (!resolve_expression_type(stmt->binary_expr.operator, lhs->typespec, rhs->typespec, &type)) {
+    if (!resolve_binary_expression_type(stmt->binary_expr.operator, lhs->typespec, rhs->typespec, &type)) {
         ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
         ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
         fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
@@ -657,16 +745,15 @@ void program_collect_types(BoundNode *program)
         BoundNode      *type_node = NULL;
         ExpressionType *et = type_registry_get_type_by_index(ix);
         switch (type_kind(et)) {
+        case TK_PRIMITIVE: {
+            type_node = bound_node_make(BNT_TYPE, program);
+            type_node->name = et->name;
+            type_node->typespec = (TypeSpec) { et->type_id, false };
+        } break;
         case TK_ALIAS: {
             type_node = bound_node_make(BNT_TYPE, program);
             type_node->name = et->name;
             type_node->typespec = (TypeSpec) { et->alias_for_id, false };
-        } break;
-        case TK_ARRAY: {
-            type_node = bound_node_make(BNT_ARRAY, program);
-            type_node->name = et->name;
-            type_node->array_def.base_type = et->array.base_type.type_id;
-            type_node->array_def.size = et->array.size;
         } break;
         case TK_AGGREGATE:
         case TK_VARIANT: {
@@ -674,10 +761,10 @@ void program_collect_types(BoundNode *program)
             type_node->name = et->name;
             BoundNode **dst = &type_node->compound_def.components;
             BoundNode  *last = NULL;
-            for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+            for (size_t comp_ix = 0; comp_ix < et->components.num_components; ++comp_ix) {
                 *dst = bound_node_make(BNT_TYPE_COMPONENT, type_node);
-                (*dst)->name = et->components.components[ix].name;
-                (*dst)->typespec = (TypeSpec) { et->components.components[ix].type_id, false };
+                (*dst)->name = et->components.components[comp_ix].name;
+                (*dst)->typespec = (TypeSpec) { et->components.components[comp_ix].type_id, false };
                 (*dst)->prev = last;
                 last = *dst;
                 dst = &last->next;
@@ -741,13 +828,9 @@ BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         type_components[num].type_id = component->typespec.type_id;
         num++;
     }
-    ErrorOrTypeID struct_id_maybe = type_registry_make_type(stmt->name, TK_AGGREGATE);
+    ErrorOrTypeID struct_id_maybe = type_registry_make_aggregate(stmt->name, num, type_components);
     if (ErrorOrTypeID_is_error(struct_id_maybe)) {
-        fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
-    }
-    struct_id_maybe = type_set_struct_components(struct_id_maybe.value, num, type_components);
-    if (ErrorOrTypeID_is_error(struct_id_maybe)) {
-        fatal(LOC_SPEC "Could not create composite type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
+        fatal(LOC_SPEC "Could not create aggregate type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
     }
     return NULL;
 }
@@ -794,7 +877,21 @@ BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext 
 
 BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    return NULL;
+    BoundNode *ret = bound_node_make(BNT_UNARYEXPRESSION, parent);
+    BoundNode *operand = bind_node(ret, stmt->unary_expr.operand, ctx);
+    if (operand->type == BNT_UNBOUND_NODE) {
+        return bound_node_make_unbound(parent, stmt, NULL);
+    }
+    TypeSpec type;
+    if (!resolve_unary_expression_type(stmt->unary_expr.operator, operand->typespec, &type)) {
+        fatal("Could not resolve return type of operator '%s' with operand type '%.*s'",
+            Operator_name(stmt->binary_expr.operator), SV_ARG(typeid_name(operand->typespec.type_id)));
+    }
+    ret->typespec = type;
+    ret->name = sv_from(Operator_name(stmt->unary_expr.operator));
+    ret->unary_expr.operand = operand;
+    ret->unary_expr.operator= stmt->unary_expr.operator;
+    return evaluate_node(ret);
 }
 
 BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
@@ -996,6 +1093,10 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
     case BNT_FUNCTION: {
         node->function.function_impl = rebind_node(node->function.function_impl, ctx);
+        return node;
+    }
+    case BNT_FOR: {
+        node->for_statement.statement = rebind_node(node->for_statement.statement, ctx);
         return node;
     }
     case BNT_FUNCTION_CALL: {

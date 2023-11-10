@@ -15,12 +15,12 @@
 #define __INTERMEDIATE_H__
 
 #define IR_OPERATION_TYPES(S) \
+    S(BINARY_OPERATOR)        \
     S(CALL)                   \
     S(CASE)                   \
     S(DECL_VAR)               \
     S(DEFINE_AGGREGATE)       \
     S(DEFINE_ALIAS)           \
-    S(DEFINE_ARRAY)           \
     S(DEFINE_VARIANT)         \
     S(END_CASE)               \
     S(END_MATCH)              \
@@ -30,7 +30,6 @@
     S(LABEL)                  \
     S(MATCH)                  \
     S(NEW_DATUM)              \
-    S(OPERATOR)               \
     S(POP_VAR)                \
     S(POP_VAR_COMPONENT)      \
     S(PUSH_BOOL_CONSTANT)     \
@@ -41,7 +40,8 @@
     S(PUSH_VAR_COMPONENT)     \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \
-    S(SCOPE_END)
+    S(SCOPE_END)              \
+    S(UNARY_OPERATOR)
 
 typedef enum ir_operation_type {
 #undef IR_OPERATION_TYPE
@@ -74,7 +74,11 @@ typedef struct ir_operation {
             Operator op;
             type_id  lhs;
             type_id  rhs;
-        } operator;
+        } binary_operator;
+        struct {
+            Operator op;
+            type_id  operand;
+        } unary_operator;
         struct {
             StringView name;
             size_t     component;

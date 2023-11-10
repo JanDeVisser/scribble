@@ -11,7 +11,7 @@
 #define __PARSER_H__
 
 /*
- * Precendeces according to https://en.cppreference.com/w/c/language/operator_precedence
+ * Precedences according to https://en.cppreference.com/w/c/language/operator_precedence
  */
 #define BINARY_OPERATORS(S)                                       \
     S(INVALID, false, -1, TK_UNKNOWN, TC_NONE)                    \
@@ -42,6 +42,7 @@
     S(INVALID_UNARY, TK_UNKNOWN, TC_NONE)              \
     S(IDENTITY, TK_SYMBOL, '+')                        \
     S(NEGATE, TK_SYMBOL, '-')                          \
+    S(CARDINALITY, TK_SYMBOL, '#')                     \
     S(UNARY_INCREMENT, TK_KEYWORD, KW_UNARY_INCREMENT) \
     S(UNARY_DECREMENT, TK_KEYWORD, KW_UNARY_INCREMENT) \
     S(LOGICAL_INVERT, TK_SYMBOL, '!')                  \
@@ -185,6 +186,13 @@ typedef struct syntax_node {
             struct syntax_node *if_true;
             struct syntax_node *if_false;
         } ternary_expr;
+        struct {
+            bool array;
+        } type_descr;
+        struct {
+            struct syntax_node *operand;
+            Operator operator;
+        } unary_expr;
         struct {
             struct syntax_node *var_type;
             struct syntax_node *init_expr;

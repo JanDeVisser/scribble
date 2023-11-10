@@ -1,0 +1,8 @@
+func main() : i32
+{
+    for x in 0 .. 5 {
+        puti(x);
+        endln();
+    }
+    return 0;
+}

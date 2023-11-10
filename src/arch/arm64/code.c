@@ -289,6 +289,9 @@ void code_load_immediate(Code *code, Register reg, ValueLocation loc)
 
 void code_copy(Code *code, ValueLocation to_location, ValueLocation from_location)
 {
+    trace(CAT_COMPILE, "copy %.*s to %.*s",
+        SV_ARG(value_location_to_string(from_location)),
+        SV_ARG(value_location_to_string(to_location)));
     assert(to_location.type == from_location.type);
     size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
     size_t    aligned_sz = align_at(sz, 16);
@@ -365,9 +368,8 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 reg_with_width(from_location.range.start, opcode_map.reg_width));
         } break;
         case VLK_STACK: {
-            code_add_instruction(code, opcode_map.load_opcode, "%s,[%s],#%ld",
-                reg_with_width(to_location.reg, opcode_map.reg_width),
-                reg(REG_SP), aligned_sz);
+            code_add_instruction(code, opcode_map.load_opcode, "%s,[%s]",
+                reg_with_width(to_location.reg, opcode_map.reg_width), reg(REG_SP));
         } break;
         case VLK_LABEL: {
             code_load_label(code, to_location.reg, from_location.symbol);

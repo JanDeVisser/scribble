@@ -197,16 +197,10 @@ char const *scope_pop_variable_component(Scope *scope, StringView name, size_t i
             case TK_VARIANT:
                 return "Attempted pop of component of non-compound datum";
             case TK_AGGREGATE:
-                if (index >= v->value->composite.num_components) {
+                if (index >= v->value->aggregate.num_components) {
                     return "Attempted pop of out-of-range component index";
                 }
-                component = v->value->composite.components + index;
-                break;
-            case TK_ARRAY:
-                if (index >= v->value->array.size) {
-                    return "Attempted pop of out-of-range component index";
-                }
-                component = v->value->array.components + index;
+                component = v->value->aggregate.components + index;
                 break;
             default:
                 UNREACHABLE();
@@ -249,16 +243,10 @@ char const *scope_push_variable_component(Scope *scope, StringView name, size_t 
             case TK_VARIANT:
                 return "Attempted push of component of non-compound datum";
             case TK_AGGREGATE:
-                if (index >= v->value->composite.num_components) {
+                if (index >= v->value->aggregate.num_components) {
                     return "Attempted push of out-of-range component index";
                 }
-                component = v->value->composite.components + index;
-                break;
-            case TK_ARRAY:
-                if (index >= v->value->array.size) {
-                    return "Attempted push of out-of-range component index";
-                }
-                component = v->value->array.components + index;
+                component = v->value->aggregate.components + index;
                 break;
             default:
                 UNREACHABLE();
@@ -408,28 +396,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             components[ix].type_id = comp_type;
         }
         if (!et) {
-            type_id new_id = MUST(TypeID, type_registry_make_type(op->sv, TK_AGGREGATE));
-            MUST(TypeID, type_set_struct_components(new_id, num_components, components));
-        }
-    } break;
-    case IR_DEFINE_ARRAY: {
-        size_t          size = datum_stack_pop_u64(&ctx->stack);
-        type_id         type = datum_stack_pop_u64(&ctx->stack);
-        ExpressionType *et = type_registry_get_type_by_name(op->sv);
-        if (et) {
-            if (type_kind(et) != TK_ARRAY) {
-                fatal("Attempting to define '" SV_SPEC "' as an array but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
-            }
-            if (et->array.base_type.type_id != type) {
-                fatal("Attempting to define '" SV_SPEC "' as an array of '" SV_SPEC "' but it's already an array of '" SV_SPEC "'",
-                    SV_ARG(op->sv), SV_ARG(typeid_name(type)), typeid_name(et->array.base_type.type_id));
-            }
-            if (et->array.size != size) {
-                fatal("Attempting to define '" SV_SPEC "' as an array of '" SV_SPEC "' with %d elements but it's already an array of %d elements",
-                    SV_ARG(op->sv), size, et->array.size);
-            }
-        } else {
-            MUST(TypeID, type_registry_array(op->sv, type, size));
+            type_id new_id = MUST(TypeID, type_registry_make_aggregate(op->sv, num_components, components));
         }
     } break;
     case IR_DEFINE_VARIANT: {
@@ -495,21 +462,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         break;
     case IR_NEW_DATUM: {
         type_id tid = typeid_canonical_type_id(op->integer.value.unsigned_value);
-        assert(typeid_kind(tid) == TK_AGGREGATE || typeid_kind(tid) == TK_ARRAY);
+        assert(typeid_kind(tid) == TK_AGGREGATE);
         ExpressionType *et = type_registry_get_type_by_id(tid);
         Datum          *new_datum = datum_allocate(tid);
         switch (typeid_kind(tid)) {
         case TK_AGGREGATE: {
             for (int ix = (int) et->components.num_components - 1; ix >= 0; --ix) {
                 Datum *d = datum_stack_pop(&ctx->stack);
-                datum_copy(new_datum->composite.components + ix, d);
-                datum_free(d);
-            }
-        } break;
-        case TK_ARRAY: {
-            for (int ix = (int) et->array.size - 1; ix >= 0; --ix) {
-                Datum *d = datum_stack_pop(&ctx->stack);
-                datum_copy(new_datum->array.components + ix, d);
+                datum_copy(new_datum->aggregate.components + ix, d);
                 datum_free(d);
             }
         } break;
@@ -518,10 +478,10 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         }
         datum_stack_push(&ctx->stack, new_datum);
     } break;
-    case IR_OPERATOR: {
+    case IR_BINARY_OPERATOR: {
         Datum *d2 = datum_stack_pop(&ctx->stack);
         Datum *d1 = datum_stack_pop(&ctx->stack);
-        datum_stack_push(&ctx->stack, datum_apply(d1, op->operator.op, d2));
+        datum_stack_push(&ctx->stack, datum_apply(d1, op->binary_operator.op, d2));
         datum_free(d1);
         datum_free(d2);
     } break;
@@ -580,6 +540,11 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         NextInstructionPointer nip = { 0 };
         nip.type = NIT_RETURN;
         return nip;
+    }
+    case IR_UNARY_OPERATOR: {
+        Datum *d = datum_stack_pop(&ctx->stack);
+        datum_stack_push(&ctx->stack, datum_apply(d, op->binary_operator.op, NULL));
+        datum_free(d);
     }
     default:
         UNREACHABLE();
@@ -986,6 +951,7 @@ Datum *evaluate_function(IRFunction function)
 {
     Scope            root_scope = { 0 };
     ExecutionContext ctx = { 0 };
+    ir_function_list(&function, 0);
     ctx.root_scope = &root_scope;
     ctx.execution_mode = EM_RUN;
     FunctionReturn ret = execute_function(&ctx, &function);
