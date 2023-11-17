@@ -8,6 +8,7 @@ add_library(
         fn.c
         fs.c
         hash.c
+        integer.c
         io.c
         log.c
         mem.c

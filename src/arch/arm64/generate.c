@@ -83,6 +83,50 @@ __attribute__((unused)) void generate_CASE(ARM64Function *function, IROperation 
     generate_JUMP_F(function, op);
 }
 
+__attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation *op)
+{
+    ValueLocation expr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    assert(expr.kind == VLK_REGISTER);
+    BuiltinType bit_expr = typeid_builtin_type(expr.type);
+    BuiltinType bit_cast = typeid_builtin_type(op->integer.u64);
+    IntegerSize sz_cast = BuiltinType_width(bit_cast);
+    bool        cast_unsigned = BuiltinType_is_unsigned(bit_cast);
+    Register    reg = arm64function_allocate_register(function);
+
+    switch (sz_cast) {
+    case BITS_8:
+        arm64function_add_instruction(function, "and", "%s,%s,#0xFF", w_reg(reg), w_reg(expr.reg));
+        if (!cast_unsigned) {
+            arm64function_add_instruction(function, "sxtb", "%s,%s", w_reg(reg), w_reg(reg));
+        }
+        break;
+    case BITS_16:
+        arm64function_add_instruction(function, "and", "%s,%s,#0xFFFF", w_reg(reg), w_reg(expr.reg));
+        if (!cast_unsigned) {
+            arm64function_add_instruction(function, "sxth", "%s,%s", w_reg(reg), w_reg(reg));
+        }
+        break;
+    case BITS_32:
+        arm64function_add_instruction(function, "mov", "%s,%s", w_reg(reg), w_reg(expr.reg));
+        break;
+    case BITS_64:
+        arm64function_add_instruction(function, "mov", "%s,%s", x_reg(reg), x_reg(expr.reg));
+        if (!cast_unsigned) {
+            arm64function_add_instruction(function, "sxtw", "%s,%s", x_reg(reg), x_reg(reg));
+        }
+        break;
+    default:
+        UNREACHABLE();
+    }
+    arm64function_push_location(
+        function,
+        (ValueLocation) {
+            .type = op->integer.u64,
+            .kind = VLK_REGISTER,
+            .reg = reg,
+        });
+}
+
 __attribute__((unused)) void generate_DECL_VAR(ARM64Function *function, IROperation *op)
 {
 }
@@ -109,7 +153,7 @@ __attribute__((unused)) void generate_END_CASE(ARM64Function *function, IROperat
     assert(scope);
     ValueLocation *case_location = scope->match_value_stack;
     assert(case_location);
-    MUST_OPTIONAL(ValueLocation, expression_value, arm64function_pop_location(function));
+    ValueLocation expression_value = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     arm64function_copy(function, *case_location, expression_value);
     if (op->label) {
         arm64function_add_instruction(function, "b", "%.*s_%zu",
@@ -135,7 +179,7 @@ __attribute__((unused)) void generate_JUMP(ARM64Function *function, IROperation 
 
 __attribute__((unused)) void generate_JUMP_F(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
+    ValueLocation location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
     assert(location.type == BOOL_ID);
     ValueLocation l = location;
@@ -154,7 +198,7 @@ __attribute__((unused)) void generate_JUMP_F(ARM64Function *function, IROperatio
 
 __attribute__((unused)) void generate_JUMP_T(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
+    ValueLocation location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
     assert(location.type == BOOL_ID);
     ValueLocation l = location;
@@ -196,7 +240,7 @@ __attribute__((unused)) void generate_NEW_DATUM(ARM64Function *function, IROpera
 
 __attribute__((unused)) void generate_POP_VAR(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, location, arm64function_pop_location(function));
+    ValueLocation  location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
     arm64variable_store_variable(var, location);
 }
@@ -212,7 +256,11 @@ __attribute__((unused)) void generate_PUSH_BOOL_CONSTANT(ARM64Function *function
         (ValueLocation) {
             .type = BOOL_ID,
             .kind = VLK_IMMEDIATE,
-            .unsigned_value = (op->bool_value) ? 1 : 0,
+            .integer = (Integer) {
+                .size = BITS_8,
+                .un_signed = true,
+                .u8 = (op->bool_value) ? 1 : 0,
+            },
         });
 }
 
@@ -232,14 +280,10 @@ __attribute__((unused)) void generate_PUSH_INT_CONSTANT(ARM64Function *function,
     Register reg = arm64function_allocate_register(function);
 
     ValueLocation immediate = {
-        .type = type_registry_id_of_builtin_type(op->integer.type),
+        .type = type_registry_id_of_integer_type(op->integer.size, op->integer.un_signed),
         .kind = VLK_IMMEDIATE,
+        .integer = op->integer,
     };
-    if (BuiltinType_is_unsigned(typeid_builtin_type(immediate.type))) {
-        immediate.unsigned_value = op->integer.value.unsigned_value;
-    } else {
-        immediate.signed_value = op->integer.value.signed_value;
-    }
     ValueLocation result = {
         .type = immediate.type,
         .kind = VLK_REGISTER,
@@ -274,7 +318,7 @@ __attribute__((unused)) void generate_PUSH_STRING_CONSTANT(ARM64Function *functi
         (ValueLocation) {
             .type = U64_ID,
             .kind = VLK_IMMEDIATE,
-            .unsigned_value = op->sv.length,
+            .integer = (Integer) { .size = BITS_64, .un_signed = true, .u64 = op->sv.length },
         });
     arm64function_push_registers(function, STRING_ID, regs);
 }
@@ -300,7 +344,7 @@ __attribute__((unused)) void generate_PUSH_VAR_COMPONENT(ARM64Function *function
 
 __attribute__((unused)) void generate_RETURN(ARM64Function *function, IROperation *op)
 {
-    MUST_OPTIONAL(ValueLocation, expr, arm64function_pop_location(function))
+    ValueLocation expr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     ValueLocation x0 = {
         .type = function->function->type.type_id,
         .kind = VLK_REGISTER,

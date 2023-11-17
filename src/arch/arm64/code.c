@@ -280,10 +280,12 @@ void code_load_immediate(Code *code, Register reg, ValueLocation loc)
 {
     assert(loc.kind == VLK_IMMEDIATE);
     OpcodeMap opcode_map = get_opcode_map(loc.type);
-    if (BuiltinType_is_unsigned(typeid_builtin_type(loc.type))) {
-        code_add_instruction(code, "mov", "%s,#%zu", reg_with_width(reg, opcode_map.reg_width), loc.unsigned_value);
+    if (loc.integer.un_signed) {
+        uint64_t v = MUST_OPTIONAL(UInt64, integer_unsigned_value(loc.integer));
+        code_add_instruction(code, "mov", "%s,#%zu", reg_with_width(reg, opcode_map.reg_width), v);
     } else {
-        code_add_instruction(code, "mov", "%s,#%ld", reg_with_width(reg, opcode_map.reg_width), loc.signed_value);
+        int64_t v = MUST_OPTIONAL(Int64, integer_signed_value(loc.integer));
+        code_add_instruction(code, "mov", "%s,#%ld", reg_with_width(reg, opcode_map.reg_width), v);
     }
 }
 

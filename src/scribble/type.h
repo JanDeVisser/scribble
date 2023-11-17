@@ -7,6 +7,8 @@
 #include <stdio.h>
 
 #include <error_or.h>
+#include <integer.h>
+#include <optional.h>
 #include <sv.h>
 
 #ifndef __TYPE_H__
@@ -213,14 +215,6 @@ extern type_id NEXT_CUSTOM_IX;
 ErrorOr(TypeID, type_id);
 ErrorOr(Size, size_t);
 
-typedef struct integer {
-    BuiltinType type;
-    union {
-        int64_t  signed_value;
-        uint64_t unsigned_value;
-    } value;
-} Integer;
-
 extern char const        *TypeKind_name(TypeKind kind);
 extern char const        *BuiltinType_name(BuiltinType type);
 extern size_t             BuiltinType_width(BuiltinType type);
@@ -232,7 +226,7 @@ extern ExpressionType    *type_registry_get_type_by_name(StringView name);
 extern ExpressionType    *type_registry_get_type_by_id(type_id id);
 extern ExpressionType    *type_registry_get_type_by_index(size_t ix);
 extern type_id            type_registry_id_of_builtin_type(BuiltinType type);
-extern type_id            type_registry_id_of_integer_type(size_t width, bool un_signed);
+extern type_id            type_registry_id_of_integer_type(IntegerSize bits, bool un_signed);
 extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
 extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
 extern ErrorOrTypeID      type_registry_alias(StringView name, type_id aliased);
@@ -324,47 +318,6 @@ static inline bool typeid_is_template(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
     return et->num_parameters > 0;
-}
-
-static inline void Integer_boundscheck(Integer integer)
-{
-    switch (integer.type) {
-    case BIT_I8:
-        if (integer.value.signed_value > INT8_MAX || integer.value.signed_value < INT8_MIN) {
-            fatal("i8 value out of range: %zu", integer.value.signed_value);
-        }
-        break;
-    case BIT_U8:
-        if (integer.value.unsigned_value > UINT8_MAX) {
-            fatal("u8 value out of range: %zu", integer.value.unsigned_value);
-        }
-        break;
-    case BIT_I16:
-        if (integer.value.signed_value > INT16_MAX || integer.value.signed_value < INT16_MIN) {
-            fatal("i16 value out of range: %zu", integer.value.signed_value);
-        }
-        break;
-    case BIT_U16:
-        if (integer.value.unsigned_value > UINT16_MAX) {
-            fatal("u16 value out of range: %zu", integer.value.unsigned_value);
-        }
-        break;
-    case BIT_I32:
-        if (integer.value.signed_value > INT32_MAX || integer.value.signed_value < INT32_MIN) {
-            fatal("i32 value out of range: %zu", integer.value.signed_value);
-        }
-        break;
-    case BIT_U32:
-        if (integer.value.unsigned_value > UINT32_MAX) {
-            fatal("u32 value out of range: %zu", integer.value.unsigned_value);
-        }
-        break;
-    case BIT_I64:
-    case BIT_U64:
-        break;
-    default:
-        UNREACHABLE();
-    }
 }
 
 #endif /* __TYPE_H__ */

@@ -490,8 +490,8 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
     for (size_t ix = 0; ix < called_function->scope.variables.size; ++ix) {
         ARM64Variable *param = called_function->scope.variables.elements + ix;
         assert(param->kind == VK_PARAMETER);
-        type_id type = typeid_canonical_type_id(param->var_decl.type.type_id);
-        MUST_OPTIONAL(ValueLocation, arg_location, arm64function_pop_location(calling_function))
+        type_id       type = typeid_canonical_type_id(param->var_decl.type.type_id);
+        ValueLocation arg_location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(calling_function));
         code_add_comment(marshalling, "Marshalling argument %.*s: %.*s from %.*s",
             SV_ARG(param->var_decl.name), SV_ARG(typeid_name(param->var_decl.type.type_id)),
             SV_ARG(value_location_to_string(arg_location)));

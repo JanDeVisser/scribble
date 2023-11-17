@@ -79,7 +79,13 @@ StringView value_location_to_string(ValueLocation loc)
         sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
         break;
     case VLK_IMMEDIATE:
-        sb_printf(&sb, "#%ld", loc.signed_value);
+        if (loc.integer.un_signed) {
+            uint64_t v = MUST_OPTIONAL(UInt64, integer_unsigned_value(loc.integer));
+            sb_printf(&sb, "#%zu", v);
+        } else {
+            int64_t v = MUST_OPTIONAL(Int64, integer_signed_value(loc.integer));
+            sb_printf(&sb, "#%ld", v);
+        }
         break;
     case VLK_FLOAT:
         sb_printf(&sb, "#%f", loc.float_value);

@@ -68,8 +68,7 @@ void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
-    op.integer.type = BIT_U64;
-    op.integer.value.unsigned_value = value;
+    op.integer = integer_create(BITS_64, true, value);
     ir_function_add_operation(fnc, op);
 }
 
@@ -124,6 +123,16 @@ __attribute__((unused)) void generate_BREAK(BoundNode *node, IRObject *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+__attribute__((unused)) void generate_CAST(BoundNode *node, IRObject *target)
+{
+    IRFunction *fnc = (IRFunction *) target;
+    generate_node(node->cast_expr.expr, target);
+    IROperation op;
+    op.operation = IR_CAST;
+    op.integer = integer_create(BITS_64, true, node->cast_expr.cast_to);
+    ir_function_add_operation((IRFunction *) target, op);
+}
+
 __attribute__((unused)) void generate_COMPOUND_INITIALIZER(BoundNode *node, IRObject *target)
 {
     for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
@@ -131,7 +140,7 @@ __attribute__((unused)) void generate_COMPOUND_INITIALIZER(BoundNode *node, IROb
     }
     IROperation op;
     op.operation = IR_NEW_DATUM;
-    op.integer.value.unsigned_value = node->typespec.type_id;
+    op.integer = integer_create(BITS_64, true, node->typespec.type_id);
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -211,12 +220,10 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     ir_function_add_operation(fnc, op);
     op.operation = IR_PUSH_INT_CONSTANT;
     assert(typeid_builtin_type(range_of->type_id));
-    op.integer.type = range_of->builtin_type;
-    if (BuiltinType_is_unsigned(op.integer.type)) {
-        op.integer.value.unsigned_value = 1;
-    } else {
-        op.integer.value.signed_value = 1;
-    }
+    op.integer = integer_create(
+        BuiltinType_width(range_of->builtin_type),
+        BuiltinType_is_unsigned(range_of->builtin_type),
+        1);
     ir_function_add_operation(fnc, op);
     op.operation = IR_BINARY_OPERATOR;
     op.binary_operator.op = OP_ADD;
@@ -338,19 +345,7 @@ __attribute__((unused)) void generate_INTEGER(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
-    op.integer.type = typeid_builtin_type(typeid_canonical_type_id(node->typespec.type_id));
-    int         base = 10;
-    char const *ptr = node->name.ptr;
-    if (sv_startswith(node->name, sv_from("0x")) || sv_startswith(node->name, sv_from("0X"))) {
-        base = 16;
-        ptr += 2;
-    }
-    if (BuiltinType_is_unsigned(op.integer.type)) {
-        op.integer.value.unsigned_value = strtoul(ptr, NULL, base);
-    } else {
-        op.integer.value.signed_value = strtol(ptr, NULL, base);
-    }
-    Integer_boundscheck(op.integer);
+    op.integer = node->integer;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -691,14 +686,14 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, "%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
-        if (BuiltinType_is_unsigned(op->integer.type)) {
-            sb_printf(&sb, "%" PRIu64 " [0x%08" PRIx64 "]", op->integer.value.unsigned_value, op->integer.value.unsigned_value);
+        if (op->integer.un_signed) {
+            sb_printf(&sb, "%" PRIu64 " [0x%08" PRIx64 "]", op->integer.u64, op->integer.u64);
         } else {
-            sb_printf(&sb, "%" PRIi64, op->integer.value.signed_value);
+            sb_printf(&sb, "%" PRIi64, op->integer.i64);
         }
         break;
     case IR_NEW_DATUM:
-        sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.value.unsigned_value)), op->integer.value.unsigned_value);
+        sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.u64)), op->integer.u64);
         break;
     case IR_BINARY_OPERATOR:
         sb_printf(&sb, "%s(%.*s, %.*s)", Operator_name(op->binary_operator.op), SV_ARG(typeid_name(op->binary_operator.lhs)), SV_ARG(typeid_name(op->binary_operator.rhs)));

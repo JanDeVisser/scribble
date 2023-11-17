@@ -369,33 +369,148 @@ StringView sv_strip(StringView sv)
     return ret;
 }
 
-bool sv_tolong(StringView sv, long *result, StringView *tail)
+bool char_is_digit_in_base(int ch, size_t base)
 {
-    assert(result);
-    if (sv.length == 0) {
-        if (tail) {
-            *tail = sv;
-        }
-        return false;
+    assert(base > 1 && base <= 36);
+    if (base <= 10) {
+        return isdigit(ch) && (ch < '0' + base);
     }
+    ch = toupper(ch);
+    return isdigit(ch) || ((ch >= 'A') && (ch < 'A' + base - 10));
+}
 
-    AllocatorState state = mem_save();
-    char          *sv_str = mem_allocate(sv.length + 1);
-    char          *tail_str;
-    memcpy(sv_str, sv.ptr, sv.length);
-    sv_str[sv.length] = 0;
-    long res = strtol(sv_str, &tail_str, 10);
-    bool ret = tail_str != sv_str;
-    if (tail) {
-        size_t processed = tail_str - sv_str;
-        tail->ptr = tail->ptr + processed;
-        tail->length = tail->length - processed;
+int digit_value_in_base(int ch, size_t base)
+{
+    assert(base > 1 && base <= 36);
+    assert(char_is_digit_in_base(ch, base));
+    if (ch <= '9') {
+        return ch - '0';
     }
-    if (ret) {
-        *result = res;
+    ch = toupper(ch);
+    return ch - 'A' + 10;
+}
+
+// Wholesale theft from
+//   https://github.com/pts/pts-parse-int/blob/master/parse_dec.cc
+// and
+//   https://ptspts.blogspot.com/2014/04/how-to-parse-integer-in-c-and-c-with.html
+
+#undef INTEGER_SIZE
+#define INTEGER_SIZE(sz)                                                      \
+    IntegerParseResult sv_parse_u##sz(StringView sv)                          \
+    {                                                                         \
+        IntegerParseResult ret = { 0 };                                       \
+        ret.integer.un_signed = true;                                         \
+        ret.integer.size = BITS_##sz;                                         \
+        if (sv.length == 0) {                                                 \
+            return ret;                                                       \
+        }                                                                     \
+        size_t  ix = 0;                                                       \
+        uint8_t base = 10;                                                    \
+        while (ix < sv.length && isspace(sv.ptr[ix])) {                       \
+            ++ix;                                                             \
+        }                                                                     \
+        if (ix >= sv.length) {                                                \
+            return ret;                                                       \
+        }                                                                     \
+        if (ix < sv.length - 2 && sv.ptr[ix] == '0') {                        \
+            if (sv.ptr[ix + 1] == 'x' || sv.ptr[ix + 1] == 'X') {             \
+                base = 16;                                                    \
+                ix += 2;                                                      \
+            } else if (sv.ptr[ix + 1] == 'b' || sv.ptr[ix + 1] == 'B') {      \
+                base = 2;                                                     \
+                ix += 2;                                                      \
+            }                                                                 \
+        }                                                                     \
+        if (!char_is_digit_in_base(sv.ptr[ix], base)) {                       \
+            return ret;                                                       \
+        }                                                                     \
+                                                                              \
+        uint##sz##_t nmax = ((uint##sz##_t) ~(uint##sz##_t) 0) / 10;          \
+        while (ix < sv.length && char_is_digit_in_base(sv.ptr[ix], base)) {   \
+            int           c = digit_value_in_base(sv.ptr[ix], base);          \
+            const uint8_t nneg = -ret.integer.u##sz;                          \
+            if (nneg > nmax || (nneg == nmax && c > 5)) {                     \
+                return ret;                                                   \
+            }                                                                 \
+            ret.integer.u##sz = base * ret.integer.u##sz - c;                 \
+            ix++;                                                             \
+        }                                                                     \
+        ret.success = true;                                                   \
+        ret.tail.length = sv.length - ix;                                     \
+        ret.tail.ptr = (ret.tail.length) ? sv.ptr + ix : NULL;                \
+        return ret;                                                           \
+    }                                                                         \
+                                                                              \
+    IntegerParseResult sv_parse_i##sz(StringView sv)                          \
+    {                                                                         \
+        IntegerParseResult ret = { 0 };                                       \
+        ret.integer.un_signed = false;                                        \
+        ret.integer.size = BITS_##sz;                                         \
+        if (sv.length == 0) {                                                 \
+            return ret;                                                       \
+        }                                                                     \
+        size_t ix = 0;                                                        \
+        int8_t base = 10;                                                     \
+        while (ix < sv.length && isspace(sv.ptr[ix])) {                       \
+            ++ix;                                                             \
+        }                                                                     \
+        if (ix >= sv.length) {                                                \
+            return ret;                                                       \
+        }                                                                     \
+        bool negative = sv.ptr[ix] == '-';                                    \
+        while (ix < sv.length && isspace(sv.ptr[ix])) {                       \
+            ++ix;                                                             \
+        }                                                                     \
+        if (ix >= sv.length) {                                                \
+            return ret;                                                       \
+        }                                                                     \
+        if (ix < sv.length - 2 && sv.ptr[ix] == '0') {                        \
+            if (sv.ptr[ix + 1] == 'x' || sv.ptr[ix + 1] == 'X') {             \
+                base = 16;                                                    \
+                ix += 2;                                                      \
+            } else if (sv.ptr[ix + 1] == 'b' || sv.ptr[ix + 1] == 'B') {      \
+                base = 2;                                                     \
+                ix += 2;                                                      \
+            }                                                                 \
+        }                                                                     \
+        if (!char_is_digit_in_base(sv.ptr[ix], base)) {                       \
+            return ret;                                                       \
+        }                                                                     \
+                                                                              \
+        int##sz##_t nmax = (int##sz##_t) ~((int##sz##_t) 1 << (sz - 1)) / 10; \
+        char        cmax = (negative) ? 8 : 7;                                \
+        int##sz##_t n = 0;                                                    \
+        while (ix < sv.length && char_is_digit_in_base(sv.ptr[ix], base)) {   \
+            int          c = digit_value_in_base(sv.ptr[ix], base);           \
+            const int8_t nneg = -n;                                           \
+            if (nneg > nmax || (nneg == nmax && c > cmax)) {                  \
+                return ret;                                                   \
+            }                                                                 \
+            n = base * n - c;                                                 \
+            ix++;                                                             \
+        }                                                                     \
+        ret.success = true;                                                   \
+        ret.tail.length = sv.length - ix;                                     \
+        ret.tail.ptr = (ret.tail.length) ? sv.ptr + ix : NULL;                \
+        ret.integer.i##sz = (negative) ? n : -n;                              \
+        return ret;                                                           \
     }
-    mem_release(state);
-    return ret;
+INTEGER_SIZES(INTEGER_SIZE)
+#undef INTEGER_SIZE
+
+IntegerParseResult sv_parse_integer(StringView sv, IntegerSize size, bool un_signed)
+{
+    switch (size) {
+#undef INTEGER_SIZE
+#define INTEGER_SIZE(sz) \
+    case BITS_##sz:      \
+        return (un_signed) ? sv_parse_u##sz(sv) : sv_parse_i##sz(sv);
+        INTEGER_SIZES(INTEGER_SIZE)
+#undef INTEGER_SIZE
+    default:
+        UNREACHABLE();
+    }
 }
 
 #ifdef SV_TEST

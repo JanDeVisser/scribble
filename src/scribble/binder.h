@@ -17,6 +17,7 @@
     S(BLOCK)                \
     S(BOOL)                 \
     S(BREAK)                \
+    S(CAST)                 \
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(DECIMAL)              \
@@ -112,8 +113,13 @@ typedef struct bound_node {
             struct bound_node *expression;
         } return_stmt;
         struct {
+            struct bound_node *expr;
+            type_id            cast_to;
+        } cast_expr;
+        struct {
             struct bound_node *components;
         } compound_def;
+        Integer integer;
         struct {
             struct bound_node *condition;
             struct bound_node *if_true;

@@ -64,7 +64,7 @@ uint64_t datum_stack_pop_u64(DatumStack *stack)
 {
     Datum *d = datum_stack_pop(stack);
     assert(d->type == U64_ID);
-    uint64_t ret = d->u64;
+    uint64_t ret = d->integer.u64;
     datum_free(d);
     return ret;
 }
@@ -461,7 +461,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     case IR_MATCH:
         break;
     case IR_NEW_DATUM: {
-        type_id tid = typeid_canonical_type_id(op->integer.value.unsigned_value);
+        type_id tid = typeid_canonical_type_id(op->integer.u64);
         assert(typeid_kind(tid) == TK_AGGREGATE);
         ExpressionType *et = type_registry_get_type_by_id(tid);
         Datum          *new_datum = datum_allocate(tid);
@@ -658,9 +658,16 @@ bool set_breakpoint(ExecutionContext *ctx, StringView bp_function, StringView bp
             } else {
                 bp->index = 1;
                 if (sv_not_empty(bp_index)) {
-                    if (!sv_tolong(bp_index, (long *) &bp->index, NULL) || bp->index == 0 || bp->index >= bp->function->operations.size) {
+                    IntegerParseResult parse_result = sv_parse_i64(bp_index);
+                    if (!parse_result.success) {
                         printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
                         bp->function = NULL;
+                    } else {
+                        bp->index = parse_result.integer.i64;
+                        if (bp->index == 0 || bp->index >= bp->function->operations.size) {
+                            printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
+                            bp->function = NULL;
+                        }
                     }
                 }
             }

@@ -249,10 +249,7 @@ typedef struct value_location {
         int64_t         offset;
         StringView      symbol;
         double          float_value;
-        union {
-            uint64_t unsigned_value;
-            int64_t  signed_value;
-        };
+        Integer         integer;
     };
     struct value_location *next;
 } ValueLocation;

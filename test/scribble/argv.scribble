@@ -1,6 +1,6 @@
 func main(argv: string[]) : i32
 {
-    for x in 0u64 .. #argv {
+    for x in 0 .. #argv {
         putln(argv[x]);
     }
     return 0;

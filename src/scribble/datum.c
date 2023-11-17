@@ -124,16 +124,15 @@ void free_datums(Datum *datums, size_t num)
     }
 }
 
+#define INTEGERCASE(dt, n, ct, is_signed, format, size) case BIT_##dt:
+#define INTEGERCASES INTEGERTYPES(INTEGERCASE)
+
 unsigned long datum_unsigned_integer_value(Datum *d)
 {
     assert(datum_is_integer(d));
     switch (d->type) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        return (unsigned long) d->n;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+        INTEGERCASES
+        return MUST_OPTIONAL(UInt64, integer_unsigned_value(d->integer));
     case BIT_BOOL:
         return (unsigned long) d->bool_value;
     case BIT_POINTER:
@@ -147,12 +146,8 @@ long datum_signed_integer_value(Datum *d)
 {
     assert(datum_is_integer(d));
     switch (typeid_builtin_type(d->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        return (long) d->n;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+        INTEGERCASES
+        return MUST_OPTIONAL(Int64, integer_signed_value(d->integer));
     case BIT_BOOL:
         return (long) d->bool_value;
     case BIT_POINTER:
@@ -166,40 +161,33 @@ Datum *datum_copy(Datum *dest, Datum *src)
 {
     datum_free_contents(dest);
     dest->type = src->type;
-    switch (datum_kind(src)) {
-    case TK_PRIMITIVE: {
-        switch (typeid_builtin_type(src->type)) {
-#undef PRIMITIVETYPE
-#define PRIMITIVETYPE(dt, n, ct) \
-    case BIT_##dt:               \
-        dest->n = src->n;        \
+    switch (typeid_builtin_type(src->type)) {
+        INTEGERCASES
+        dest->integer = src->integer;
         break;
-            DATUM_PRIMITIVETYPES(PRIMITIVETYPE)
-#undef PRIMITIVETYPE
-        default:
-            UNREACHABLE();
-        }
-    } break;
-    case TK_AGGREGATE: {
-        switch (typeid_builtin_type(src->type)) {
-        case BIT_STRING:
-            dest->string = src->string;
-            break;
-        default: {
+#undef NONINTEGERPRIMITIVE
+#define NONINTEGERPRIMITIVE(bit, field, ctype) \
+    case BIT_##bit:                            \
+        dest->field = src->field;              \
+        break;
+        DATUM_NONINTEGERPRIMITIVES(NONINTEGERPRIMITIVE)
+#undef NONINTEGERPRIMITIVE
+    default:
+        switch (datum_kind(src)) {
+        case TK_AGGREGATE: {
             dest->aggregate.num_components = src->aggregate.num_components;
             dest->aggregate.components = allocate_datums(src->aggregate.num_components);
             for (size_t ix = 0; ix < dest->aggregate.num_components; ++ix) {
                 datum_copy(dest->aggregate.components + ix, src->aggregate.components + ix);
             }
         } break;
+        case TK_VARIANT:
+            dest->variant = datum_allocate(dest->variant->type);
+            datum_copy(dest->variant, src->variant);
+            break;
+        default:
+            UNREACHABLE();
         }
-    } break;
-    case TK_VARIANT:
-        dest->variant = datum_allocate(dest->variant->type);
-        datum_copy(dest->variant, src->variant);
-        break;
-    default:
-        UNREACHABLE();
     }
     return dest;
 }
@@ -238,7 +226,7 @@ Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
             fatal("String index out of bounds");
         }
         Datum *ret = datum_allocate(U8_ID);
-        ret->u8 = *(d1->string.ptr + ix);
+        ret->integer.u8 = *(d1->string.ptr + ix);
         return ret;
     } break;
     case BIT_ARRAY: {
@@ -266,13 +254,12 @@ Datum *datum_ADD(Datum *d1, Datum *d2)
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)         \
-    case BIT_##dt:                     \
-        ret->n = (ct) (d1->n + d2->n); \
+        INTEGERCASES
+        ret->integer = integer_add(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->float_value = d1->float_value + d2->float_value;
+        break;
     default:
         fatal("Cannot add data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
@@ -286,15 +273,14 @@ Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)         \
-    case BIT_##dt:                     \
-        ret->n = (ct) (d1->n - d2->n); \
+        INTEGERCASES
+        ret->integer = integer_subtract(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->float_value = d1->float_value - d2->float_value;
+        break;
     default:
-        fatal("Cannot add data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot subtract data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -304,13 +290,12 @@ Datum *datum_MULTIPLY(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)         \
-    case BIT_##dt:                     \
-        ret->n = (ct) (d1->n * d2->n); \
+        INTEGERCASES
+        ret->integer = integer_multiply(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->float_value = d1->float_value * d2->float_value;
+        break;
     default:
         fatal("Cannot multiply data of type '%s' yet", BuiltinType_name(d1->type));
     }
@@ -322,15 +307,14 @@ Datum *datum_DIVIDE(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)         \
-    case BIT_##dt:                     \
-        ret->n = (ct) (d1->n / d2->n); \
+        INTEGERCASES
+        ret->integer = integer_divide(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->float_value = d1->float_value / d2->float_value;
+        break;
     default:
-        fatal("Cannot multiply data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot divide data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -340,15 +324,11 @@ Datum *datum_MODULO(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        ret->n = (ct) (d1->n % d2->n);                  \
+        INTEGERCASES
+        ret->integer = integer_modulo(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
     default:
-        fatal("Cannot multiply data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot take the modulo of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -358,13 +338,18 @@ Datum *datum_EQUALS(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)            \
-    case BIT_##dt:                        \
-        ret->bool_value = d1->n == d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_equals(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value == d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value == d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer == d2->pointer;
+        break;
     default:
         fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
     }
@@ -376,15 +361,20 @@ Datum *datum_NOT_EQUALS(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)            \
-    case BIT_##dt:                        \
-        ret->bool_value = d1->n != d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_not_equals(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value != d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value != d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer != d2->pointer;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot determine inequality of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -394,15 +384,20 @@ Datum *datum_LESS(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)           \
-    case BIT_##dt:                       \
-        ret->bool_value = d1->n < d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_less(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value < d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value < d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer < d2->pointer;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -412,15 +407,20 @@ Datum *datum_LESS_EQUALS(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)            \
-    case BIT_##dt:                        \
-        ret->bool_value = d1->n <= d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_less_equals(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value <= d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value <= d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer <= d2->pointer;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -430,15 +430,20 @@ Datum *datum_GREATER(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)           \
-    case BIT_##dt:                       \
-        ret->bool_value = d1->n > d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_greater(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value > d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value > d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer > d2->pointer;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -448,15 +453,20 @@ Datum *datum_GREATER_EQUALS(Datum *d1, Datum *d2)
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d1->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct)            \
-    case BIT_##dt:                        \
-        ret->bool_value = d1->n >= d2->n; \
+        INTEGERCASES
+        ret->bool_value = integer_greater_equals(d1->integer, d2->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
+    case BIT_FLOAT:
+        ret->bool_value = d1->float_value >= d2->float_value;
+        break;
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value >= d2->bool_value;
+        break;
+    case BIT_POINTER:
+        ret->bool_value = d1->pointer >= d2->pointer;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
     }
     return ret;
 }
@@ -464,17 +474,17 @@ Datum *datum_GREATER_EQUALS(Datum *d1, Datum *d2)
 Datum *datum_BITWISE_AND(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
+    assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        ret->bool_value = d1->n & d2->n;                \
+        INTEGERCASES
+        ret->integer = integer_bitwise_and(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value & d2->bool_value;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot bitwise and data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
     return ret;
 }
@@ -482,17 +492,17 @@ Datum *datum_BITWISE_AND(Datum *d1, Datum *d2)
 Datum *datum_BITWISE_OR(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
+    assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        ret->bool_value = d1->n | d2->n;                \
+        INTEGERCASES
+        ret->integer = integer_bitwise_or(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value | d2->bool_value;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot bitwise and data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
     return ret;
 }
@@ -500,17 +510,17 @@ Datum *datum_BITWISE_OR(Datum *d1, Datum *d2)
 Datum *datum_BITWISE_XOR(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
+    assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        ret->bool_value = d1->n ^ d2->n;                \
+        INTEGERCASES
+        ret->integer = integer_bitwise_xor(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+    case BIT_BOOL:
+        ret->bool_value = d1->bool_value ^ d2->bool_value;
+        break;
     default:
-        fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
+        fatal("Cannot bitwise xor data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
     return ret;
 }
@@ -533,36 +543,28 @@ Datum *datum_LOGICAL_OR(Datum *d1, Datum *d2)
 
 Datum *datum_BIT_SHIFT_LEFT(Datum *d1, Datum *d2)
 {
-    assert(d2->type == BIT_U8);
+    assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size)     \
-    case BIT_##dt:                                          \
-        ret->n = d1->n << datum_unsigned_integer_value(d2); \
+        INTEGERCASES
+        ret->integer = integer_shift_left(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
     default:
-        fatal("Cannot shift left datum of type '%s'", BuiltinType_name(d1->type));
+        fatal("Cannot shift left data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
     return ret;
 }
 
 Datum *datum_BIT_SHIFT_RIGHT(Datum *d1, Datum *d2)
 {
-    assert(d2->type == BIT_U8);
+    assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size)     \
-    case BIT_##dt:                                          \
-        ret->n = d1->n >> datum_unsigned_integer_value(d2); \
+        INTEGERCASES
+        ret->integer = integer_shift_right(d1->integer, d2->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
     default:
-        fatal("Cannot shift left datum of type '%s'", BuiltinType_name(d1->type));
+        fatal("Cannot shift right data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d1->type)));
     }
     return ret;
 }
@@ -583,15 +585,11 @@ Datum *datum_NEGATE(Datum *d, Datum *)
     assert(datum_is_builtin(d));
     Datum *ret = datum_allocate(d->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef NUMERICTYPE
-#define NUMERICTYPE(dt, n, ct) \
-    case BIT_##dt:             \
-        ret->n = (ct) (-d->n); \
+        INTEGERCASES
+        ret->integer = integer_negate(d->integer);
         break;
-        NUMERICTYPES(NUMERICTYPE)
-#undef NUMERICTYPE
     default:
-        fatal("Cannot negate data of type '%s' yet", BuiltinType_name(d->type));
+        fatal("Cannot negate data of type '%s' yet", BuiltinType_name(typeid_builtin_type(d->type)));
     }
     return ret;
 }
@@ -601,10 +599,10 @@ Datum *datum_CARDINALITY(Datum *d, Datum *)
     Datum *ret = datum_allocate(U64_ID);
     switch (typeid_builtin_type(d->type)) {
     case BIT_STRING:
-        ret->u64 = d->string.length;
+        ret->integer.u64 = d->string.length;
         break;
     case BIT_ARRAY:
-        ret->u64 = d->aggregate.num_components;
+        ret->integer.u64 = d->aggregate.num_components;
         break;
     default:
         fatal("Cannot get cardinality of data of type '%s' yet", BuiltinType_name(d->type));
@@ -640,15 +638,14 @@ Datum *datum_BITWISE_INVERT(Datum *d, Datum *)
     assert(datum_is_builtin(d));
     Datum *ret = datum_allocate(d->type);
     switch (typeid_builtin_type(ret->type)) {
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        ret->n = (ct) (~d->n);                          \
+        INTEGERCASES
+        ret->integer = integer_invert(d->integer);
         break;
-        INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+    case BIT_BOOL:
+        ret->bool_value = !d->bool_value;
+        break;
     default:
-        fatal("Cannot negate data of type '%s' yet", BuiltinType_name(d->type));
+        fatal("Cannot invert data of type '%s' yet", BuiltinType_name(d->type));
     }
     return ret;
 }
@@ -694,13 +691,30 @@ StringView datum_sprint(Datum *d)
         case BIT_ERROR:
             sb_append_cstr(&sb, d->error.exception);
             break;
-#undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    case BIT_##dt:                                      \
-        sb_printf(&sb, "%" format, d->n);               \
-        break;
-            INTEGERTYPES(INTEGERTYPE)
-#undef INTEGERTYPE
+        case BIT_U8:
+            sb_printf(&sb, "%hhu", d->integer.u8);
+            break;
+        case BIT_I8:
+            sb_printf(&sb, "%hhd", d->integer.i8);
+            break;
+        case BIT_U16:
+            sb_printf(&sb, "%hu", d->integer.u16);
+            break;
+        case BIT_I16:
+            sb_printf(&sb, "%hd", d->integer.i16);
+            break;
+        case BIT_U32:
+            sb_printf(&sb, "%u", d->integer.u32);
+            break;
+        case BIT_I32:
+            sb_printf(&sb, "%d", d->integer.i32);
+            break;
+        case BIT_U64:
+            sb_printf(&sb, "%zu", d->integer.u64);
+            break;
+        case BIT_I64:
+            sb_printf(&sb, "%ld", d->integer.i64);
+            break;
         case BIT_FLOAT:
             sb_printf(&sb, "%f", d->float_value);
             break;
@@ -746,36 +760,10 @@ StringView datum_sprint(Datum *d)
 
 Datum *datum_make_integer(Integer value)
 {
-    Datum *d = datum_allocate(type_registry_id_of_builtin_type(value.type));
-    Integer_boundscheck(value);
-    switch (typeid_builtin_type(d->type)) {
-    case BIT_I8:
-        d->i8 = (int8_t) value.value.signed_value;
-        break;
-    case BIT_U8:
-        d->u8 = (uint8_t) value.value.unsigned_value;
-        break;
-    case BIT_I16:
-        d->i16 = (int16_t) value.value.signed_value;
-        break;
-    case BIT_U16:
-        d->u16 = (uint16_t) value.value.unsigned_value;
-        break;
-    case BIT_I32:
-        d->i32 = (int32_t) value.value.signed_value;
-        break;
-    case BIT_U32:
-        d->u32 = (uint32_t) value.value.unsigned_value;
-        break;
-    case BIT_I64:
-        d->u64 = value.value.signed_value;
-        break;
-    case BIT_U64:
-        d->u64 = value.value.unsigned_value;
-        break;
-    default:
-        UNREACHABLE();
-    }
+    Datum *d = datum_allocate(
+        type_registry_id_of_builtin_type(
+            BuiltinType_get_integer_type(value.size, value.un_signed)));
+    d->integer = value;
     return d;
 }
 

@@ -388,6 +388,40 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
     return true;
 }
 
+BoundNode *coerce_node(BoundNode *node, type_id type)
+{
+    type_id node_type = node->typespec.type_id;
+    if (node_type == type) {
+        return node;
+    }
+    BuiltinType bit_node = typeid_builtin_type(node_type);
+    BuiltinType bit_type = typeid_builtin_type(type);
+    if (!BuiltinType_is_integer(bit_node) || !BuiltinType_is_integer(bit_type)) {
+        return NULL;
+    }
+    if (node->type != BNT_INTEGER) {
+        if (BuiltinType_width(bit_node) > BuiltinType_width(bit_type)) {
+            return NULL;
+        }
+        if (BuiltinType_is_unsigned(bit_node) != BuiltinType_is_unsigned(bit_type)) {
+            return NULL;
+        }
+        BoundNode *cast = bound_node_make(BNT_CAST, node->parent);
+        node->parent = cast;
+        cast->cast_expr.expr = node;
+        cast->cast_expr.cast_to = type;
+        return cast;
+    } else {
+        OptionalInteger coerced_maybe = integer_coerce_to(node->integer, BuiltinType_width(bit_type), BuiltinType_is_unsigned(bit_type));
+        if (coerced_maybe.has_value) {
+            node->integer = coerced_maybe.value;
+            node->typespec.type_id = type;
+            return node;
+        }
+        return NULL;
+    }
+}
+
 BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
@@ -498,10 +532,19 @@ BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContex
     }
     TypeSpec type;
     if (!resolve_binary_expression_type(stmt->binary_expr.operator, lhs->typespec, rhs->typespec, &type)) {
-        ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
-        ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
-        fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
-            Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
+        BoundNode *coerced = coerce_node(rhs, lhs->typespec.type_id);
+        if (coerced && resolve_binary_expression_type(stmt->binary_expr.operator, lhs->typespec, coerced->typespec, &type)) {
+            rhs = coerced;
+        } else {
+            coerced = coerce_node(lhs, rhs->typespec.type_id);
+            if (!coerced || !resolve_binary_expression_type(stmt->binary_expr.operator, coerced->typespec, rhs->typespec, &type)) {
+                ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
+                ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
+                fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
+                    Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
+            }
+            lhs = coerced;
+        }
     }
     ret->typespec = type;
     ret->name = sv_from(Operator_name(stmt->binary_expr.operator));
@@ -663,8 +706,15 @@ BoundNode *bind_IMPORT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
+
     ret->name = stmt->token.text;
     ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.width, stmt->integer.un_signed), false };
+    BuiltinType        bit = typeid_builtin_type(typeid_canonical_type_id(ret->typespec.type_id));
+    IntegerParseResult parse_result = sv_parse_integer(ret->name, BuiltinType_width(bit), BuiltinType_is_unsigned(bit));
+    if (!parse_result.success) {
+        fatal("Cannot hold value '%.*s' in integer of type '%.*s'", SV_ARG(ret->name), SV_ARG(typeid_name(ret->typespec.type_id)));
+    }
+    ret->integer = parse_result.integer;
     return ret;
 }
 

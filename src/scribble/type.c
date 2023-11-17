@@ -65,7 +65,7 @@ size_t BuiltinType_width(BuiltinType type)
 
 BuiltinType BuiltinType_get_integer_type(size_t width, bool un_signed)
 {
-    return INTEGER_MASK | width | ((size_t) un_signed << 16);
+    return INTEGER_MASK | width | ((size_t) un_signed << 8);
 }
 
 bool BuiltinType_is_integer(BuiltinType type)
@@ -129,19 +129,19 @@ type_id type_registry_id_of_builtin_type(BuiltinType type)
     fatal("Builtin type '%s' (0x%04x) not found", BuiltinType_name(type), type);
 }
 
-type_id type_registry_id_of_integer_type(size_t width, bool un_signed)
+type_id type_registry_id_of_integer_type(IntegerSize bits, bool un_signed)
 {
-    switch (width) {
-    case 8:
+    switch (bits) {
+    case BITS_8:
         return (un_signed) ? U8_ID : I8_ID;
-    case 16:
+    case BITS_16:
         return (un_signed) ? U16_ID : I16_ID;
-    case 32:
+    case BITS_32:
         return (un_signed) ? U32_ID : I32_ID;
-    case 64:
+    case BITS_64:
         return (un_signed) ? U64_ID : I64_ID;
     default:
-        fatal("Invalid integer width %d", width);
+        UNREACHABLE();
     }
 }
 

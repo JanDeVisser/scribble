@@ -128,10 +128,10 @@ ValueLocation arm64_apply_string_op(ARM64Function *function, type_id lhs_type, O
     assert(!result);
     ValueLocation rhs = { 0 };
     if (rhs_type != VOID_ID) {
-        MUST_OPTIONAL(ValueLocation, rhs_temp, arm64function_pop_location(function));
+        ValueLocation rhs_temp = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
         rhs = rhs_temp;
     }
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+    ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
 
     switch (op) {
     case OP_ADD:
@@ -202,10 +202,10 @@ ValueLocation arm64_apply_array_op(ARM64Function *function, type_id lhs_type, Op
     assert(!result);
     ValueLocation rhs = { 0 };
     if (rhs_type != VOID_ID) {
-        MUST_OPTIONAL(ValueLocation, rhs_temp, arm64function_pop_location(function));
+        ValueLocation rhs_temp = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
         rhs = rhs_temp;
     }
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+    ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     if (rhs_type != VOID_ID) {
         trace(CAT_COMPILE, "%.*s %s %.*s",
             SV_ARG(value_location_to_string(lhs)),
@@ -308,8 +308,8 @@ char const *conditional_for_op_by_type(Operator op, type_id type)
 
 ValueLocation create_range(ARM64Function *function)
 {
-    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function));
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function));
+    ValueLocation rhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(lhs.type == rhs.type);
     assert(BuiltinType_is_integer(typeid_builtin_type(lhs.type)));
     type_id range_id = MUST(
@@ -372,8 +372,8 @@ ValueLocation arm64operator_apply(ARM64Function *function, type_id lhs_type, Ope
 
 ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type)
 {
-    MUST_OPTIONAL(ValueLocation, rhs, arm64function_pop_location(function))
-    MUST_OPTIONAL(ValueLocation, lhs, arm64function_pop_location(function))
+    ValueLocation rhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     trace(CAT_COMPILE, "%.*s %s %.*s",
         SV_ARG(value_location_to_string(lhs)),
         Operator_name(op),
@@ -555,7 +555,7 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
 
 ValueLocation arm64operator_apply_unary(ARM64Function *function, Operator op, type_id operand_type)
 {
-    MUST_OPTIONAL(ValueLocation, operand, arm64function_pop_location(function))
+    ValueLocation operand = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     trace(CAT_COMPILE, "%s %.*s",
         Operator_name(op),
         SV_ARG(value_location_to_string(operand)));

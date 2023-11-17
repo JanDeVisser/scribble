@@ -213,7 +213,7 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
     case BIT_##dt:                                      \
-        ret->n = (ct) t.int_return_value;               \
+        ret->integer.n = (ct) t.int_return_value;       \
         break;
         INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE

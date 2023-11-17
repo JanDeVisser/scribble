@@ -18,6 +18,7 @@
     S(BINARY_OPERATOR)        \
     S(CALL)                   \
     S(CASE)                   \
+    S(CAST)                   \
     S(DECL_VAR)               \
     S(DEFINE_AGGREGATE)       \
     S(DEFINE_ALIAS)           \
