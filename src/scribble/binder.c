@@ -33,7 +33,7 @@ static BoundNode *rebind_node(BoundNode *node, BindContext *ctx);
 static void       rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx);
 
 #undef SYNTAXNODETYPE_ENUM
-#define SYNTAXNODETYPE_ENUM(type) static BoundNode *bind_##type(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx);
+#define SYNTAXNODETYPE_ENUM(type) __attribute__((unused)) static BoundNode *bind_##type(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx);
 SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
 
@@ -422,7 +422,7 @@ BoundNode *coerce_node(BoundNode *node, type_id type)
     }
 }
 
-BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
     if (!decl) {
@@ -479,6 +479,7 @@ BoundNode *datum_to_node(Datum *d, BoundNode *parent)
         if (is_int) {
             ret = bound_node_make(BNT_INTEGER, parent);
             ret->name = datum_sprint(d);
+            ret->integer = d->integer;
             ret->typespec = (TypeSpec) { .type_id = type_registry_id_of_builtin_type(bit), .optional = false };
             return ret;
         }
@@ -519,7 +520,7 @@ BoundNode *evaluate_node(BoundNode *node)
     return node;
 }
 
-BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     if (stmt->binary_expr.operator== OP_LOGICAL_OR || stmt->binary_expr.operator== OP_LOGICAL_AND) {
         return short_circuit_logical_operators(parent, stmt, ctx);
@@ -554,7 +555,7 @@ BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContex
     return evaluate_node(ret);
 }
 
-BoundNode *bind_BLOCK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_BLOCK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode   *ret = bound_node_make(BNT_BLOCK, parent);
     BindContext *block_ctx = context_make_subcontext(ctx);
@@ -563,7 +564,7 @@ BoundNode *bind_BLOCK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *ret = bound_node_make(BNT_BOOL, parent);
     ret->name = stmt->token.text;
@@ -571,7 +572,7 @@ BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *controllable = parent;
     while (controllable) {
@@ -588,7 +589,7 @@ BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_COMPOUND_INITIALIZER, parent);
     ret->name = stmt->name;
@@ -596,12 +597,12 @@ BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindCo
     return ret;
 }
 
-BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     return bind_BREAK(parent, stmt, ctx);
 }
 
-BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *ret = bound_node_make(BNT_DECIMAL, parent);
     ret->name = stmt->name;
@@ -609,7 +610,7 @@ BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_FOR, parent);
     ret->name = stmt->name;
@@ -630,7 +631,7 @@ BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     TypeSpec return_type = { VOID_ID, false };
     TypeSpec error_type = { VOID_ID, false };
@@ -662,7 +663,7 @@ BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
     if (!fnc) {
@@ -678,14 +679,14 @@ BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     return ret;
 }
 
-BoundNode *bind_FUNCTION_IMPL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_FUNCTION_IMPL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_FUNCTION_IMPL, parent);
     bind_nodes(ret, stmt->function_impl.statements, &ret->block.statements, ctx);
     return ret;
 }
 
-BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_IF, parent);
     ret->if_statement.condition = bind_node(ret, stmt->if_statement.condition, ctx);
@@ -694,7 +695,7 @@ BoundNode *bind_IF(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_IMPORT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_IMPORT(BoundNode *, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_IMPORT, NULL);
     ret->name = stmt->name;
@@ -703,7 +704,7 @@ BoundNode *bind_IMPORT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
 
@@ -718,7 +719,7 @@ BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_LABEL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_LABEL(BoundNode *, SyntaxNode *stmt, BindContext *)
 {
     SyntaxNode *breakable = stmt->next;
     if (breakable->type == SNT_LOOP || breakable->type == SNT_WHILE) {
@@ -727,7 +728,7 @@ BoundNode *bind_LABEL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return NULL;
 }
 
-BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_LOOP, parent);
     ret->name = stmt->name;
@@ -735,7 +736,7 @@ BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
     BindContext *mod_ctx = context_make_subcontext(ctx);
@@ -747,19 +748,19 @@ BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_NAME(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_NAME(BoundNode *, SyntaxNode *, BindContext *)
 {
     UNREACHABLE();
 }
 
-BoundNode *bind_NATIVE_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_NATIVE_FUNCTION(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *ret = bound_node_make(BNT_NATIVE_FUNCTION, parent);
     ret->name = stmt->name;
     return ret;
 }
 
-BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     TypeSpec param_type = { VOID_ID, false };
     if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
@@ -772,7 +773,7 @@ BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
     if (!fnc) {
@@ -831,7 +832,7 @@ void program_collect_types(BoundNode *program)
     }
 }
 
-BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_PROGRAM(BoundNode *, SyntaxNode *program, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_PROGRAM, NULL);
     ret->name = program->name;
@@ -842,7 +843,7 @@ BoundNode *bind_PROGRAM(BoundNode *parent, SyntaxNode *program, BindContext *ctx
     return ret;
 }
 
-BoundNode *bind_RETURN(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_RETURN(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_RETURN, parent);
     if (stmt->return_stmt.expression) {
@@ -851,7 +852,7 @@ BoundNode *bind_RETURN(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *)
 {
     BoundNode *ret = bound_node_make(BNT_STRING, parent);
     ret->name = stmt->name;
@@ -859,7 +860,7 @@ BoundNode *bind_STRING(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *type_node = bound_node_make(BNT_STRUCT, parent);
     type_node->name = stmt->name;
@@ -885,7 +886,7 @@ BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return NULL;
 }
 
-BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_TERNARYEXPRESSION, parent);
     BoundNode *condition = bind_node(ret, stmt->ternary_expr.condition, ctx);
@@ -908,12 +909,12 @@ BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindConte
     return evaluate_node(ret);
 }
 
-BoundNode *bind_TYPE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_TYPE(BoundNode *, SyntaxNode *, BindContext *)
 {
     return NULL;
 }
 
-BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     TypeSpec param_type = { VOID_ID, false };
     if (!resolve_type_node(stmt->parameter.parameter_type, &param_type)) {
@@ -925,7 +926,7 @@ BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext 
     return ret;
 }
 
-BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_UNARYEXPRESSION, parent);
     BoundNode *operand = bind_node(ret, stmt->unary_expr.operand, ctx);
@@ -944,7 +945,7 @@ BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext
     return evaluate_node(ret);
 }
 
-BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->variable.names->name);
     if (!decl) {
@@ -999,7 +1000,7 @@ BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
     return ret;
 }
 
-BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *expr = NULL;
     TypeSpec   var_type = { VOID_ID, false };
@@ -1059,7 +1060,7 @@ BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxNode *stmt, BindContext *
     return ret;
 }
 
-BoundNode *bind_WHILE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_WHILE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_WHILE, parent);
     ret->name = stmt->name;
