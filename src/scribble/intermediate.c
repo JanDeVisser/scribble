@@ -690,6 +690,7 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         } else {
             sb_printf(&sb, "%" PRIi64, op->integer.i64);
         }
+        sb_printf(&sb, " : %c%d", (op->integer.un_signed) ? 'u' : 'i', (int) op->integer.size);
         break;
     case IR_NEW_DATUM:
         sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.u64)), op->integer.u64);
