@@ -125,7 +125,6 @@ __attribute__((unused)) void generate_BREAK(BoundNode *node, IRObject *target)
 
 __attribute__((unused)) void generate_CAST(BoundNode *node, IRObject *target)
 {
-    IRFunction *fnc = (IRFunction *) target;
     generate_node(node->cast_expr.expr, target);
     IROperation op;
     op.operation = IR_CAST;
