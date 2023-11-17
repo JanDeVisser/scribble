@@ -1,3 +1,4 @@
 func main() : int {
     putln("Hello, world!");
+    return 0;
 }
