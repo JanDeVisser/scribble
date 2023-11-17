@@ -958,7 +958,6 @@ Datum *evaluate_function(IRFunction function)
 {
     Scope            root_scope = { 0 };
     ExecutionContext ctx = { 0 };
-    ir_function_list(&function, 0);
     ctx.root_scope = &root_scope;
     ctx.execution_mode = EM_RUN;
     FunctionReturn ret = execute_function(&ctx, &function);
