@@ -23,6 +23,7 @@
     S(DEFINE_AGGREGATE)       \
     S(DEFINE_ALIAS)           \
     S(DEFINE_VARIANT)         \
+    S(DEREFERENCE)            \
     S(END_CASE)               \
     S(END_MATCH)              \
     S(JUMP)                   \
@@ -38,6 +39,7 @@
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \
+    S(PUSH_VAR_ADDRESS)       \
     S(PUSH_VAR_COMPONENT)     \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \

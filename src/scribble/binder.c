@@ -330,26 +330,44 @@ bool resolve_binary_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, Typ
     return false;
 }
 
-bool resolve_unary_expression_type(Operator op, TypeSpec operand, TypeSpec *ret)
+bool resolve_unary_expression_type(Operator op, BoundNode *operand, TypeSpec *ret)
 {
-    BuiltinType bit_operand = typeid_builtin_type(operand.type_id);
+    if (op == OP_ADDRESS_OF) {
+        if (operand->type != BNT_VARIABLE) {
+            return false;
+        }
+        ret->type_id = typeid_pointer_to(operand->typespec.type_id);
+        return true;
+    }
+    if (op == OP_DEREFERENCE) {
+        if (typeid_builtin_type(operand->typespec.type_id) != BIT_POINTER) {
+            return false;
+        }
+        ExpressionType   *et = type_registry_get_type_by_id(operand->typespec.type_id);
+        TemplateArgument *template_arg = type_get_argument(et, sv_from("T"));
+        ret->type_id = template_arg->type;
+        return true;
+    }
+
+    type_id     type = operand->typespec.type_id;
+    BuiltinType bit_operand = typeid_builtin_type(type);
 
     for (size_t ix = 0; s_unary_operator_signatures[ix].op != OP_INVALID; ++ix) {
         if (s_unary_operator_signatures[ix].op == op && s_unary_operator_signatures[ix].operand == bit_operand) {
             type_id result = type_registry_id_of_builtin_type(s_operator_signatures[ix].result);
             if (typeid_is_template(result)) {
-                if (typeid_is_specialization(operand.type_id) && typeid_specializes(operand.type_id) == result) {
-                    *ret = operand;
+                if (typeid_is_specialization(type) && typeid_specializes(type) == result) {
+                    *ret = operand->typespec;
                     return true;
                 } else {
                     return false;
                 }
             } else if (result == BIT_PARAMETER) {
-                assert(typeid_is_specialization(operand.type_id));
-                ExpressionType *type = type_registry_get_type_by_id(operand.type_id);
-                assert(type->num_arguments == 1);
-                assert(type->template_arguments[0].arg_type == TPT_TYPE);
-                *ret = (TypeSpec) { .type_id = type->template_arguments[0].type, .optional = false };
+                assert(typeid_is_specialization(type));
+                ExpressionType *et = type_registry_get_type_by_id(type);
+                assert(et->num_arguments == 1);
+                assert(et->template_arguments[0].arg_type == TPT_TYPE);
+                *ret = (TypeSpec) { .type_id = et->template_arguments[0].type, .optional = false };
                 return true;
             } else {
                 *ret = (TypeSpec) { .type_id = result, .optional = false };
@@ -929,12 +947,13 @@ __attribute__((unused)) BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, Syntax
 __attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_UNARYEXPRESSION, parent);
+
     BoundNode *operand = bind_node(ret, stmt->unary_expr.operand, ctx);
     if (operand->type == BNT_UNBOUND_NODE) {
         return bound_node_make_unbound(parent, stmt, NULL);
     }
     TypeSpec type;
-    if (!resolve_unary_expression_type(stmt->unary_expr.operator, operand->typespec, &type)) {
+    if (!resolve_unary_expression_type(stmt->unary_expr.operator, operand, &type)) {
         fatal("Could not resolve return type of operator '%s' with operand type '%.*s'",
             Operator_name(stmt->binary_expr.operator), SV_ARG(typeid_name(operand->typespec.type_id)));
     }

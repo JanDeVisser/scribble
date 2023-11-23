@@ -260,6 +260,9 @@ void graph_node_emit(GraphNode *node, FILE *f)
             graph_node_forward(node, abstract(sn->return_stmt.expression), "condition", f);
         }
         break;
+    case SNT_UNARYEXPRESSION:
+        graph_node_forward(node, abstract(sn->unary_expr.operand), "operand", f);
+        break;
     case SNT_WHILE:
         graph_node_forward(node, abstract(sn->while_statement.condition), "condition", f);
         graph_node_forward(node, abstract(sn->while_statement.statement), "statement", f);
@@ -322,6 +325,9 @@ void graph_node_emit(GraphNode *node, FILE *f)
     } break;
     case BNT_RETURN:
         graph_node_forward(node, abstract(bn->return_stmt.expression), "expression", f);
+        break;
+    case BNT_UNARYEXPRESSION:
+        graph_node_forward(node, abstract(bn->unary_expr.operand), "operand", f);
         break;
     case BNT_UNBOUND_NODE:
         graph_node_forward(node, abstract(bn->unbound_node), "Unbound", f);

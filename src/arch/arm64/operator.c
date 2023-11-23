@@ -574,6 +574,8 @@ ValueLocation arm64operator_apply_unary(ARM64Function *function, Operator op, ty
     char const   *res = reg_with_width(result_reg, width);
 
     switch (op) {
+    case OP_ADDRESS_OF:
+
     case OP_IDENTITY:
         return operand;
     case OP_NEGATE:

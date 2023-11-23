@@ -101,3 +101,23 @@ void arm64variable_load_variable(ARM64Variable *variable)
     arm64function_copy(function, to_location, from_location);
     arm64function_push_location(function, to_location);
 }
+
+ValueLocation arm64variable_reference(ARM64Variable *variable)
+{
+    ARM64Function *function = variable->scope->function;
+    ValueLocation  to_location = arm64function_location_for_type(function,
+         typeid_pointer_to(variable->var_decl.type.type_id));
+
+    switch (variable->kind) {
+    case VK_PARAMETER:
+    case VK_LOCAL: {
+        arm64function_add_instruction(function, "add", "%s,fp,#0x%x", x_reg(to_location.reg),
+            variable->scope->function->scribble.stack_depth - variable->local_address.offset);
+        arm64function_push_location(function, to_location);
+        break;
+    }
+    default:
+        NYI("arm64variable_reference('%s')", VariableKind_name(variable->kind));
+    }
+    return to_location;
+}

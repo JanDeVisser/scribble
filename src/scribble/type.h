@@ -248,6 +248,8 @@ extern TemplateArgument  *type_get_argument(ExpressionType *type, StringView arg
 extern TypeComponent     *type_get_component(ExpressionType *type, StringView component);
 extern ErrorOrTypeID      type_set_template_parameters(type_id template_id, size_t num, TemplateParameter *parameters);
 extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t num, TemplateArgument *arguments);
+extern type_id            typeid_pointer_to(type_id type);
+extern type_id            typeid_pointer_references(type_id type);
 
 static inline TypeKind typeid_kind(type_id type)
 {

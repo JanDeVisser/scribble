@@ -500,11 +500,25 @@ __attribute__((unused)) void generate_TYPE_COMPONENT(BoundNode *node, IRObject *
 __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    generate_node(node->unary_expr.operand, target);
-    op.operation = IR_UNARY_OPERATOR;
-    op.unary_operator.op = node->unary_expr.operator;
-    op.unary_operator.operand = node->unary_expr.operand->typespec.type_id;
-    ir_function_add_operation((IRFunction *) target, op);
+    switch (node->unary_expr.operator) {
+    case OP_ADDRESS_OF:
+        op.operation = IR_PUSH_VAR_ADDRESS;
+        op.sv = node->unary_expr.operand->name;
+        ir_function_add_operation((IRFunction *) target, op);
+        break;
+    case OP_DEREFERENCE:
+        generate_node(node->unary_expr.operand, target);
+        op.operation = IR_DEREFERENCE;
+        ir_function_add_operation((IRFunction *) target, op);
+        break;
+    default:
+        generate_node(node->unary_expr.operand, target);
+        op.operation = IR_UNARY_OPERATOR;
+        op.unary_operator.op = node->unary_expr.operator;
+        op.unary_operator.operand = node->unary_expr.operand->typespec.type_id;
+        ir_function_add_operation((IRFunction *) target, op);
+        break;
+    }
 }
 
 __attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *node, IRObject *target)
@@ -661,6 +675,7 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
     case IR_LABEL:
         sb_printf(&sb, "lbl_%zu", op->label);
         break;
+    case IR_DEREFERENCE:
     case IR_END_MATCH:
         break;
     case IR_MATCH:
@@ -668,6 +683,7 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         break;
     case IR_POP_VAR:
     case IR_PUSH_VAR:
+    case IR_PUSH_VAR_ADDRESS:
     case IR_PUSH_STRING_CONSTANT:
         sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
         break;

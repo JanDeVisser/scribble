@@ -532,6 +532,7 @@ extern StringView            arm64variable_to_string(ARM64Variable *var);
 extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
 extern void                  arm64variable_load_variable(ARM64Variable *variable);
 extern ValueLocation         arm64variable_pointer(ARM64Variable *variable);
+extern ValueLocation         arm64variable_reference(ARM64Variable *variable);
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);

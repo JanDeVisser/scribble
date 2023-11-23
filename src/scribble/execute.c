@@ -528,6 +528,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             return next;
         }
     } break;
+    case IR_PUSH_VAR_ADDRESS:
+        next.type = NIT_EXCEPTION;
+        next.exception = "PUSH_VAR_ADDRESS not supported in execution mode";
+        return next;
+    case IR_DEREFERENCE:
+        next.type = NIT_EXCEPTION;
+        next.exception = "DEREFERENCE not supported in execution mode";
+        return next;
     case IR_PUSH_VAR_COMPONENT: {
         char const *err = scope_push_variable_component(ctx->scope, op->var_component.name, op->var_component.component, &ctx->stack);
         if (err) {

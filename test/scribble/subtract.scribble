@@ -1,6 +1,7 @@
 func main() : i32 {
-    var x = 7 - 5;
-    puti(x);
+    var x = 7;
+    var y = 5;
+    puti(x-y);
     endln();
     return x;
 }

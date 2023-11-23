@@ -1,0 +1,9 @@
+func main() : i32
+{
+    var x = 42;
+    //var p = @x;
+    var xx = *(@x);
+    puti(xx);
+    endln();
+    return 0;
+}

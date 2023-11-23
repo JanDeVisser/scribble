@@ -764,3 +764,24 @@ ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponen
     }
     RETURN(TypeID, type->type_id);
 }
+
+type_id typeid_pointer_to(type_id type)
+{
+    return MUST(TypeID,
+        type_specialize_template(POINTER_ID, 1,
+            (TemplateArgument[]) {
+                {
+                    .name = sv_from("T"),
+                    .arg_type = TPT_TYPE,
+                    .type = type,
+                },
+            }));
+}
+
+type_id typeid_pointer_references(type_id type)
+{
+    assert(typeid_builtin_type(type) == BIT_POINTER);
+    ExpressionType   *et = type_registry_get_type_by_id(type);
+    TemplateArgument *template_arg = type_get_argument(et, sv_from("T"));
+    return template_arg->type;
+}

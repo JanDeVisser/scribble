@@ -147,6 +147,22 @@ __attribute__((unused)) void generate_DEFINE_VARIANT(ARM64Function *function, IR
 {
 }
 
+__attribute__((unused)) void generate_DEREFERENCE(ARM64Function *function, IROperation *op)
+{
+    ValueLocation ptr_location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    assert(ptr_location.kind == VLK_REGISTER);
+    arm64function_push_location(
+        function,
+        (ValueLocation) {
+            .type = typeid_pointer_references(ptr_location.type),
+            .kind = VLK_POINTER,
+            .pointer = {
+                .reg = ptr_location.reg,
+                .offset = 0,
+            },
+        });
+}
+
 __attribute__((unused)) void generate_END_CASE(ARM64Function *function, IROperation *op)
 {
     ARM64Scope *scope = function->scribble.current_scope;
@@ -245,6 +261,10 @@ __attribute__((unused)) void generate_POP_VAR(ARM64Function *function, IROperati
     arm64variable_store_variable(var, location);
 }
 
+__attribute__((unused)) void generate_POP_VAR_ADDRESS(ARM64Function *function, IROperation *op)
+{
+}
+
 __attribute__((unused)) void generate_POP_VAR_COMPONENT(ARM64Function *function, IROperation *op)
 {
 }
@@ -329,6 +349,13 @@ __attribute__((unused)) void generate_PUSH_VAR(ARM64Function *function, IROperat
     arm64variable_load_variable(var);
 }
 
+__attribute__((unused)) void generate_PUSH_VAR_ADDRESS(ARM64Function *function, IROperation *op)
+{
+    ARM64Variable *var = arm64function_variable_by_name(function, op->sv);
+    ValueLocation  var_ptr = arm64variable_reference(var);
+    arm64function_push_location(function, var_ptr);
+}
+
 __attribute__((unused)) void generate_PUSH_VAR_COMPONENT(ARM64Function *function, IROperation *op)
 {
     ARM64Variable  *var = arm64function_variable_by_name(function, op->var_component.name);
@@ -402,6 +429,7 @@ void generate_code(ARM64Function *arm_function)
         default:
             UNREACHABLE();
         }
+        arm64function_add_text(arm_function, "\n");
     }
     arm64function_leave(arm_function);
 }

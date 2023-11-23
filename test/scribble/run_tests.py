@@ -12,7 +12,7 @@ import subprocess
 
 import sys
 
-scribble_build_dir = os.path.join("..", "..")
+scribble_build_dir = os.path.join("..", "..", "cmake-build-debug")
 scribble_bin_dir = os.path.join(scribble_build_dir, "bin")
 scribble_path = os.path.join(scribble_bin_dir, "scribble")
 

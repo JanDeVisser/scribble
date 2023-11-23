@@ -298,7 +298,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
     size_t    aligned_sz = align_at(sz, 16);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);
-    code_add_comment(code, "copy %.*s to %.*s",
+    code_add_comment(code, "       Copy %.*s to %.*s",
         SV_ARG(value_location_to_string(from_location)),
         SV_ARG(value_location_to_string(to_location)));
     switch (to_location.kind) {
