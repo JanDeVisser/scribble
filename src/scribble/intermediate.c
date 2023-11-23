@@ -509,6 +509,7 @@ __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject 
     case OP_DEREFERENCE:
         generate_node(node->unary_expr.operand, target);
         op.operation = IR_DEREFERENCE;
+        op.type = node->typespec.type_id;
         ir_function_add_operation((IRFunction *) target, op);
         break;
     default:
@@ -676,10 +677,10 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, "lbl_%zu", op->label);
         break;
     case IR_DEREFERENCE:
-    case IR_END_MATCH:
-        break;
     case IR_MATCH:
         sb_printf(&sb, SV_SPEC, SV_ARG(typeid_name(op->type)));
+        break;
+    case IR_END_MATCH:
         break;
     case IR_POP_VAR:
     case IR_PUSH_VAR:
