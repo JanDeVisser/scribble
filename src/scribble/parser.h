@@ -116,6 +116,11 @@ typedef enum {
 #undef SYNTAXNODETYPE_ENUM
 } SyntaxNodeType;
 
+typedef struct type_descr {
+    StringView name;
+    DIA(struct type_descr *);
+} TypeDescr;
+
 typedef struct syntax_node {
     SyntaxNodeType      type;
     StringView          name;
@@ -186,9 +191,7 @@ typedef struct syntax_node {
             struct syntax_node *if_true;
             struct syntax_node *if_false;
         } ternary_expr;
-        struct {
-            bool array;
-        } type_descr;
+        TypeDescr type_descr;
         struct {
             struct syntax_node *operand;
             Operator operator;

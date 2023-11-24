@@ -378,30 +378,41 @@ bool resolve_unary_expression_type(Operator op, BoundNode *operand, TypeSpec *re
     return false;
 }
 
+ErrorOrTypeID resolve_type(TypeDescr *type_descr)
+{
+    ExpressionType *et = type_registry_get_type_by_name(type_descr->name);
+    if (et == NULL) {
+        ErrorOrTypeID_error(TypeError, 0, "Unknown type '%.*s'", type_descr->name);
+    }
+    if (type_descr->size == 0) {
+        RETURN(TypeID, typeid_canonical_type_id(et->type_id));
+    }
+    if (type_descr->size != et->num_parameters) {
+        // TODO: Partial specialization?
+        ErrorOrTypeID_error(TypeError, 0,
+            "Invalid number of template arguments for template '%.*s': expected %d, got %d",
+            type_descr->name, et->num_parameters, type_descr->size);
+    }
+    TemplateArgument *arguments = allocate_array(TemplateArgument, type_descr->size);
+    for (size_t ix = 0; ix < type_descr->size; ++ix) {
+        assert(et->template_parameters[ix].type == TPT_TYPE);
+        type_id arg_type = TRY(TypeID, resolve_type(type_descr->elements[ix]));
+        arguments[ix].arg_type = TPT_TYPE;
+        arguments[ix].name = et->template_parameters[ix].name;
+        arguments[ix].type = arg_type;
+    }
+    return type_specialize_template(et->type_id, type_descr->size, arguments);
+}
+
 bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
 {
     assert(type_node->type == SNT_TYPE);
-    ExpressionType *type = type_registry_get_type_by_name(type_node->name);
-    if (!type) {
-        fprintf(stderr, "Unknown type '" SV_SPEC "'", SV_ARG(type_node->name));
+    ErrorOrTypeID type_id_maybe = resolve_type(&type_node->type_descr);
+    if (ErrorOrTypeID_is_error(type_id_maybe)) {
+        fprintf(stderr, "Could not resolve type: %s\n", Error_to_string(type_id_maybe.error));
         return false;
     }
-    if (type_node->type_descr.array) {
-        type_id array_of_type = MUST(TypeID,
-            type_specialize_template(
-                ARRAY_ID,
-                1,
-                (TemplateArgument[]) {
-                    {
-                        .name = sv_from("T"),
-                        .arg_type = TPT_TYPE,
-                        .type = type->type_id,
-                    } }));
-        (*typespec).type_id = typeid_canonical_type_id(array_of_type);
-        (*typespec).optional = false;
-        return true;
-    }
-    (*typespec).type_id = typeid_canonical_type_id(type->type_id);
+    (*typespec).type_id = type_id_maybe.value;
     (*typespec).optional = false;
     return true;
 }

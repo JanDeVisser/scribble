@@ -700,21 +700,46 @@ SyntaxNode *parse_statement(ParserContext *ctx)
     return ret;
 }
 
+bool parse_type_descr(ParserContext *ctx, TypeDescr *target)
+{
+    Token token = lexer_lex(ctx->lexer);
+    target->name = token.text;
+    token = lexer_next(ctx->lexer);
+    if (token_matches(token, TK_SYMBOL, '<')) {
+        while (true) {
+            lexer_lex(ctx->lexer);
+            token = lexer_next(ctx->lexer);
+            if (!token_matches(token, TK_IDENTIFIER, TC_IDENTIFIER)) {
+                return false;
+            }
+            TypeDescr *component = allocate_new(TypeDescr);
+            DIA_APPEND(TypeDescr *, target, component)
+            if (!parse_type_descr(ctx, component)) {
+                return false;
+            }
+            token = lexer_next(ctx->lexer);
+            if (token_matches(token, TK_SYMBOL, '>')) {
+                lexer_lex(ctx->lexer);
+                return true;
+            }
+            if (!token_matches(token, TK_SYMBOL, ',')) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 SyntaxNode *parse_type(ParserContext *ctx)
 {
     if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
         return NULL;
     }
-    Token token = lexer_lex(ctx->lexer);
-    if (!lexer_next_matches(ctx->lexer, TK_SYMBOL, '[')) {
-        return syntax_node_make(SNT_TYPE, token.text, token);
-    }
-    lexer_lex(ctx->lexer);
-    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ']')) {
+    Token       token = lexer_next(ctx->lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_TYPE, token.text, token);
+    if (!parse_type_descr(ctx, &ret->type_descr)) {
         return NULL;
     }
-    SyntaxNode *ret = syntax_node_make(SNT_TYPE, token.text, token);
-    ret->type_descr.array = true;
     return ret;
 }
 
