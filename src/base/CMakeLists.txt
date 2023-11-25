@@ -5,6 +5,7 @@ add_library(
         STATIC
         da.h
         error_or.c
+        fmt.c
         fn.c
         fs.c
         hash.c
@@ -18,6 +19,7 @@ add_library(
         options.c
         sb.c
         sl.c
+        ss.c
         sv.c
         threadonce.h
 )
@@ -29,3 +31,11 @@ add_executable(
 
 target_link_libraries(sv_test scb_base)
 target_compile_definitions(sv_test PUBLIC SV_TEST)
+
+add_executable(
+        fmt_test
+        fmt.c
+)
+
+target_link_libraries(fmt_test scb_base)
+target_compile_definitions(fmt_test PUBLIC FMT_TEST)
