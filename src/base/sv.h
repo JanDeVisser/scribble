@@ -104,6 +104,9 @@ extern void          sb_append_sv(StringBuilder *sb, StringView sv);
 extern void          sb_append_cstr(StringBuilder *sb, char const *s);
 extern void          sb_vprintf(StringBuilder *sb, char const *fmt, va_list args);
 extern void          sb_printf(StringBuilder *sb, char const *fmt, ...);
+extern void          sb_insert_sv(StringBuilder *sb, StringView sv, size_t at);
+extern void          sb_insert_chars(StringBuilder *sb, char const *ptr, size_t len, size_t at);
+extern void          sb_insert_cstr(StringBuilder *sb, char const *str, size_t at);
 extern StringView    sb_view(StringBuilder *sb);
 
 #define SB_SPEC SV_SPEC

@@ -179,6 +179,39 @@ void sb_printf(StringBuilder *sb, char const *fmt, ...)
     sb_vprintf(sb, fmt, args);
 }
 
+void sb_insert_sv(StringBuilder *sb, StringView sv, size_t at)
+{
+    if (at >= sb->view.length) {
+        sb_append_sv(sb, sv);
+        return;
+    }
+    sb_insert_chars(sb, sv.ptr, sv.length, at);
+}
+
+void sb_insert_chars(StringBuilder *sb, char const *ptr, size_t len, size_t at)
+{
+    if (at >= sb->view.length) {
+        sb_append_chars(sb, ptr, len);
+        return;
+    }
+    sb_reallocate(sb, sb->view.length + len + 1);
+    char *p = (char *) sb->view.ptr;
+    memmove(p + at + len, p + at, sb->view.length - at);
+    memcpy(p + at, ptr, len);
+    sb->view.length += len;
+    p[sb->view.length] = '\0';
+    trace(CAT_SV, "SBAPC:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
+}
+
+void sb_insert_cstr(StringBuilder *sb, char const *str, size_t at)
+{
+    if (at >= sb->view.length) {
+        sb_append_cstr(sb, str);
+        return;
+    }
+    sb_insert_chars(sb, str, strlen(str), at);
+}
+
 StringView sb_view(StringBuilder *sb)
 {
     return sb->view;
