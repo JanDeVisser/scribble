@@ -40,6 +40,12 @@ typedef struct integer_parse_result {
     Integer    integer;
 } IntegerParseResult;
 
+typedef struct StringScanner {
+    StringView string;
+    size_t     mark;
+    size_t     point;
+} StringScanner;
+
 extern StringView         sv_null();
 extern void               sv_free(StringView sv);
 extern StringView         sv_copy(StringView sv);
@@ -113,5 +119,22 @@ extern StringView  sl_front(StringList *sl);
 extern StringView  sl_back(StringList *sl);
 extern bool        sl_empty(StringList *sl);
 extern size_t      sl_size(StringList *sl);
+
+extern StringScanner ss_create(StringView sv);
+extern void          ss_reset(StringScanner *ss);
+extern bool          ss_expect(StringScanner *ss, char ch);
+extern bool          ss_expect_with_offset(StringScanner *ss, char ch, size_t offset);
+extern bool          ss_expect_one_of_with_offset(StringScanner *ss, char const *expect, size_t offset);
+extern bool          ss_expect_one_of(StringScanner *ss, char const *expect);
+extern bool          ss_is_one_of(StringScanner *ss, char const *expect);
+extern bool          ss_is_one_of_with_offset(StringScanner *ss, char const *expect, size_t offset);
+extern int           ss_one_of(StringScanner *ss, char const *expect);
+extern StringView    ss_read(StringScanner *ss, size_t num);
+extern int           ss_readchar(StringScanner *ss);
+extern int           ss_peek(StringScanner *ss);
+extern int           ss_peek_with_offset(StringScanner *ss, size_t offset);
+extern void          ss_skip(StringScanner *ss, size_t num);
+extern void          ss_skip_one(StringScanner *ss);
+extern size_t        ss_read_number(StringScanner *ss);
 
 #endif /* __SV_H__ */
