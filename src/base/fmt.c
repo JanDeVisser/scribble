@@ -12,6 +12,8 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
+DA_IMPL(FMTArg)
+
 typedef enum FormatState {
     FS_STRING = 0,
     FS_FORMAT_MAYBE,
@@ -72,7 +74,6 @@ typedef struct FormatSpecifier {
     size_t                   width;
     size_t                   precision;
     StringView               specifier;
-    StringView               prefix;
 } FormatSpecifier;
 
 OPTIONAL(FormatSpecifier)
@@ -549,7 +550,7 @@ FormatString fmt_parse(StringView fmt)
     }
 }
 
-StringView format_string_format(FormatString fs, FMTArg args[])
+StringView format_string_format(FormatString fs, FMTArgs args)
 {
     StringBuilder sb = sb_create();
     size_t        offset = 0;
@@ -557,20 +558,52 @@ StringView format_string_format(FormatString fs, FMTArg args[])
     for (size_t ix = 0; ix < fs.size; ++ix) {
         sb_append_sv(&sb, sv_substring(fmt, 0, fs.elements[ix].start));
         fmt = sv_lchop(fmt, fs.elements[ix].start + fs.elements[ix].length);
-        format_specifier_format(fs.elements[ix], args[ix], &sb);
+        format_specifier_format(fs.elements[ix], args.elements[ix], &sb);
     }
     sb_append_sv(&sb, sv_lchop(fmt, offset));
     return sb.view;
 }
 
-StringView fmt_format(StringView fmt, size_t num, FMTArg args[])
+StringView fmt_format(StringView fmt, FMTArgs args)
 {
     FormatString fs = fmt_parse(fmt);
-    if (fs.size != num) {
+    if (fs.size != args.size) {
         fatal("Invalid number of arguments for format string '%.*s'. Expected %d, got %d",
-            SV_ARG(fmt), fs.size, num);
+            SV_ARG(fmt), fs.size, args.size);
     }
     return format_string_format(fs, args);
+}
+
+StringView vformat(StringView fmt, va_list args) // NOLINT(readability-non-const-parameter)
+{
+    FormatString fs = fmt_parse(fmt);
+    FMTArgs      fmt_args;
+    for (size_t ix = 0; ix < fs.size; ++ix) {
+        FormatSpecifier s = fs.elements[ix];
+        FMTArg          fmt_arg;
+        switch (s.type) {
+        case FST_INT: {
+            int i = va_arg(args, int);
+            da_append_FMTArg(&fmt_args, (FMTArg) { .integer = { .size = BITS_32, .un_signed = false, .i32 = i } });
+        } break;
+        case FST_STRING: {
+            StringView sv = sv_from(va_arg(args, char *));
+            da_append_FMTArg(&fmt_args, (FMTArg) { .sv = sv });
+        } break;
+        default:
+            NYI("FormatSpecifierType %d", s.type);
+        }
+    }
+    return format_string_format(fs, fmt_args);
+}
+
+StringView format(StringView fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    StringView ret = vformat(fmt, args);
+    va_end(args);
+    return ret;
 }
 
 // #define FMT_TEST
@@ -578,11 +611,11 @@ StringView fmt_format(StringView fmt, size_t num, FMTArg args[])
 
 int main()
 {
-    StringView sv = fmt_format(sv_from("{s}"), 1, (FMTArg[]) { { .sv = sv_from("Hello, World") } });
+    StringView sv = format(sv_from("{s}"), "Hello, World");
     printf("--%.*s--\n", SV_ARG(sv));
-    sv = fmt_format(sv_from("{d}"), 1, (FMTArg[]) { { .integer = { .size = BITS_32, .un_signed = false, .i32 = 42 } } });
+    sv = format(sv_from("{d}"), 42);
     printf("--%.*s--\n", SV_ARG(sv));
-    sv = fmt_format(sv_from("Hello {d} World"), 1, (FMTArg[]) { { .integer = { .size = BITS_32, .un_signed = false, .i32 = 42 } } });
+    sv = format(sv_from("Hello {d} World"), 42);
     printf("--%.*s--\n", SV_ARG(sv));
 
     return 0;
