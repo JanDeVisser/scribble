@@ -160,6 +160,14 @@ __attribute__((unused)) void generate_DECIMAL(BoundNode *node, IRObject *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+__attribute__((unused)) void generate_ENUMERATION(BoundNode *node, IRObject *target)
+{
+}
+
+__attribute__((unused)) void generate_ENUM_VALUE(BoundNode *node, IRObject *target)
+{
+}
+
 __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;

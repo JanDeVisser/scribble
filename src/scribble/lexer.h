@@ -80,40 +80,41 @@ typedef struct {
     S(CONTINUE, continue, 2)       \
     S(ELIF, elif, 3)               \
     S(ELSE, else, 4)               \
-    S(ERROR, error, 5)             \
-    S(FOR, for, 6)                 \
-    S(FUNC, func, 7)               \
-    S(IF, if, 8)                   \
-    S(IMPORT, import, 9)           \
-    S(IN, in, 10)                  \
-    S(LOOP, loop, 11)              \
-    S(MATCH, match, 12)            \
-    S(RETURN, return, 13)          \
-    S(STRUCT, struct, 14)          \
-    S(VAR, var, 15)                \
-    S(WHILE, while, 16)            \
-    S(TRUE, true, 17)              \
-    S(FALSE, false, 18)            \
-    S(ASSIGN_BITWISE_AND, &=, 19)  \
-    S(ASSIGN_BITWISE_OR, |=, 20)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 21)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 22)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 23) \
-    S(BINARY_DECREMENT, -=, 24)    \
-    S(BINARY_INCREMENT, +=, 25)    \
-    S(BIT_SHIFT_LEFT, <<, 26)      \
-    S(BIT_SHIFT_RIGHT, >>, 27)     \
-    S(EQUALS, ==, 28)              \
-    S(GREATER_EQUALS, >=, 29)      \
-    S(LESS_EQUALS, <=, 30)         \
-    S(LOGICAL_AND, &&, 31)         \
-    S(LOGICAL_OR, ||, 32)          \
-    S(NOT_EQUALS, !=, 33)          \
-    S(RANGE, .., 34)               \
-    S(FUNC_BINDING, ->, 35)        \
-    S(MACRO_BINDING, = >, 36)      \
-    S(UNARY_DECREMENT, --, 37)     \
-    S(UNARY_INCREMENT, ++, 38)
+    S(ENUM, enum, 5)               \
+    S(ERROR, error, 6)             \
+    S(FOR, for, 7)                 \
+    S(FUNC, func, 8)               \
+    S(IF, if, 9)                   \
+    S(IMPORT, import, 10)          \
+    S(IN, in, 11)                  \
+    S(LOOP, loop, 12)              \
+    S(MATCH, match, 13)            \
+    S(RETURN, return, 14)          \
+    S(STRUCT, struct, 15)          \
+    S(VAR, var, 16)                \
+    S(WHILE, while, 17)            \
+    S(TRUE, true, 18)              \
+    S(FALSE, false, 19)            \
+    S(ASSIGN_BITWISE_AND, &=, 20)  \
+    S(ASSIGN_BITWISE_OR, |=, 21)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 22)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 23)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 24) \
+    S(BINARY_DECREMENT, -=, 25)    \
+    S(BINARY_INCREMENT, +=, 26)    \
+    S(BIT_SHIFT_LEFT, <<, 27)      \
+    S(BIT_SHIFT_RIGHT, >>, 28)     \
+    S(EQUALS, ==, 29)              \
+    S(GREATER_EQUALS, >=, 30)      \
+    S(LESS_EQUALS, <=, 31)         \
+    S(LOGICAL_AND, &&, 32)         \
+    S(LOGICAL_OR, ||, 33)          \
+    S(NOT_EQUALS, !=, 34)          \
+    S(RANGE, .., 35)               \
+    S(FUNC_BINDING, ->, 36)        \
+    S(MACRO_BINDING, = >, 37)      \
+    S(UNARY_DECREMENT, --, 38)     \
+    S(UNARY_INCREMENT, ++, 39)
 
 typedef enum {
 #undef KEYWORD_ENUM

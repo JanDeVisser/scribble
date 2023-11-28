@@ -537,10 +537,15 @@ BoundNode *datum_to_node(Datum *d, BoundNode *parent)
     return NULL;
 }
 
-BoundNode *evaluate_node(BoundNode *node)
+Datum *node_to_datum(BoundNode *node)
 {
     IRFunction expression = evaluate(node);
-    Datum     *evaluated = evaluate_function(expression);
+    return evaluate_function(expression);
+}
+
+BoundNode *evaluate_node(BoundNode *node)
+{
+    Datum *evaluated = node_to_datum(node);
     if (evaluated) {
         BoundNode *evaluated_node = datum_to_node(evaluated, node->parent);
         if (evaluated_node) {
@@ -637,6 +642,70 @@ __attribute__((unused)) BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *s
     BoundNode *ret = bound_node_make(BNT_DECIMAL, parent);
     ret->name = stmt->name;
     ret->typespec = (TypeSpec) { FLOAT_ID, false };
+    return ret;
+}
+
+__attribute__((unused)) BoundNode *bind_ENUMERATION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_ENUMERATION, parent);
+    ret->name = stmt->name;
+    ret->enumeration.underlying_type = (TypeSpec) { .type_id = I32_ID, .optional = false };
+    if (stmt->enumeration.underlying_type != NULL) {
+        if (!resolve_type_node(stmt->enumeration.underlying_type, &ret->enumeration.underlying_type)) {
+            return bound_node_make_unbound(parent, stmt, ctx);
+        }
+    }
+    if (bind_nodes(ret, stmt->enumeration.values, &ret->enumeration.values, ctx)) {
+        return bound_node_make_unbound(ret, stmt, ctx);
+    }
+    BuiltinType bit = typeid_builtin_type(ret->enumeration.underlying_type.type_id);
+    if (BuiltinType_is_integer(bit)) {
+        Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
+        for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
+            if (value->enum_value.underlying_value == NULL) {
+                value->enum_value.underlying_value = bound_node_make(BNT_INTEGER, value);
+                value->integer = cur_value;
+            } else {
+                assert(value->enum_value.underlying_value->type == BNT_INTEGER);
+                cur_value = value->enum_value.underlying_value->integer;
+            }
+            cur_value = integer_increment(cur_value);
+        }
+    } else {
+        for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
+            if (value->enum_value.underlying_value == NULL) {
+                fatal("Non-integer enumeration value '%.*s.%.*s' has no underlying value",
+                    SV_ARG(ret->name), SV_ARG(value->name));
+            }
+        }
+    }
+    return ret;
+}
+
+__attribute__((unused)) BoundNode *bind_ENUM_VALUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_ENUM_VALUE, parent);
+    ret->name = stmt->name;
+    ret->enum_value.underlying_value = NULL;
+    if (stmt->enum_value.underlying_value) {
+        BoundNode *underlying = bind_node(ret, stmt->enum_value.underlying_value, ctx);
+        Datum     *evaluated = node_to_datum(underlying);
+        if (evaluated) {
+            BoundNode *evaluated_node = datum_to_node(evaluated, ret);
+            if (evaluated_node) {
+                ret->enum_value.underlying_value = evaluated_node;
+            }
+        }
+        if (ret->enum_value.underlying_value == NULL) {
+            fatal("Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
+        }
+        if (!typespec_assignment_compatible(parent->enumeration.underlying_type, ret->enum_value.underlying_value->typespec)) {
+            fatal("Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
+                SV_ARG(parent->name), SV_ARG(ret->name),
+                SV_ARG(typespec_name(parent->enumeration.underlying_type)),
+                SV_ARG(typespec_name(ret->enum_value.underlying_value->typespec)));
+        }
+    }
     return ret;
 }
 
@@ -1321,12 +1390,6 @@ BindingObserver register_binding_observer(BindingObserver observer)
     BindingObserver ret = s_observer;
     s_observer = observer;
     return ret;
-}
-
-Datum *node_to_datum(BoundNode *node)
-{
-    IRFunction expression = evaluate(node);
-    return evaluate_function(expression);
 }
 
 #include <fmt.h>

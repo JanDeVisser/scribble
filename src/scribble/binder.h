@@ -21,6 +21,8 @@
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(DECIMAL)              \
+    S(ENUMERATION)          \
+    S(ENUM_VALUE)           \
     S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
@@ -120,6 +122,13 @@ typedef struct bound_node {
         struct {
             struct bound_node *components;
         } compound_def;
+        struct {
+            TypeSpec           underlying_type;
+            struct bound_node *values;
+        } enumeration;
+        struct {
+            struct bound_node *underlying_value;
+        } enum_value;
         Integer integer;
         struct {
             struct bound_node *condition;

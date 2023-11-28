@@ -138,6 +138,20 @@ bool parser_context_expect_and_discard(ParserContext *ctx, TokenKind kind, Token
     return ret;
 }
 
+bool parser_context_accept(ParserContext *ctx, TokenKind kind, TokenCode code)
+{
+    return token_matches(lexer_next(ctx->lexer), kind, code);
+}
+
+bool parser_context_accept_and_discard(ParserContext *ctx, TokenKind kind, TokenCode code)
+{
+    bool ret = parser_context_accept(ctx, kind, code);
+    if (ret) {
+        lexer_lex(ctx->lexer);
+    }
+    return ret;
+}
+
 void parse_arguments(ParserContext *ctx, SyntaxNode *node, char start, char end)
 {
     if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, start)) {
@@ -911,6 +925,50 @@ SyntaxNode *parse_function(ParserContext *ctx)
     }
 }
 
+SyntaxNode *parse_enum_def(ParserContext *ctx)
+{
+    lexer_lex(ctx->lexer);
+    Token ident = lexer_next(ctx->lexer);
+    if (!token_matches(ident, TK_IDENTIFIER, TC_IDENTIFIER)) {
+        parser_context_add_error(ctx, ident, sv_from("Expected 'struct' to be followed by type name"));
+        return NULL;
+    }
+    lexer_lex(ctx->lexer);
+    SyntaxNode *underlying_type = NULL;
+    if (parser_context_accept_and_discard(ctx, TK_SYMBOL, ':')) {
+        underlying_type = parse_type(ctx);
+    }
+    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, '{')) {
+        return NULL;
+    }
+    SyntaxNode *enum_node = syntax_node_make(SNT_ENUMERATION, ident.text, ident);
+    enum_node->enumeration.underlying_type = underlying_type;
+    SyntaxNode **value = &enum_node->enumeration.values;
+    while (true) {
+        if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
+            return NULL;
+        }
+        Token value_name = lexer_lex(ctx->lexer);
+        *value = syntax_node_make(SNT_ENUM_VALUE, value_name.text, value_name);
+        SyntaxNode *underlying_value = NULL;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '=')) {
+            underlying_value = parse_expression(ctx);
+        }
+        (*value)->enum_value.underlying_value = underlying_value;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
+            break;
+        }
+        if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ',')) {
+            break;
+        }
+        value = &(*value)->next;
+    }
+    if (!skip_semicolon(ctx)) {
+        return NULL;
+    }
+    return enum_node;
+}
+
 SyntaxNode *parse_struct_def(ParserContext *ctx)
 {
     lexer_lex(ctx->lexer);
@@ -1031,6 +1089,8 @@ SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
             if (statement) {
                 trace(CAT_PARSE, "Function '%.*s' parsed", SV_ARG(statement->name));
             }
+        } else if (token_matches(token, TK_KEYWORD, KW_ENUM)) {
+            statement = parse_enum_def(ctx);
         } else if (token_matches(token, TK_KEYWORD, KW_STRUCT)) {
             statement = parse_struct_def(ctx);
         } else if (token_matches(token, TK_KEYWORD, KW_IMPORT)) {

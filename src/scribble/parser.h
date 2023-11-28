@@ -165,6 +165,13 @@ typedef struct syntax_node {
             Operator operator;
         } assignment;
         struct {
+            struct syntax_node *underlying_type;
+            struct syntax_node *values;
+        } enumeration;
+        struct {
+            struct syntax_node *underlying_value;
+        } enum_value;
+        struct {
             struct syntax_node *condition;
             struct syntax_node *if_true;
             struct syntax_node *if_false;
