@@ -60,5 +60,7 @@ extern Integer         integer_shift_left(Integer i1, Integer i2);
 extern Integer         integer_shift_right(Integer i1, Integer i2);
 extern Integer         integer_negate(Integer i);
 extern Integer         integer_invert(Integer i);
+extern Integer         integer_increment(Integer i);
+extern Integer         integer_decrement(Integer i);
 
 #endif /* __INTEGER_H__ */

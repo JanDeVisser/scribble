@@ -314,3 +314,15 @@ Integer integer_negate(Integer i)
     Integer one = integer_create(i.size, i.un_signed, 1);
     return integer_add(integer_invert(i), one);
 }
+
+Integer integer_increment(Integer i)
+{
+    Integer one = integer_create(i.size, i.un_signed, 1);
+    return integer_add(i, one);
+}
+
+Integer integer_decrement(Integer i)
+{
+    Integer one = integer_create(i.size, i.un_signed, 1);
+    return integer_subtract(i, one);
+}
