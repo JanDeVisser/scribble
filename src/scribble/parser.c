@@ -892,6 +892,19 @@ SyntaxNode *parse_function(ParserContext *ctx)
             (StringView) { token.text.ptr + 1, token.text.length - 2 },
             token);
         return func;
+    } else if (token_matches(token, TK_KEYWORD, KW_MACRO_BINDING)) {
+        if (!parser_context_expect(ctx, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING)) {
+            return NULL;
+        }
+        token = lexer_lex(ctx->lexer);
+        if (!skip_semicolon(ctx)) {
+            return NULL;
+        }
+        func->function.function_impl = syntax_node_make(
+            SNT_MACRO,
+            (StringView) { token.text.ptr + 1, token.text.length - 2 },
+            token);
+        return func;
     } else {
         parser_context_add_error(ctx, token, sv_from("Expected '{' or '->' after function declaration"));
         return NULL;

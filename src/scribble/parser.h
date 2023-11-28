@@ -91,6 +91,7 @@ typedef struct operator_mapping {
     S(IMPORT)               \
     S(LABEL)                \
     S(LOOP)                 \
+    S(MACRO)                \
     S(MODULE)               \
     S(NAME)                 \
     S(NATIVE_FUNCTION)      \

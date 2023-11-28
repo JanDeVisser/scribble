@@ -36,3 +36,7 @@ func read(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
 func write(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
 
 func alloc(sz: i32) : pchar -> "scribble$alloc";
+
+func static_message() : void => "static_message";
+func format() : string => "bind_format";
+func fmt_format() : string -> "fmt_format";

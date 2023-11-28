@@ -367,6 +367,12 @@ __attribute__((unused)) void generate_LOOP(BoundNode *node, IRObject *target)
     ir_function_add_operation(fnc, op);
 }
 
+__attribute__((unused)) void generate_MACRO(BoundNode *node, IRObject *target)
+{
+    (void) node;
+    (void) target;
+}
+
 __attribute__((unused)) void generate_MODULE(BoundNode *node, IRObject *target)
 {
     IRProgram *program = (IRProgram *) target;

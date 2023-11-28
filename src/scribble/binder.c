@@ -8,6 +8,7 @@
 #include <execute.h>
 #include <intermediate.h>
 #include <log.h>
+#include <native.h>
 #include <options.h>
 #include <sv.h>
 #include <type.h>
@@ -699,12 +700,37 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
         fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
+    if (fnc->function.function_impl->type == BNT_MACRO) {
+        Datum **args = allocate_array(Datum *, 3);
+        args[0] = datum_allocate(POINTER_ID);
+        args[0]->pointer = parent;
+        args[1] = datum_allocate(POINTER_ID);
+        args[1]->pointer = stmt;
+        args[2] = datum_allocate(POINTER_ID);
+        args[3]->pointer = ctx;
+
+        Datum *processed = datum_allocate(POINTER_ID);
+        native_call(fnc->function.function_impl->name, 3, args, processed);
+        BoundNode *macro_ret = (BoundNode *) processed->pointer;
+        if (macro_ret) {
+            if (macro_ret->type == BNT_FUNCTION_CALL) {
+                if (macro_ret->typespec.type_id == VOID_ID) {
+                    fatal("Macro '%.*s' returned void function call to '%.*s'",
+                        SV_ARG(fnc->function.function_impl->name),
+                        SV_ARG(macro_ret->name));
+                }
+                macro_ret->call.discard_result = false;
+            }
+        }
+        return macro_ret;
+    }
     BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
     ret->name = stmt->name;
     ret->call.function = fnc;
     ret->call.discard_result = false;
     ret->typespec = fnc->typespec;
     bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
+    // FIXME Typecheck parameters
     return ret;
 }
 
@@ -765,6 +791,13 @@ __attribute__((unused)) BoundNode *bind_LOOP(BoundNode *parent, SyntaxNode *stmt
     return ret;
 }
 
+__attribute__((unused)) BoundNode *bind_MACRO(BoundNode *parent, SyntaxNode *stmt, BindContext *)
+{
+    BoundNode *ret = bound_node_make(BNT_MACRO, parent);
+    ret->name = stmt->name;
+    return ret;
+}
+
 __attribute__((unused)) BoundNode *bind_MODULE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode   *ret = bound_node_make(BNT_MODULE, parent);
@@ -814,7 +847,25 @@ __attribute__((unused)) BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, Syntax
     ret->call.function = fnc;
     ret->call.discard_result = true;
     ret->typespec = fnc->typespec;
-    bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
+    if (bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    if (fnc->function.function_impl->type == BNT_MACRO) {
+        Datum **args = allocate_array(Datum *, 2);
+        args[0] = datum_allocate(POINTER_ID);
+        args[0]->pointer = ret;
+        args[1] = datum_allocate(POINTER_ID);
+        args[1]->pointer = ctx;
+
+        Datum *processed = datum_allocate(POINTER_ID);
+        native_call(fnc->function.function_impl->name, 2, args, processed);
+        BoundNode *macro_ret = (BoundNode *) processed->pointer;
+        if (macro_ret) {
+            assert(macro_ret->type == BNT_FUNCTION_CALL);
+            macro_ret->call.discard_result = true;
+        }
+        return macro_ret;
+    }
     return ret;
 }
 
@@ -1271,3 +1322,85 @@ BindingObserver register_binding_observer(BindingObserver observer)
     s_observer = observer;
     return ret;
 }
+
+Datum *node_to_datum(BoundNode *node)
+{
+    IRFunction expression = evaluate(node);
+    return evaluate_function(expression);
+}
+
+#include <fmt.h>
+
+__attribute__((unused)) BoundNode *static_message(BoundNode *node, void *v_ctx)
+{
+    StringView  fmt;
+    int         argc = -1;
+    BoundNode **last = NULL;
+    FMTArgs     args = { 0 };
+    for (BoundNode *arg = node->call.argument; arg; arg = arg->next) {
+        Datum *evaluated = node_to_datum(arg);
+        if (arg == NULL) {
+            fatal("static_message called with run time evaluated arguments");
+        }
+        if (argc == -1) {
+            assert(evaluated->type == STRING_ID);
+            fmt = evaluated->string;
+        } else {
+            FMTArg fmt_arg;
+            if (datum_is_integer(evaluated)) {
+                fmt_arg.integer = evaluated->integer;
+            } else if (evaluated->type == STRING_ID) {
+                fmt_arg.sv = evaluated->string;
+            } else if (typeid_builtin_type(evaluated->type) == BIT_POINTER) {
+                fmt_arg.pointer = evaluated->pointer;
+            } else {
+                fatal("Unsupported type in static_message");
+            }
+            da_append_FMTArg(&args, fmt_arg);
+        }
+        ++argc;
+    }
+    if (argc < 0) {
+        fatal("No format message specified in static_message");
+    }
+    StringView msg = fmt_format(fmt, args);
+    printf("%.*s\n", SV_ARG(msg));
+    return NULL;
+}
+
+#if 0
+
+__attribute__((unused)) BoundNode *bind_format(BoundNode *parent, SyntaxNode *stmt, void *v_ctx)
+{
+    BindContext *ctx = (BindContext *) v_ctx;
+    BoundNode *fmt_format = bound_node_find(parent, BNT_FUNCTION, sv_from("fmt_format"));
+    if (!fmt_format) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
+    ret->call.function = fmt_format;
+    size_t argc = 0;
+    BoundNode **last = NULL;
+    for (SyntaxNode *arg = stmt->arguments.argument; arg; arg = arg->next) {
+        if (argc == 0) {
+            BoundNode *fmt_arg = bind_node(ret, arg, ctx);
+            if (fmt_arg->type == BNT_UNBOUND_NODE) {
+                return bound_node_make_unbound(parent, stmt, ctx);
+            }
+            ret->call.argument = fmt_arg;
+            last = &fmt_arg;
+        } else {
+
+        }
+        ++argc;
+    }
+    assert(argc > 0);
+
+
+    if (!fnc) {
+        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+
+}
+#endif

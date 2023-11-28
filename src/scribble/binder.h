@@ -30,6 +30,7 @@
     S(IMPORT)               \
     S(INTEGER)              \
     S(LOOP)                 \
+    S(MACRO)                \
     S(MODULE)               \
     S(NATIVE_FUNCTION)      \
     S(PARAMETER)            \
@@ -153,5 +154,6 @@ typedef void (*BindingObserver)(int, BoundNode *);
 extern char const     *BoundNodeType_name(BoundNodeType type);
 extern BoundNode      *bind(SyntaxNode *program);
 extern BindingObserver register_binding_observer(BindingObserver observer);
+extern BoundNode      *bind_format(BoundNode *parent, SyntaxNode *stmt, void *ctx);
 
 #endif /* __BINDER_H__ */

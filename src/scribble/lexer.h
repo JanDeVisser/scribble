@@ -111,8 +111,9 @@ typedef struct {
     S(NOT_EQUALS, !=, 33)          \
     S(RANGE, .., 34)               \
     S(FUNC_BINDING, ->, 35)        \
-    S(UNARY_DECREMENT, --, 36)     \
-    S(UNARY_INCREMENT, ++, 37)
+    S(MACRO_BINDING, = >, 36)      \
+    S(UNARY_DECREMENT, --, 37)     \
+    S(UNARY_INCREMENT, ++, 38)
 
 typedef enum {
 #undef KEYWORD_ENUM

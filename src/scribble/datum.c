@@ -129,8 +129,7 @@ void free_datums(Datum *datums, size_t num)
 
 unsigned long datum_unsigned_integer_value(Datum *d)
 {
-    assert(datum_is_integer(d));
-    switch (d->type) {
+    switch (typeid_builtin_type(d->type)) {
         INTEGERCASES
         return MUST_OPTIONAL(UInt64, integer_unsigned_value(d->integer));
     case BIT_BOOL:
@@ -138,6 +137,7 @@ unsigned long datum_unsigned_integer_value(Datum *d)
     case BIT_POINTER:
         return (unsigned long) d->pointer;
     default:
+        fatal("datum_unsigned_integer_value(): Cannot get get integer value of '%.*s'", SV_ARG(typeid_name(d->type)));
         UNREACHABLE();
     }
 }
