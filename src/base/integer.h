@@ -63,4 +63,17 @@ extern Integer         integer_invert(Integer i);
 extern Integer         integer_increment(Integer i);
 extern Integer         integer_decrement(Integer i);
 
+#undef INTEGER_SIZE
+#define INTEGER_SIZE(sz)                                \
+    static inline Integer i##sz(int64_t value)          \
+    {                                                   \
+        return integer_create(BITS_##sz, false, value); \
+    }                                                   \
+    static inline Integer u##sz(uint64_t value)         \
+    {                                                   \
+        return integer_create(BITS_##sz, true, value);  \
+    }
+INTEGER_SIZES(INTEGER_SIZE)
+#undef INTEGER_SIZE
+
 #endif /* __INTEGER_H__ */
