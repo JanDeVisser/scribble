@@ -12,24 +12,24 @@
     size_t cap;  \
     T     *elements
 
-#define DIA_APPEND(T, obj, elem)                                           \
-    {                                                                      \
-        if (obj->size == obj->cap) {                                       \
-            if (obj->cap == 0) {                                           \
-                obj->elements = array_allocate(sizeof(T), 4);              \
-                obj->cap = 4;                                              \
-            } else {                                                       \
-                size_t new_cap = obj->cap;                                 \
-                do {                                                       \
-                    new_cap *= 2;                                          \
-                } while (new_cap < obj->size);                             \
-                T *new_elements = array_allocate(sizeof(T), new_cap);      \
-                memcpy(new_elements, obj->elements, obj->cap * sizeof(T)); \
-                obj->elements = new_elements;                              \
-                obj->cap = new_cap;                                        \
-            }                                                              \
-        }                                                                  \
-        obj->elements[obj->size++] = elem;                                 \
+#define DIA_APPEND(T, obj, elem)                                               \
+    {                                                                          \
+        if ((obj)->size == obj->cap) {                                         \
+            if ((obj)->cap == 0) {                                             \
+                (obj)->elements = array_allocate(sizeof(T), 4);                \
+                (obj)->cap = 4;                                                \
+            } else {                                                           \
+                size_t new_cap = (obj)->cap;                                   \
+                do {                                                           \
+                    new_cap *= 2;                                              \
+                } while (new_cap < (obj)->size);                               \
+                T *new_elements = array_allocate(sizeof(T), new_cap);          \
+                memcpy(new_elements, (obj)->elements, (obj)->cap * sizeof(T)); \
+                (obj)->elements = new_elements;                                \
+                (obj)->cap = new_cap;                                          \
+            }                                                                  \
+        }                                                                      \
+        (obj)->elements[(obj)->size++] = (elem);                               \
     }
 
 #define DA_STRUCT_ELEMENTS(T, S, E)                  \
