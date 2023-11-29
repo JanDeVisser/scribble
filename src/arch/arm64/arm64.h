@@ -537,12 +537,4 @@ extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, St
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);
 
-static inline size_t align_at(size_t value, size_t alignment)
-{
-    if (value % alignment) {
-        value += alignment - (value % alignment);
-    }
-    return value;
-}
-
 #endif /* __ARM64_H__ */

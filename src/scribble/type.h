@@ -268,6 +268,14 @@ extern ErrorOrTypeID      type_specialize_template(type_id template_id, size_t n
 extern type_id            typeid_pointer_to(type_id type);
 extern type_id            typeid_pointer_references(type_id type);
 
+static inline size_t align_at(size_t value, size_t alignment)
+{
+    if (value % alignment) {
+        value += alignment - (value % alignment);
+    }
+    return value;
+}
+
 static inline TypeKind typeid_kind(type_id type)
 {
     return (TypeKind) (type >> 28);
