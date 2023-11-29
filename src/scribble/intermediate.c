@@ -590,7 +590,10 @@ __attribute__((unused)) void generate_VARIABLE_DECL(BoundNode *node, IRObject *t
 
 __attribute__((unused)) void generate_VARIANT(BoundNode *node, IRObject *target)
 {
-    generate_STRUCT(node, target);
+}
+
+__attribute__((unused)) void generate_VARIANT_OPTION(BoundNode *node, IRObject *target)
+{
 }
 
 __attribute__((unused)) void generate_WHILE(BoundNode *node, IRObject *target)

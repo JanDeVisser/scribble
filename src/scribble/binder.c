@@ -670,7 +670,7 @@ __attribute__((unused)) BoundNode *bind_ENUMERATION(BoundNode *parent, SyntaxNod
     for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
         if (value->enum_value.underlying_value == NULL) {
             value->enum_value.underlying_value = bound_node_make(BNT_INTEGER, value);
-            value->integer = cur_value;
+            value->enum_value.underlying_value->integer = cur_value;
         } else {
             assert(value->enum_value.underlying_value->type == BNT_INTEGER);
             cur_value = value->enum_value.underlying_value->integer;
@@ -744,7 +744,7 @@ __attribute__((unused)) BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *
         return bound_node_make_unbound(parent, stmt, ctx);
     }
     if (return_type.type_id != VOID_ID && error_type.type_id != VOID_ID) {
-        ErrorOrTypeID variant_id_maybe = type_registry_get_variant2(return_type.type_id, error_type.type_id);
+        ErrorOrTypeID variant_id_maybe = type_registry_get_variant(RESULT_ID, error_type.type_id, return_type.type_id);
         if (ErrorOrTypeID_is_error(variant_id_maybe)) {
             fatal(LOC_SPEC "Could not create variant return type", SN_LOC_ARG(stmt));
         }
@@ -958,9 +958,8 @@ void program_collect_types(BoundNode *program)
             type_node->name = et->name;
             type_node->typespec = (TypeSpec) { et->alias_for_id, false };
         } break;
-        case TK_AGGREGATE:
-        case TK_VARIANT: {
-            type_node = bound_node_make((type_kind(et) == TK_AGGREGATE) ? BNT_STRUCT : BNT_VARIANT, program);
+        case TK_AGGREGATE: {
+            type_node = bound_node_make(BNT_STRUCT, program);
             type_node->name = et->name;
             BoundNode **dst = &type_node->compound_def.components;
             BoundNode  *last = NULL;
@@ -985,6 +984,21 @@ void program_collect_types(BoundNode *program)
                 (*dst)->enum_value.underlying_value = bound_node_make(BNT_INTEGER, type_node);
                 (*dst)->enum_value.underlying_value->typespec = (TypeSpec) { et->enumeration.underlying_type, false };
                 (*dst)->enum_value.underlying_value->integer = et->enumeration.elements[comp_ix].value;
+                (*dst)->prev = last;
+                last = *dst;
+                dst = &last->next;
+            }
+        } break;
+        case TK_VARIANT: {
+            type_node = bound_node_make(BNT_VARIANT, program);
+            type_node->name = et->name;
+            type_node->variant_def.underlying_type = (TypeSpec) { et->variant.enumeration, false };
+            BoundNode **dst = &type_node->variant_def.options;
+            BoundNode  *last = NULL;
+            for (size_t option_ix = 0; option_ix < et->variant.size; ++option_ix) {
+                *dst = bound_node_make(BNT_VARIANT_OPTION, type_node);
+                (*dst)->name = et->variant.elements[option_ix].name;
+                (*dst)->variant_option.payload_type = (TypeSpec) { et->variant.elements[option_ix].type_id, false };
                 (*dst)->prev = last;
                 last = *dst;
                 dst = &last->next;
@@ -1261,6 +1275,112 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
     ret->name = stmt->name;
     ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = stmt->variable_decl.is_const;
+    return ret;
+}
+
+__attribute__((unused)) BoundNode *bind_VARIANT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_VARIANT, parent);
+    ret->name = stmt->name;
+    ret->variant_def.underlying_type = (TypeSpec) { .type_id = I32_ID, .optional = false };
+    if (stmt->variant_def.underlying_type != NULL) {
+        if (!resolve_type_node(stmt->variant_def.underlying_type, &ret->variant_def.underlying_type)) {
+            return bound_node_make_unbound(parent, stmt, ctx);
+        }
+    }
+    if (bind_nodes(ret, stmt->variant_def.options, &ret->variant_def.options, ctx)) {
+        return bound_node_make_unbound(ret, stmt, ctx);
+    }
+
+    type_id enum_id;
+    if (typeid_kind(ret->variant_def.underlying_type.type_id) == TK_PRIMITIVE) {
+        BuiltinType bit = typeid_builtin_type(ret->enumeration.underlying_type.type_id);
+        if (!BuiltinType_is_integer(bit)) {
+            fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
+        }
+        Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
+
+        EnumValues values = { 0 };
+        for (BoundNode *option = ret->variant_def.options; option; option = option->next) {
+            if (option->variant_option.underlying_value == NULL) {
+                option->variant_option.underlying_value = bound_node_make(BNT_INTEGER, option);
+                option->variant_option.underlying_value->integer = cur_value;
+            } else {
+                assert(option->variant_option.underlying_value->type == BNT_INTEGER);
+                cur_value = option->enum_value.underlying_value->integer;
+            }
+            da_append_EnumValue(&values, (EnumValue) { .name = option->name, .value = cur_value });
+            cur_value = integer_increment(cur_value);
+        }
+        StringBuilder sb = sb_copy_cstr("$");
+        sb_append_sv(&sb, ret->name);
+        enum_id = MUST(TypeID,
+            type_registry_make_enumeration(
+                sb.view, ret->variant_def.underlying_type.type_id, &values));
+        ret->variant_def.underlying_type.type_id = enum_id;
+    } else {
+        enum_id = ret->variant_def.underlying_type.type_id;
+        if (typeid_kind(enum_id) != TK_ENUM) {
+            fatal(LOC_SPEC "Underlying type of variant must be an enumeration type", SN_LOC_ARG(stmt));
+        }
+    }
+
+    ExpressionType *enum_type = type_registry_get_type_by_id(enum_id);
+    assert(enum_type);
+    TypeComponents components = { 0 };
+    for (size_t ix = 0; ix < enum_type->enumeration.size; ++ix) {
+        EnumValue enum_value = enum_type->enumeration.elements[ix];
+        da_append_TypeComponent(&components, (TypeComponent) { .kind = CK_TYPE, .name = enum_value.name, .type_id = VOID_ID });
+    }
+    for (BoundNode *option = ret->variant_def.options; option; option = option->next) {
+        for (size_t ix = 0; ix < components.size; ++ix) {
+            if (sv_eq(components.elements[ix].name, option->name)) {
+                if (components.elements[ix].type_id != VOID_ID) {
+                    fatal(LOC_SPEC "Duplicate enumeration value in variant definition", SN_LOC_ARG(stmt));
+                }
+                components.elements[ix].type_id = option->variant_option.payload_type.type_id;
+                break;
+            }
+        }
+    }
+    type_id variant_id = MUST(TypeID, type_registry_make_variant(ret->name, enum_id, &components));
+    ret->typespec = (TypeSpec) { .type_id = variant_id, .optional = false };
+    return ret;
+}
+
+__attribute__((unused)) BoundNode *bind_VARIANT_OPTION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *ret = bound_node_make(BNT_VARIANT_OPTION, parent);
+    ret->name = stmt->name;
+    ret->variant_option.underlying_value = NULL;
+    if (stmt->variant_option.underlying_value) {
+        if (typeid_kind(ret->variant_def.underlying_type.type_id) == TK_ENUM) {
+            fatal(LOC_SPEC "Cannot specify underlying value for variant option of enumeration type", SN_LOC_ARG(stmt));
+        }
+        BoundNode *underlying = bind_node(ret, stmt->enum_value.underlying_value, ctx);
+        Datum     *evaluated = node_to_datum(underlying);
+        if (evaluated) {
+            BoundNode *evaluated_node = datum_to_node(evaluated, ret);
+            if (evaluated_node) {
+                ret->variant_option.underlying_value = evaluated_node;
+            }
+        }
+        if (ret->variant_option.underlying_value == NULL) {
+            fatal("Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
+        }
+        if (!typespec_assignment_compatible(parent->variant_def.underlying_type, ret->variant_option.underlying_value->typespec)) {
+            fatal("Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
+                SV_ARG(parent->name), SV_ARG(ret->name),
+                SV_ARG(typespec_name(parent->variant_def.underlying_type)),
+                SV_ARG(typespec_name(ret->variant_option.underlying_value->typespec)));
+        }
+    }
+    ret->variant_option.payload_type = (TypeSpec) { VOID_ID, false };
+    if (stmt->variant_option.payload_type != NULL) {
+        if (!resolve_type_node(stmt->variant_option.payload_type, &ret->variant_option.payload_type)) {
+            return bound_node_make_unbound(parent, stmt, ctx);
+        }
+    }
     return ret;
 }
 

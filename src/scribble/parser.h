@@ -109,6 +109,8 @@ typedef struct operator_mapping {
     S(UNARYEXPRESSION)      \
     S(VARIABLE)             \
     S(VARIABLE_DECL)        \
+    S(VARIANT)              \
+    S(VARIANT_OPTION)       \
     S(WHILE)
 
 typedef enum {
@@ -211,6 +213,14 @@ typedef struct syntax_node {
             struct syntax_node *init_expr;
             bool                is_const;
         } variable_decl;
+        struct {
+            struct syntax_node *underlying_type;
+            struct syntax_node *options;
+        } variant_def;
+        struct {
+            struct syntax_node *underlying_value;
+            struct syntax_node *payload_type;
+        } variant_option;
         struct {
             struct syntax_node *condition;
             struct syntax_node *statement;

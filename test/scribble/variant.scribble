@@ -1,0 +1,21 @@
+struct A {
+    a: int,
+    b: int,
+    c: int,
+};
+
+struct B {
+    d: int,
+    e: int,
+    f: int,
+};
+
+variant V {
+    A(A),
+    B(B),
+};
+
+func main() : i32 {
+    putln("Hello, world!");
+    return 0;
+}

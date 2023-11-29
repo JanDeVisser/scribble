@@ -11,6 +11,7 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
+DA_IMPL(TypeComponent)
 DA_IMPL(EnumValue)
 
 static ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type);
@@ -18,9 +19,7 @@ static ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, Bui
 static ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponent *components);
 
 typedef struct {
-    size_t           size;
-    size_t           capacity;
-    ExpressionType **types;
+    DIA(ExpressionType *);
 } TypeRegistry;
 
 static TypeRegistry type_registry = { 0 };
@@ -29,6 +28,7 @@ static TypeRegistry type_registry = { 0 };
 BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
 type_id PCHAR_ID = 0;
+type_id RESULT_ID = 0;
 type_id FIRST_CUSTOM_IX = 0;
 type_id NEXT_CUSTOM_IX = 0;
 
@@ -97,8 +97,8 @@ ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_typ
 ExpressionType *type_registry_get_type_by_name(StringView name)
 {
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (sv_eq(type_registry.types[ix]->name, name)) {
-            return type_registry.types[ix];
+        if (sv_eq(type_registry.elements[ix]->name, name)) {
+            return type_registry.elements[ix];
         }
     }
     return NULL;
@@ -107,8 +107,8 @@ ExpressionType *type_registry_get_type_by_name(StringView name)
 ExpressionType *type_registry_get_type_by_id(type_id id)
 {
     size_t ix = typeid_ix(id);
-    if (ix <= type_registry.size) {
-        return type_registry.types[ix];
+    if (ix < type_registry.size) {
+        return type_registry.elements[ix];
     }
     fatal("Invalid type id 0x%04x:0x%04x referenced", id >> 16, id & 0xFFFF);
 }
@@ -116,7 +116,7 @@ ExpressionType *type_registry_get_type_by_id(type_id id)
 ExpressionType *type_registry_get_type_by_index(size_t ix)
 {
     if (ix <= type_registry.size) {
-        return type_registry.types[ix];
+        return type_registry.elements[ix];
     }
     fatal("Invalid type index %d referenced", ix);
 }
@@ -124,8 +124,8 @@ ExpressionType *type_registry_get_type_by_index(size_t ix)
 type_id type_registry_id_of_builtin_type(BuiltinType type)
 {
     for (size_t ix = 0; ix < 20 && ix < type_registry.size; ++ix) {
-        if (typeid_has_kind(type_registry.types[ix]->type_id, type >> 12) && typeid_builtin_type(type_registry.types[ix]->type_id) == type) {
-            return type_registry.types[ix]->type_id;
+        if (typeid_has_kind(type_registry.elements[ix]->type_id, type >> 12) && typeid_builtin_type(type_registry.elements[ix]->type_id) == type) {
+            return type_registry.elements[ix]->type_id;
         }
     }
     fatal("Builtin type '%s' (0x%04x) not found", BuiltinType_name(type), type);
@@ -157,32 +157,20 @@ int sort_type_ids(type_id const *t1, type_id const *t2)
 ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, BuiltinType builtin_type)
 {
     if (type_registry_get_type_by_name(name)) {
-        ERROR(TypeID, TypeError, 0, "Type already exists");
+        ERROR(TypeID, TypeError, 0, "A type named '%.*s' already exists", SV_ARG(name));
     }
-    if (type_registry.capacity <= type_registry.size + 1) {
-        size_t           new_cap = (type_registry.capacity) ? type_registry.capacity * 2 : 32;
-        ExpressionType  *new_block = allocate_array(ExpressionType, new_cap - type_registry.capacity);
-        ExpressionType **new_index = allocate_array(ExpressionType *, new_cap);
-        memcpy(new_index, type_registry.types, type_registry.capacity * sizeof(ExpressionType *));
-        for (size_t ix = 0; ix < new_cap - type_registry.capacity; ++ix) {
-            new_index[ix + type_registry.capacity] = new_block + ix;
-        }
-        type_registry.types = new_index;
-        type_registry.capacity = new_cap;
-    }
-    ExpressionType *type = type_registry.types[type_registry.size];
+    ExpressionType *type = allocate_new(ExpressionType);
+    DIA_APPEND(ExpressionType *, (&type_registry), type);
     type->name = sv_copy(name);
-    type->type_id = type_registry.size | (kind << 28) | (builtin_type << 16);
+    type->type_id = (type_registry.size - 1) | (kind << 28) | (builtin_type << 16);
     type->builtin_type = builtin_type;
-    NEXT_CUSTOM_IX = ++type_registry.size;
+    NEXT_CUSTOM_IX = type_registry.size;
     RETURN(TypeID, type->type_id);
 }
 
 void type_registry_init()
 {
-    type_registry.types = NULL;
-    type_registry.capacity = 0;
-    type_registry.size = 0;
+    type_registry = (TypeRegistry) { 0 };
 #undef BUILTINTYPE_ENUM
 #define BUILTINTYPE_ENUM(type, name, code) \
     type##_ID = MUST(TypeID, type_registry_add_builtin(sv_from(#name), BIT_##type));
@@ -231,6 +219,11 @@ void type_registry_init()
                     },
                 },
                 { .kind = CK_TYPE, .name = sv_from("size"), .type_id = U64_ID } }));
+
+    EnumValues result_values = { 0 };
+    da_append_EnumValue(&result_values, (EnumValue) { sv_from("Error"), u8(0) });
+    da_append_EnumValue(&result_values, (EnumValue) { sv_from("Ok"), u8(1) });
+    RESULT_ID = MUST(TypeID, type_registry_make_enumeration(sv_from("result"), U8_ID, &result_values));
 
     FIRST_CUSTOM_IX = type_registry.size;
     NEXT_CUSTOM_IX = FIRST_CUSTOM_IX;
@@ -336,34 +329,36 @@ ErrorOrSize type_sizeof(ExpressionType *type)
         return type_sizeof(typeid_canonical_type(type->type_id));
     case TK_AGGREGATE: {
         size_t size = 0;
-        size_t align = TRY(Size, type_alignat(type));
-
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
             if (type->components.components[ix].kind != CK_TYPE) {
                 ERROR(Size, TypeError, 0, "Cannot get size of template type");
             }
-            if (size % align) {
-                size += size + align - (size % align);
-            }
             ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
             size_t          component_size = TRY(Size, type_sizeof(component_type));
+            size_t          align = TRY(Size, type_alignat(component_type));
+            size = align_at(size, align);
             size += component_size;
         }
         RETURN(Size, size);
     }
     case TK_VARIANT: {
-        size_t size = 0;
-        for (size_t ix = 0; ix < type->components.num_components; ++ix) {
-            if (type->components.components[ix].kind != CK_TYPE) {
+        size_t switch_size = typeid_sizeof(type->variant.enumeration);
+        size_t payload_size = TRY(Size, type_sizeof_payload(type));
+        for (size_t ix = 0; ix < type->variant.size; ++ix) {
+            if (type->variant.elements[ix].kind != CK_TYPE) {
                 ERROR(Size, TypeError, 0, "Cannot get size of template type");
             }
-            ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
+            ExpressionType *component_type = type_registry_get_type_by_id(type->variant.elements[ix].type_id);
             size_t          component_size = TRY(Size, type_sizeof(component_type));
-            if (component_size > size) {
-                size = component_size;
+            size_t          align = TRY(Size, type_alignat(component_type));
+            if (switch_size % align) {
+                switch_size = switch_size + align - (switch_size % align);
+            }
+            if (component_size > payload_size) {
+                payload_size = component_size;
             }
         }
-        RETURN(Size, size);
+        RETURN(Size, switch_size + payload_size);
     }
     default:
         UNREACHABLE();
@@ -377,8 +372,7 @@ ErrorOrSize type_alignat(ExpressionType *type)
         RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_alignat(typeid_canonical_type(type->type_id));
-    case TK_AGGREGATE:
-    case TK_VARIANT: {
+    case TK_AGGREGATE: {
         size_t align = 0;
         for (size_t ix = 0; ix < type->components.num_components; ++ix) {
             if (type->components.components[ix].kind != CK_TYPE) {
@@ -388,6 +382,20 @@ ErrorOrSize type_alignat(ExpressionType *type)
             size_t          component_align = TRY(Size, type_alignat(component_type));
             if (component_align > align) {
                 align = component_align;
+            }
+        }
+        RETURN(Size, align);
+    }
+    case TK_VARIANT: {
+        size_t align = typeid_alignat(type->variant.enumeration);
+        for (size_t ix = 0; ix < type->variant.size; ++ix) {
+            if (type->variant.elements[ix].kind != CK_TYPE) {
+                ERROR(Size, TypeError, 0, "Cannot get size of template type");
+            }
+            ExpressionType *option_type = type_registry_get_type_by_id(type->variant.elements[ix].type_id);
+            size_t          option_align = TRY(Size, type_alignat(option_type));
+            if (option_align > align) {
+                align = option_align;
             }
         }
         RETURN(Size, align);
@@ -409,14 +417,11 @@ ErrorOrSize type_offsetof_index(ExpressionType *type, size_t index)
         ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset", SV_ARG(type->name));
     }
     size_t offset = 0;
-    size_t align = TRY(Size, type_alignat(type));
     for (size_t ix = 0; ix < index; ++ix) {
-        if (offset % align) {
-            offset += offset + align - (offset % align);
-        }
         ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
         size_t          component_size = TRY(Size, type_sizeof(component_type));
-        offset += component_size;
+        size_t          align = TRY(Size, type_sizeof(component_type));
+        offset += align_at(component_size, align);
     }
     RETURN(Size, offset);
 }
@@ -430,19 +435,58 @@ ErrorOrSize type_offsetof_name(ExpressionType *type, StringView name)
         ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get component offset");
     }
     size_t offset = 0;
-    size_t align = TRY(Size, type_alignat(type));
     for (size_t ix = 0; ix < type->components.num_components; ++ix) {
         if (sv_eq(type->components.components[ix].name, name)) {
             RETURN(Size, offset);
         }
-        if (offset % align) {
-            offset += offset + align - (offset % align);
-        }
         ExpressionType *component_type = type_registry_get_type_by_id(type->components.components[ix].type_id);
         size_t          component_size = TRY(Size, type_sizeof(component_type));
-        offset += component_size;
+        size_t          align = TRY(Size, type_sizeof(component_type));
+        offset += align_at(component_size, align);
     }
     ERROR(Size, TypeError, 0, "Type '%.*s' has no component with name '%.*s'", SV_ARG(type->name), SV_ARG(name));
+}
+
+ErrorOrSize type_sizeof_payload(ExpressionType *type)
+{
+    if (!type_has_kind(type, TK_VARIANT)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not an aggregate", SV_ARG(type->name));
+    }
+    if (!type_is_concrete(type)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get payload size", SV_ARG(type->name));
+    }
+    size_t size = 0;
+    for (size_t ix = 0; ix < type->variant.size; ++ix) {
+        if (type->variant.elements[ix].kind != CK_TYPE) {
+            ERROR(Size, TypeError, 0, "Cannot get size of template type");
+        }
+        ExpressionType *option_type = type_registry_get_type_by_id(type->variant.elements[ix].type_id);
+        size_t          option_size = TRY(Size, type_sizeof(option_type));
+        if (option_size > size) {
+            size = option_size;
+        }
+    }
+    RETURN(Size, size);
+}
+
+ErrorOrSize type_offsetof_payload(ExpressionType *type)
+{
+    if (!type_has_kind(type, TK_VARIANT)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not an aggregate", SV_ARG(type->name));
+    }
+    if (!type_is_concrete(type)) {
+        ERROR(Size, TypeError, 0, "Type '%.*s' is not concrete. Cannot get payload offset", SV_ARG(type->name));
+    }
+    size_t offset = typeid_sizeof(type->variant.enumeration);
+    for (size_t ix = 0; ix < type->variant.size; ++ix) {
+        if (type->variant.elements[ix].kind != CK_TYPE) {
+            ERROR(Size, TypeError, 0, "Cannot get size of template type");
+        }
+        ExpressionType *option_type = type_registry_get_type_by_id(type->variant.elements[ix].type_id);
+        size_t          option_align = TRY(Size, type_sizeof(option_type));
+        offset = align_at(offset, option_align);
+    }
+    RETURN(Size, offset);
 }
 
 ErrorOrTypeID type_set_template_parameters(type_id template_id, size_t num, TemplateParameter *parameters)
@@ -544,12 +588,12 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     }
 
     for (size_t ix = 0; ix < type_registry.size; ++ix) {
-        if (type_registry.types[ix]->specialization_of == template_id) {
+        if (type_registry.elements[ix]->specialization_of == template_id) {
             bool matches = true;
             for (size_t arg_ix = 0; arg_ix < num; ++arg_ix) {
-                assert(arg_ix < type_registry.types[ix]->num_arguments);
+                assert(arg_ix < type_registry.elements[ix]->num_arguments);
                 TemplateArgument *arg = type_arguments + arg_ix;
-                TemplateArgument *other_arg = type_registry.types[ix]->template_arguments + arg_ix;
+                TemplateArgument *other_arg = type_registry.elements[ix]->template_arguments + arg_ix;
                 assert(arg->arg_type == other_arg->arg_type);
                 assert(sv_eq(arg->name, other_arg->name));
                 switch (arg->arg_type) {
@@ -571,7 +615,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
             }
             if (matches) {
                 release_allocator(alloc_state);
-                RETURN(TypeID, type_registry.types[ix]->type_id);
+                RETURN(TypeID, type_registry.elements[ix]->type_id);
             }
         }
     }
@@ -658,66 +702,68 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     RETURN(TypeID, type->type_id);
 }
 
-ErrorOrTypeID type_registry_get_variant(size_t num, type_id *types)
+ErrorOrTypeID type_registry_get_variant(type_id enumeration, ...)
 {
-    assert(num > 0);
-    AllocatorState alloc_state = save_allocator();
-    type_id       *sorted_types = allocate_array(type_id, num);
-    memcpy(types, sorted_types, sizeof(type_id) * num);
-    qsort(sorted_types, num, sizeof(type_id), (qsort_fnc_t) sort_type_ids);
+    if (typeid_kind(enumeration) != TK_ENUM) {
+        ERROR(TypeID, TypeError, 0, "Non-enumeration type '%.*s' passed as variant enumeration", typeid_name(enumeration));
+    }
+    ExpressionType *enum_type = type_registry_get_type_by_id(enumeration);
+
+    va_list type_args;
+    va_start(type_args, enumeration);
+    size_t   num = enum_type->enumeration.size;
+    type_id *types = alloca(num * sizeof(type_id));
+    for (size_t ix = 0; ix < num; ++ix) {
+        types[ix] = va_arg(type_args, type_id);
+    }
+    va_end(type_args);
+    return type_registry_get_variant_by_types(enumeration, types);
+}
+
+ErrorOrTypeID type_registry_get_variant_by_types(type_id enumeration, type_id *types)
+{
+    if (typeid_kind(enumeration) != TK_ENUM) {
+        ERROR(TypeID, TypeError, 0, "Non-enumeration type '%.*s' passed as variant enumeration", typeid_name(enumeration));
+    }
+    ExpressionType *enum_type = type_registry_get_type_by_id(enumeration);
+    size_t          num = enum_type->enumeration.size;
+
     for (int ix = 0; ix < type_registry.size; ++ix) {
-        if (typeid_kind(type_registry.types[ix]->type_id) == TK_VARIANT) {
-            ExpressionType *type = type_registry.types[ix];
-            bool            found = true;
-            for (size_t comp_ix = 0; comp_ix < type->components.num_components; ++comp_ix) {
-                if (type->components.components[comp_ix].type_id != sorted_types[comp_ix]) {
-                    found = false;
-                    break;
-                }
+        if (typeid_kind(type_registry.elements[ix]->type_id) != TK_VARIANT) {
+            continue;
+        }
+        ExpressionType *type = type_registry.elements[ix];
+        if (type->enumeration.underlying_type != enumeration) {
+            continue;
+        }
+        bool found = true;
+        for (size_t option_ix = 0; option_ix < num; ++option_ix) {
+            if (type->variant.elements[option_ix].type_id != types[option_ix]) {
+                found = false;
+                break;
             }
-            if (found) {
-                release_allocator(alloc_state);
-                RETURN(TypeID, type_registry.types[ix]->type_id);
-            }
+        }
+        if (found) {
+            RETURN(TypeID, type_registry.elements[ix]->type_id);
         }
     }
 
-    StringBuilder name = sb_create();
-    char         *comma = "";
-    sb_append_cstr(&name, "<");
+    TypeComponents components;
+    StringBuilder  name = sb_copy_sv(enum_type->name);
+    sb_append_cstr(&name, "(");
     for (size_t ix = 0; ix < num; ++ix) {
-        sb_append_cstr(&name, comma);
-        comma = ",";
-        ExpressionType *type = type_registry_get_type_by_id(sorted_types[ix]);
+        if (ix > 0) {
+            sb_append_cstr(&name, ",");
+        }
+        ExpressionType *type = type_registry_get_type_by_id(types[ix]);
         if (!type) {
-            release_allocator(alloc_state);
             ERROR(TypeID, TypeError, 0, "Invalid type ID constructing variant");
         }
         sb_append_sv(&name, type->name);
+        da_append_TypeComponent(&components, (TypeComponent) { .kind = CK_TYPE, .name = type->name, .type_id = types[ix] });
     }
-    sb_append_cstr(&name, ">");
-
-    type_id         new_variant_id = TRY(TypeID, type_registry_make_type(name.view, TK_VARIANT, BIT_NOTYPE));
-    ExpressionType *new_variant = type_registry_get_type_by_id(new_variant_id);
-    assert(new_variant);
-    new_variant->components.num_components = num;
-    new_variant->components.components = allocate_array(TypeComponent, num);
-    for (int ix = 0; ix < num; ++ix) {
-        ExpressionType *comp_type = type_registry_get_type_by_id(sorted_types[ix]);
-        assert(comp_type);
-        new_variant->components.components[ix].kind = CK_TYPE;
-        new_variant->components.components[ix].name = comp_type->name;
-        new_variant->components.components[ix].type_id = comp_type->type_id;
-    }
-    RETURN(TypeID, new_variant_id);
-}
-
-ErrorOrTypeID type_registry_get_variant2(type_id t1, type_id t2)
-{
-    type_id types[2];
-    types[0] = t1;
-    types[1] = t2;
-    return type_registry_get_variant(2, types);
+    sb_append_cstr(&name, ")");
+    return type_registry_make_variant(name.view, enumeration, &components);
 }
 
 ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
@@ -746,14 +792,35 @@ ErrorOrTypeID type_registry_make_enumeration(StringView name, type_id underlying
     type->enumeration.underlying_type = underlying_type;
     for (size_t ix = 0; ix < values->size; ++ix) {
         for (size_t val_ix = 0; val_ix < ix; ++val_ix) {
-            if (sv_eq(values->elements[ix].name, values->elements[val_ix].name)) {
+            EnumValue elem_ix = values->elements[ix];
+            EnumValue elem_val_ix = values->elements[val_ix];
+            if (sv_eq(elem_ix.name, elem_val_ix.name)) {
                 ERROR(TypeID, TypeError, 0, "Duplicate enumeration value");
             }
-            if (integer_equals(values->elements[ix].value, values->elements[val_ix].value)) {
+            if (integer_equals(elem_ix.value, elem_val_ix.value)) {
                 ERROR(TypeID, TypeError, 0, "Duplicate enumeration value");
             }
         }
         DIA_APPEND(EnumValue, (&type->enumeration), values->elements[ix]);
+    }
+    RETURN(TypeID, new_id);
+}
+
+ErrorOrTypeID type_registry_make_variant(StringView name, type_id enumeration, TypeComponents *options)
+{
+    if (typeid_kind(enumeration) != TK_ENUM) {
+        ERROR(TypeID, TypeError, 0, "Non-enumeration type '%.*s' passed as variant enumeration", SV_ARG(typeid_name(enumeration)));
+    }
+    ExpressionType *enum_type = type_registry_get_type_by_id(enumeration);
+    if (enum_type->enumeration.size != options->size) {
+        ERROR(TypeID, TypeError, 0, "Enumeration size does not match number of variant options");
+    }
+
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_VARIANT, BIT_NOTYPE));
+    ExpressionType *type = type_registry_get_type_by_id(new_id);
+    type->variant.enumeration = enumeration;
+    for (int ix = 0; ix < options->size; ++ix) {
+        DIA_APPEND(TypeComponent, (&type->variant), options->elements[ix]);
     }
     RETURN(TypeID, new_id);
 }

@@ -49,6 +49,7 @@
     S(VARIABLE)             \
     S(VARIABLE_DECL)        \
     S(VARIANT)              \
+    S(VARIANT_OPTION)       \
     S(WHILE)
 
 typedef enum bound_node_type {
@@ -151,6 +152,14 @@ typedef struct bound_node {
             struct bound_node *init_expr;
             bool               is_const;
         } variable_decl;
+        struct {
+            TypeSpec           underlying_type;
+            struct bound_node *options;
+        } variant_def;
+        struct {
+            struct bound_node *underlying_value;
+            TypeSpec           payload_type;
+        } variant_option;
         struct {
             struct bound_node *condition;
             struct bound_node *statement;

@@ -92,29 +92,30 @@ typedef struct {
     S(RETURN, return, 14)          \
     S(STRUCT, struct, 15)          \
     S(VAR, var, 16)                \
-    S(WHILE, while, 17)            \
-    S(TRUE, true, 18)              \
-    S(FALSE, false, 19)            \
-    S(ASSIGN_BITWISE_AND, &=, 20)  \
-    S(ASSIGN_BITWISE_OR, |=, 21)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 22)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 23)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 24) \
-    S(BINARY_DECREMENT, -=, 25)    \
-    S(BINARY_INCREMENT, +=, 26)    \
-    S(BIT_SHIFT_LEFT, <<, 27)      \
-    S(BIT_SHIFT_RIGHT, >>, 28)     \
-    S(EQUALS, ==, 29)              \
-    S(GREATER_EQUALS, >=, 30)      \
-    S(LESS_EQUALS, <=, 31)         \
-    S(LOGICAL_AND, &&, 32)         \
-    S(LOGICAL_OR, ||, 33)          \
-    S(NOT_EQUALS, !=, 34)          \
-    S(RANGE, .., 35)               \
-    S(FUNC_BINDING, ->, 36)        \
-    S(MACRO_BINDING, = >, 37)      \
-    S(UNARY_DECREMENT, --, 38)     \
-    S(UNARY_INCREMENT, ++, 39)
+    S(VARIANT, variant, 17)        \
+    S(WHILE, while, 18)            \
+    S(TRUE, true, 19)              \
+    S(FALSE, false, 20)            \
+    S(ASSIGN_BITWISE_AND, &=, 21)  \
+    S(ASSIGN_BITWISE_OR, |=, 22)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 23)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 24)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 25) \
+    S(BINARY_DECREMENT, -=, 26)    \
+    S(BINARY_INCREMENT, +=, 27)    \
+    S(BIT_SHIFT_LEFT, <<, 28)      \
+    S(BIT_SHIFT_RIGHT, >>, 29)     \
+    S(EQUALS, ==, 30)              \
+    S(GREATER_EQUALS, >=, 31)      \
+    S(LESS_EQUALS, <=, 32)         \
+    S(LOGICAL_AND, &&, 33)         \
+    S(LOGICAL_OR, ||, 34)          \
+    S(NOT_EQUALS, !=, 35)          \
+    S(RANGE, .., 36)               \
+    S(FUNC_BINDING, ->, 37)        \
+    S(MACRO_BINDING, = >, 38)      \
+    S(UNARY_DECREMENT, --, 39)     \
+    S(UNARY_INCREMENT, ++, 40)
 
 typedef enum {
 #undef KEYWORD_ENUM

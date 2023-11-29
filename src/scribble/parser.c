@@ -936,7 +936,9 @@ SyntaxNode *parse_enum_def(ParserContext *ctx)
     lexer_lex(ctx->lexer);
     SyntaxNode *underlying_type = NULL;
     if (parser_context_accept_and_discard(ctx, TK_SYMBOL, ':')) {
-        underlying_type = parse_type(ctx);
+        if ((underlying_type = parse_type(ctx)) == NULL) {
+            return NULL;
+        }
     }
     if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, '{')) {
         return NULL;
@@ -944,7 +946,7 @@ SyntaxNode *parse_enum_def(ParserContext *ctx)
     SyntaxNode *enum_node = syntax_node_make(SNT_ENUMERATION, ident.text, ident);
     enum_node->enumeration.underlying_type = underlying_type;
     SyntaxNode **value = &enum_node->enumeration.values;
-    while (true) {
+    while (!parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
         if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
             return NULL;
         }
@@ -952,14 +954,16 @@ SyntaxNode *parse_enum_def(ParserContext *ctx)
         *value = syntax_node_make(SNT_ENUM_VALUE, value_name.text, value_name);
         SyntaxNode *underlying_value = NULL;
         if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '=')) {
-            underlying_value = parse_expression(ctx);
+            if ((underlying_value = parse_expression(ctx)) == NULL) {
+                return NULL;
+            }
         }
         (*value)->enum_value.underlying_value = underlying_value;
-        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
+        if (parser_context_accept(ctx, TK_SYMBOL, '}')) {
             break;
         }
         if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ',')) {
-            break;
+            return NULL;
         }
         value = &(*value)->next;
     }
@@ -981,47 +985,88 @@ SyntaxNode *parse_struct_def(ParserContext *ctx)
     if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, '{')) {
         return NULL;
     }
-    SyntaxNode *strukt = syntax_node_make(SNT_STRUCT, ident.text, ident);
-    SyntaxNode *last_component = NULL;
-    while (true) {
-        Token comp = lexer_lex(ctx->lexer);
-        switch (comp.kind) {
-        case TK_IDENTIFIER: {
-            if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ':')) {
-                return NULL;
-            }
-            SyntaxNode *component = syntax_node_make(SNT_TYPE_COMPONENT, comp.text, comp);
-            component->parameter.parameter_type = parse_type(ctx);
-            if (component->parameter.parameter_type == NULL) {
-                return NULL;
-            }
-            if (!last_component) {
-                strukt->struct_def.components = component;
-            } else {
-                last_component->next = component;
-            }
-            last_component = component;
-        } break;
-        case TK_SYMBOL: {
-            switch (comp.code) {
-            case '}':
-                return strukt;
-            case ';':
-                if (last_component == NULL) {
-                    parser_context_add_error(ctx, ident, sv_from("Expected struct component or '}'"));
-                    return NULL;
-                }
-                break;
-            default:
-                parser_context_add_error(ctx, ident, sv_from("Expected struct component or '}'"));
-                return NULL;
-            }
-        } break;
-        default:
-            parser_context_add_error(ctx, ident, sv_from("Expected struct component or '}'"));
+    SyntaxNode  *strukt = syntax_node_make(SNT_STRUCT, ident.text, ident);
+    SyntaxNode **comp = &strukt->struct_def.components;
+    while (!parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
+        if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
             return NULL;
         }
+        Token comp_name = lexer_lex(ctx->lexer);
+        if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ':')) {
+            return NULL;
+        }
+        *comp = syntax_node_make(SNT_TYPE_COMPONENT, comp_name.text, comp_name);
+        if (((*comp)->parameter.parameter_type = parse_type(ctx)) == NULL) {
+            return NULL;
+        }
+        if (parser_context_accept(ctx, TK_SYMBOL, '}')) {
+            break;
+        }
+        if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ',')) {
+            return NULL;
+        }
+        comp = &(*comp)->next;
     }
+    if (!skip_semicolon(ctx)) {
+        return NULL;
+    }
+    return strukt;
+}
+
+SyntaxNode *parse_variant_def(ParserContext *ctx)
+{
+    lexer_lex(ctx->lexer);
+    Token ident = lexer_next(ctx->lexer);
+    if (!token_matches(ident, TK_IDENTIFIER, TC_IDENTIFIER)) {
+        parser_context_add_error(ctx, ident, sv_from("Expected 'variant' to be followed by type name"));
+        return NULL;
+    }
+    lexer_lex(ctx->lexer);
+    SyntaxNode *underlying_type = NULL;
+    if (parser_context_accept_and_discard(ctx, TK_SYMBOL, ':')) {
+        underlying_type = parse_type(ctx);
+    }
+    if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, '{')) {
+        return NULL;
+    }
+    SyntaxNode *variant_node = syntax_node_make(SNT_VARIANT, ident.text, ident);
+    variant_node->variant_def.underlying_type = underlying_type;
+    SyntaxNode **value = &variant_node->variant_def.options;
+    while (!parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
+        if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
+            return NULL;
+        }
+        Token option_name = lexer_lex(ctx->lexer);
+        *value = syntax_node_make(SNT_VARIANT_OPTION, option_name.text, option_name);
+        SyntaxNode *underlying_value = NULL;
+        SyntaxNode *payload_type = NULL;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '(')) {
+            if ((payload_type = parse_type(ctx)) == NULL) {
+                return NULL;
+            }
+            if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ')')) {
+                return NULL;
+            }
+        }
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '=')) {
+            if ((underlying_value = parse_expression(ctx)) == NULL) {
+                return NULL;
+            }
+        }
+        (*value)->variant_option.underlying_value = underlying_value;
+        (*value)->variant_option.payload_type = payload_type;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
+            break;
+        }
+        if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ',')) {
+            return NULL;
+        }
+        value = &(*value)->next;
+    }
+    if (!skip_semicolon(ctx)) {
+        return NULL;
+    }
+    return variant_node;
 }
 
 SyntaxNode *import_package(ParserContext *ctx, Token token, StringView path)
@@ -1093,6 +1138,8 @@ SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
             statement = parse_enum_def(ctx);
         } else if (token_matches(token, TK_KEYWORD, KW_STRUCT)) {
             statement = parse_struct_def(ctx);
+        } else if (token_matches(token, TK_KEYWORD, KW_VARIANT)) {
+            statement = parse_variant_def(ctx);
         } else if (token_matches(token, TK_KEYWORD, KW_IMPORT)) {
             statement = parse_import(ctx);
         } else if (token_matches(token, TK_KEYWORD, KW_CONST)) {

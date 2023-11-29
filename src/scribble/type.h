@@ -160,7 +160,7 @@ typedef struct template_argument {
     };
 } TemplateArgument;
 
-// Used for both TK_COMPOSITE, TK_VARIANT, and TK_ENUM
+// Used for both TK_COMPOSITE and TK_VARIANT
 typedef struct type_component {
     ComponentKind kind;
     StringView    name;
@@ -178,6 +178,9 @@ typedef struct type_component {
         } parameterized_type;
     };
 } TypeComponent;
+
+DA(TypeComponent)
+typedef DA_TypeComponent TypeComponents;
 
 typedef struct {
     StringView name;
@@ -205,6 +208,10 @@ typedef struct expression_type {
             type_id underlying_type;
             DIA(EnumValue);
         } enumeration;
+        struct {
+            type_id enumeration;
+            DIA(TypeComponent);
+        } variant;
         type_id alias_for_id;
     };
 } ExpressionType;
@@ -224,6 +231,7 @@ typedef struct signature {
 BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
 extern type_id PCHAR_ID;
+extern type_id RESULT_ID;
 extern type_id FIRST_CUSTOM_IX;
 extern type_id NEXT_CUSTOM_IX;
 
@@ -242,11 +250,12 @@ extern ExpressionType    *type_registry_get_type_by_id(type_id id);
 extern ExpressionType    *type_registry_get_type_by_index(size_t ix);
 extern type_id            type_registry_id_of_builtin_type(BuiltinType type);
 extern type_id            type_registry_id_of_integer_type(IntegerSize bits, bool un_signed);
-extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
-extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
+extern ErrorOrTypeID      type_registry_get_variant(type_id enumeration, ...);
+extern ErrorOrTypeID      type_registry_get_variant_by_types(type_id enumeration, type_id *types);
 extern ErrorOrTypeID      type_registry_alias(StringView name, type_id aliased);
 extern ErrorOrTypeID      type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components);
 extern ErrorOrTypeID      type_registry_make_enumeration(StringView name, type_id underlying_type, EnumValues *values);
+extern ErrorOrTypeID      type_registry_make_variant(StringView name, type_id enumeration, TypeComponents *options);
 extern type_id            typeid_canonical_type_id(type_id type);
 extern type_id            typeid_underlying_type_id(type_id type);
 extern ExpressionType    *typeid_canonical_type(type_id type);
@@ -260,6 +269,8 @@ extern ErrorOrSize        type_sizeof(ExpressionType *type);
 extern ErrorOrSize        type_alignat(ExpressionType *type);
 extern ErrorOrSize        type_offsetof_name(ExpressionType *type, StringView name);
 extern ErrorOrSize        type_offsetof_index(ExpressionType *type, size_t index);
+extern ErrorOrSize        type_sizeof_payload(ExpressionType *type);
+extern ErrorOrSize        type_offsetof_payload(ExpressionType *type);
 extern TemplateParameter *type_get_parameter(ExpressionType *type, StringView param);
 extern TemplateArgument  *type_get_argument(ExpressionType *type, StringView arg);
 extern TypeComponent     *type_get_component(ExpressionType *type, StringView component);
@@ -304,13 +315,36 @@ static size_t typeid_ix(type_id type)
 static size_t typeid_sizeof(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
     return MUST(Size, type_sizeof(et));
+}
+
+static size_t typeid_sizeof_payload(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
+    return MUST(Size, type_sizeof_payload(et));
+}
+
+static size_t typeid_alignat(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
+    return MUST(Size, type_alignat(et));
 }
 
 static size_t typeid_offsetof(type_id type, size_t index)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
     return MUST(Size, type_offsetof_index(et, index));
+}
+
+static size_t typeid_offsetof_payload(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
+    return MUST(Size, type_offsetof_payload(et));
 }
 
 static inline TypeKind type_kind(ExpressionType *type)
@@ -332,6 +366,7 @@ static inline bool typeid_is_concrete(type_id type)
 static inline bool typeid_is_specialization(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
+    assert(et != NULL);
     return et->num_arguments > 0;
 }
 
