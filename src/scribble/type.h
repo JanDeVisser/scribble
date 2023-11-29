@@ -20,7 +20,8 @@ typedef int (*qsort_fnc_t)(void const *, void const *);
     S(PRIMITIVE, 0x00) \
     S(AGGREGATE, 0x01) \
     S(VARIANT, 0x02)   \
-    S(ALIAS, 0x04)
+    S(ALIAS, 0x04)     \
+    S(ENUM, 0x08)
 
 typedef enum /* : uint8_t */ {
 #undef TYPEKINDS_ENUM
@@ -69,6 +70,7 @@ typedef enum {
 
 //   0x2000 - Variant types
 //   0x4000 - Aliases
+//   0x8000 - Enumerations
 //
 // Bottom 16 bits position in type registry.
 
@@ -158,13 +160,14 @@ typedef struct template_argument {
     };
 } TemplateArgument;
 
-// Used for both TK_COMPOSITE and TK_VARIANT.
+// Used for both TK_COMPOSITE, TK_VARIANT, and TK_ENUM
 typedef struct type_component {
     ComponentKind kind;
     StringView    name;
     union {
         type_id    type_id;
         StringView param;
+        Integer    enum_value;
 
         // Can only have a typecomponent which is parameterized using one
         // parameter. Update once we need more than one.
@@ -175,6 +178,14 @@ typedef struct type_component {
         } parameterized_type;
     };
 } TypeComponent;
+
+typedef struct {
+    StringView name;
+    Integer    value;
+} EnumValue;
+
+DA(EnumValue)
+typedef DA_EnumValue EnumValues;
 
 typedef struct expression_type {
     type_id            type_id;
@@ -190,6 +201,10 @@ typedef struct expression_type {
             size_t         num_components;
             TypeComponent *components;
         } components;
+        struct {
+            type_id underlying_type;
+            DIA(EnumValue);
+        } enumeration;
         type_id alias_for_id;
     };
 } ExpressionType;
@@ -231,7 +246,9 @@ extern ErrorOrTypeID      type_registry_get_variant(size_t num, type_id *types);
 extern ErrorOrTypeID      type_registry_get_variant2(type_id t1, type_id t2);
 extern ErrorOrTypeID      type_registry_alias(StringView name, type_id aliased);
 extern ErrorOrTypeID      type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components);
+extern ErrorOrTypeID      type_registry_make_enumeration(StringView name, type_id underlying_type, EnumValues *values);
 extern type_id            typeid_canonical_type_id(type_id type);
+extern type_id            typeid_underlying_type_id(type_id type);
 extern ExpressionType    *typeid_canonical_type(type_id type);
 extern void               type_registry_init();
 extern bool               typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2);

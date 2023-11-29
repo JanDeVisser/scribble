@@ -11,6 +11,8 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 
+DA_IMPL(EnumValue)
+
 static ErrorOrTypeID type_registry_add_builtin(StringView name, BuiltinType builtin_type);
 static ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, BuiltinType builtin_type);
 static ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponent *components);
@@ -237,12 +239,35 @@ void type_registry_init()
 type_id typeid_canonical_type_id(type_id type)
 {
     ExpressionType *et = type_registry_get_type_by_id(type);
-    return (type_kind(et) == TK_ALIAS) ? typeid_canonical_type_id(et->alias_for_id) : type;
+    switch (type_kind(et)) {
+    case TK_PRIMITIVE:
+    case TK_AGGREGATE:
+    case TK_VARIANT:
+    case TK_ENUM:
+        return type;
+    case TK_ALIAS:
+        return typeid_canonical_type_id(et->alias_for_id);
+    }
 }
 
 ExpressionType *typeid_canonical_type(type_id type)
 {
     return type_registry_get_type_by_id(typeid_canonical_type_id(type));
+}
+
+type_id typeid_underlying_type_id(type_id type)
+{
+    ExpressionType *et = type_registry_get_type_by_id(type);
+    switch (type_kind(et)) {
+    case TK_PRIMITIVE:
+    case TK_AGGREGATE:
+    case TK_VARIANT:
+        return type;
+    case TK_ENUM:
+        return typeid_underlying_type_id(et->enumeration.underlying_type);
+    case TK_ALIAS:
+        return typeid_underlying_type_id(et->alias_for_id);
+    }
 }
 
 bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
@@ -251,7 +276,7 @@ bool typespec_assignment_compatible(TypeSpec ts1, TypeSpec ts2)
     assert(et1);
     ExpressionType *et2 = type_registry_get_type_by_id(ts2.type_id);
     assert(et2);
-    return typeid_canonical_type_id(ts1.type_id) == typeid_canonical_type_id(ts2.type_id);
+    return typeid_underlying_type_id(ts1.type_id) == typeid_underlying_type_id(ts2.type_id);
 }
 
 StringView typespec_name(TypeSpec typespec)
@@ -305,6 +330,8 @@ ErrorOrSize type_sizeof(ExpressionType *type)
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
         RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
+    case TK_ENUM:
+        RETURN(Size, typeid_sizeof(type->enumeration.underlying_type));
     case TK_ALIAS:
         return type_sizeof(typeid_canonical_type(type->type_id));
     case TK_AGGREGATE: {
@@ -624,6 +651,9 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
     case TK_PRIMITIVE:
         type->builtin_type = template_type->builtin_type;
         break;
+    case TK_ENUM:
+        NYI("Template specialization of enum");
+        break;
     }
     RETURN(TypeID, type->type_id);
 }
@@ -701,10 +731,31 @@ ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 
 ErrorOrTypeID type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components)
 {
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS, BIT_NOTYPE));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_AGGREGATE, BIT_NOTYPE));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     return type_set_components(new_id, num, components);
+}
+
+ErrorOrTypeID type_registry_make_enumeration(StringView name, type_id underlying_type, EnumValues *values)
+{
+    BuiltinType     bit = typeid_builtin_type(underlying_type);
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ENUM, bit));
+    ExpressionType *type = type_registry_get_type_by_id(new_id);
+    assert(type);
+    type->enumeration.underlying_type = underlying_type;
+    for (size_t ix = 0; ix < values->size; ++ix) {
+        for (size_t val_ix = 0; val_ix < ix; ++val_ix) {
+            if (sv_eq(values->elements[ix].name, values->elements[val_ix].name)) {
+                ERROR(TypeID, TypeError, 0, "Duplicate enumeration value");
+            }
+            if (integer_equals(values->elements[ix].value, values->elements[val_ix].value)) {
+                ERROR(TypeID, TypeError, 0, "Duplicate enumeration value");
+            }
+        }
+        DIA_APPEND(EnumValue, (&type->enumeration), values->elements[ix]);
+    }
+    RETURN(TypeID, new_id);
 }
 
 ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponent *components)

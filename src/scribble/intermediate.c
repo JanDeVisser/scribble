@@ -110,7 +110,7 @@ __attribute__((unused)) void generate_BOOL(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_BOOL_CONSTANT;
-    op.bool_value = sv_eq_cstr(node->name, "true");
+    op.bool_value = (bool) node->integer.u8;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -156,7 +156,7 @@ __attribute__((unused)) void generate_DECIMAL(BoundNode *node, IRObject *target)
 {
     IROperation op;
     op.operation = IR_PUSH_FLOAT_CONSTANT;
-    op.double_value = strtod(node->name.ptr, NULL);
+    op.double_value = node->decimal_value;
     ir_function_add_operation((IRFunction *) target, op);
 }
 

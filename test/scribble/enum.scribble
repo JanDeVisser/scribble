@@ -1,0 +1,13 @@
+enum Foo {
+    bar = 42,
+    quux = 69
+};
+
+func main() : i32
+{
+    var x = Foo.bar;
+    puts("Hello, World: ");
+    puti(x);
+    endln();
+    return 0;
+}

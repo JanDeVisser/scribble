@@ -604,6 +604,7 @@ __attribute__((unused)) BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt
     BoundNode *ret = bound_node_make(BNT_BOOL, parent);
     ret->name = stmt->token.text;
     ret->typespec = (TypeSpec) { BOOL_ID, false };
+    ret->integer = integer_create(BITS_8, true, sv_eq_cstr(ret->name, "true") ? 1 : 0);
     return ret;
 }
 
@@ -642,6 +643,7 @@ __attribute__((unused)) BoundNode *bind_DECIMAL(BoundNode *parent, SyntaxNode *s
     BoundNode *ret = bound_node_make(BNT_DECIMAL, parent);
     ret->name = stmt->name;
     ret->typespec = (TypeSpec) { FLOAT_ID, false };
+    ret->decimal_value = strtod(ret->name.ptr, NULL);
     return ret;
 }
 
@@ -659,26 +661,27 @@ __attribute__((unused)) BoundNode *bind_ENUMERATION(BoundNode *parent, SyntaxNod
         return bound_node_make_unbound(ret, stmt, ctx);
     }
     BuiltinType bit = typeid_builtin_type(ret->enumeration.underlying_type.type_id);
-    if (BuiltinType_is_integer(bit)) {
-        Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
-        for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
-            if (value->enum_value.underlying_value == NULL) {
-                value->enum_value.underlying_value = bound_node_make(BNT_INTEGER, value);
-                value->integer = cur_value;
-            } else {
-                assert(value->enum_value.underlying_value->type == BNT_INTEGER);
-                cur_value = value->enum_value.underlying_value->integer;
-            }
-            cur_value = integer_increment(cur_value);
-        }
-    } else {
-        for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
-            if (value->enum_value.underlying_value == NULL) {
-                fatal("Non-integer enumeration value '%.*s.%.*s' has no underlying value",
-                    SV_ARG(ret->name), SV_ARG(value->name));
-            }
-        }
+    if (!BuiltinType_is_integer(bit)) {
+        fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
     }
+    Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
+
+    EnumValues values = { 0 };
+    for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
+        if (value->enum_value.underlying_value == NULL) {
+            value->enum_value.underlying_value = bound_node_make(BNT_INTEGER, value);
+            value->integer = cur_value;
+        } else {
+            assert(value->enum_value.underlying_value->type == BNT_INTEGER);
+            cur_value = value->enum_value.underlying_value->integer;
+        }
+        da_append_EnumValue(&values, (EnumValue) { .name = value->name, .value = cur_value });
+        cur_value = integer_increment(cur_value);
+    }
+    type_id enum_id = MUST(TypeID,
+        type_registry_make_enumeration(
+            ret->name, ret->enumeration.underlying_type.type_id, &values));
+    ret->typespec = (TypeSpec) { .type_id = enum_id, .optional = false };
     return ret;
 }
 
@@ -970,6 +973,23 @@ void program_collect_types(BoundNode *program)
                 dst = &last->next;
             }
         } break;
+        case TK_ENUM: {
+            type_node = bound_node_make(BNT_ENUMERATION, program);
+            type_node->name = et->name;
+            type_node->typespec = (TypeSpec) { et->type_id, false };
+            BoundNode **dst = &type_node->enumeration.values;
+            BoundNode  *last = NULL;
+            for (size_t comp_ix = 0; comp_ix < et->enumeration.size; ++comp_ix) {
+                *dst = bound_node_make(BNT_ENUM_VALUE, type_node);
+                (*dst)->name = et->enumeration.elements[comp_ix].name;
+                (*dst)->enum_value.underlying_value = bound_node_make(BNT_INTEGER, type_node);
+                (*dst)->enum_value.underlying_value->typespec = (TypeSpec) { et->enumeration.underlying_type, false };
+                (*dst)->enum_value.underlying_value->integer = et->enumeration.elements[comp_ix].value;
+                (*dst)->prev = last;
+                last = *dst;
+                dst = &last->next;
+            }
+        } break;
         default:
             fatal("Type %.*s has undefined kind %d", SV_ARG(et->name), type_kind(et));
         }
@@ -1097,36 +1117,70 @@ __attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, Synta
 
 __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->variable.names->name);
+    BoundNode      *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->variable.names->name);
+    BoundNode      *ret = NULL;
+    ExpressionType *et = NULL;
+    if (decl) {
+        if (stmt->variable.names->next == NULL && decl->variable_decl.is_const) {
+            switch (decl->variable_decl.init_expr->type) {
+            case BNT_BOOL:
+            case BNT_INTEGER:
+                ret = bound_node_make(decl->variable_decl.init_expr->type, parent);
+                ret->typespec = decl->variable_decl.init_expr->typespec;
+                ret->integer = decl->variable_decl.init_expr->integer;
+                ret->name = decl->variable_decl.init_expr->name;
+                return ret;
+            case BNT_DECIMAL:
+                ret = bound_node_make(decl->variable_decl.init_expr->type, parent);
+                ret->typespec = decl->variable_decl.init_expr->typespec;
+                ret->decimal_value = decl->variable_decl.init_expr->decimal_value;
+                ret->name = decl->variable_decl.init_expr->name;
+                return ret;
+            case BNT_STRING: {
+                ret = bound_node_make(decl->variable_decl.init_expr->type, parent);
+                ret->typespec = decl->variable_decl.init_expr->typespec;
+                ret->name = decl->variable_decl.init_expr->name;
+                return ret;
+            }
+            default:
+                break;
+            }
+        }
+        et = type_registry_get_type_by_id(decl->typespec.type_id);
+        assert(et != NULL);
+    }
+    if (!et) {
+        et = type_registry_get_type_by_name(stmt->variable.names->name);
+        if (et) {
+            if (type_kind(et) == TK_ENUM && stmt->variable.names->next != NULL) {
+                SyntaxNode *value_name = stmt->variable.names->next;
+                if (value_name->next != NULL) {
+                    fatal(LOC_SPEC "Enumeration value '" SV_SPEC "' has too many name parts", LOC_ARG(stmt->token.loc), SV_ARG(value_name->name));
+                }
+                for (size_t ix = 0; ix < et->enumeration.size; ++ix) {
+                    EnumValue enum_value = et->enumeration.elements[ix];
+                    if (sv_eq(enum_value.name, value_name->name)) {
+                        ret = bound_node_make(BNT_INTEGER, parent);
+                        ret->typespec = (TypeSpec) { .type_id = et->type_id, .optional = false };
+                        ret->integer = enum_value.value;
+                        ret->name = enum_value.name;
+                        return ret;
+                    }
+                }
+            }
+        }
+    }
     if (!decl) {
         fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
-    }
-
-    BoundNode *ret;
-    if (stmt->variable.names->next == NULL && decl->variable_decl.is_const) {
-        switch (decl->variable_decl.init_expr->type) {
-        case BNT_BOOL:
-        case BNT_DECIMAL:
-        case BNT_INTEGER:
-        case BNT_STRING: {
-            ret = bound_node_make(decl->variable_decl.init_expr->type, parent);
-            ret->typespec = decl->variable_decl.init_expr->typespec;
-            ret->name = decl->variable_decl.init_expr->name;
-            return ret;
-        }
-        default:
-            break;
-        }
     }
 
     ret = bound_node_make(BNT_VARIABLE, parent);
     ret->variable.decl = decl;
     ret->name = stmt->name;
 
-    BoundNode     **name_part = &ret->variable.names;
-    ExpressionType *et = type_registry_get_type_by_id(decl->typespec.type_id);
-    SyntaxNode     *name_stmt;
+    BoundNode **name_part = &ret->variable.names;
+    SyntaxNode *name_stmt;
     for (name_stmt = stmt->variable.names; name_stmt->next != NULL; name_stmt = name_stmt->next) {
         if (type_kind(et) != TK_AGGREGATE) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));

@@ -611,9 +611,10 @@ void arm64function_marshall_return(ARM64Function *calling_function, ARM64Functio
 ValueLocation arm64function_location_for_type(ARM64Function *function, type_id type)
 {
     switch (typeid_kind(type)) {
-    case TK_PRIMITIVE: {
+    case TK_PRIMITIVE:
+    case TK_ENUM: {
         return (ValueLocation) {
-            .type = type,
+            .type = typeid_underlying_type_id(type),
             .kind = VLK_REGISTER,
             .reg = arm64function_allocate_register(function),
         };

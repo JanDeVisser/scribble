@@ -122,6 +122,7 @@ typedef struct bound_node {
         struct {
             struct bound_node *components;
         } compound_def;
+        double decimal_value;
         struct {
             TypeSpec           underlying_type;
             struct bound_node *values;

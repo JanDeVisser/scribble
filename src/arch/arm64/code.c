@@ -294,7 +294,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     trace(CAT_COMPILE, "copy %.*s to %.*s",
         SV_ARG(value_location_to_string(from_location)),
         SV_ARG(value_location_to_string(to_location)));
-    assert(to_location.type == from_location.type);
+    assert(typeid_underlying_type_id(to_location.type) == typeid_underlying_type_id(from_location.type));
     size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
     size_t    aligned_sz = align_at(sz, 16);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);

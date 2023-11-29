@@ -82,6 +82,8 @@ typedef struct operator_mapping {
     S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(DECIMAL)              \
+    S(ENUMERATION)          \
+    S(ENUM_VALUE)           \
     S(FOR)                  \
     S(FUNCTION)             \
     S(FUNCTION_CALL)        \
