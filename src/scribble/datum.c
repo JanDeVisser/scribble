@@ -762,7 +762,7 @@ Datum *datum_make_integer(Integer value)
 {
     Datum *d = datum_allocate(
         type_registry_id_of_builtin_type(
-            BuiltinType_get_integer_type(value.size, value.un_signed)));
+            BuiltinType_by_integer_type(value.type)));
     d->integer = value;
     return d;
 }

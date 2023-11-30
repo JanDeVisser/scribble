@@ -87,33 +87,35 @@ __attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation 
 {
     ValueLocation expr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(expr.kind == VLK_REGISTER);
-    BuiltinType bit_expr = typeid_builtin_type(expr.type);
-    BuiltinType bit_cast = typeid_builtin_type(op->integer.u64);
-    IntegerSize sz_cast = BuiltinType_width(bit_cast);
-    bool        cast_unsigned = BuiltinType_is_unsigned(bit_cast);
+    BuiltinType bit_cast = typeid_builtin_type(op->type);
+    IntegerType sz_cast = BuiltinType_integer_type(bit_cast);
     Register    reg = arm64function_allocate_register(function);
 
     switch (sz_cast) {
-    case BITS_8:
+    case I8:
         arm64function_add_instruction(function, "and", "%s,%s,#0xFF", w_reg(reg), w_reg(expr.reg));
-        if (!cast_unsigned) {
-            arm64function_add_instruction(function, "sxtb", "%s,%s", w_reg(reg), w_reg(reg));
-        }
+        arm64function_add_instruction(function, "sxtb", "%s,%s", w_reg(reg), w_reg(reg));
         break;
-    case BITS_16:
+    case U8:
+        arm64function_add_instruction(function, "and", "%s,%s,#0xFF", w_reg(reg), w_reg(expr.reg));
+        break;
+    case I16:
         arm64function_add_instruction(function, "and", "%s,%s,#0xFFFF", w_reg(reg), w_reg(expr.reg));
-        if (!cast_unsigned) {
-            arm64function_add_instruction(function, "sxth", "%s,%s", w_reg(reg), w_reg(reg));
-        }
+        arm64function_add_instruction(function, "sxth", "%s,%s", w_reg(reg), w_reg(reg));
         break;
-    case BITS_32:
+    case U16:
+        arm64function_add_instruction(function, "and", "%s,%s,#0xFFFF", w_reg(reg), w_reg(expr.reg));
+        break;
+    case I32:
+    case U32:
         arm64function_add_instruction(function, "mov", "%s,%s", w_reg(reg), w_reg(expr.reg));
         break;
-    case BITS_64:
+    case I64:
         arm64function_add_instruction(function, "mov", "%s,%s", x_reg(reg), x_reg(expr.reg));
-        if (!cast_unsigned) {
-            arm64function_add_instruction(function, "sxtw", "%s,%s", x_reg(reg), x_reg(reg));
-        }
+        arm64function_add_instruction(function, "sxtw", "%s,%s", x_reg(reg), x_reg(reg));
+        break;
+    case U64:
+        arm64function_add_instruction(function, "mov", "%s,%s", x_reg(reg), x_reg(expr.reg));
         break;
     default:
         UNREACHABLE();
@@ -277,8 +279,7 @@ __attribute__((unused)) void generate_PUSH_BOOL_CONSTANT(ARM64Function *function
             .type = BOOL_ID,
             .kind = VLK_IMMEDIATE,
             .integer = (Integer) {
-                .size = BITS_8,
-                .un_signed = true,
+                .type = U8,
                 .u8 = (op->bool_value) ? 1 : 0,
             },
         });
@@ -300,7 +301,7 @@ __attribute__((unused)) void generate_PUSH_INT_CONSTANT(ARM64Function *function,
     Register reg = arm64function_allocate_register(function);
 
     ValueLocation immediate = {
-        .type = type_registry_id_of_integer_type(op->integer.size, op->integer.un_signed),
+        .type = type_registry_id_of_integer_type(op->integer.type),
         .kind = VLK_IMMEDIATE,
         .integer = op->integer,
     };
@@ -338,7 +339,7 @@ __attribute__((unused)) void generate_PUSH_STRING_CONSTANT(ARM64Function *functi
         (ValueLocation) {
             .type = U64_ID,
             .kind = VLK_IMMEDIATE,
-            .integer = (Integer) { .size = BITS_64, .un_signed = true, .u64 = op->sv.length },
+            .integer = (Integer) { .type = U64, .u64 = op->sv.length },
         });
     arm64function_push_registers(function, STRING_ID, regs);
 }

@@ -400,8 +400,7 @@ int digit_value_in_base(int ch, size_t base)
     IntegerParseResult sv_parse_u##sz(StringView sv)                          \
     {                                                                         \
         IntegerParseResult ret = { 0 };                                       \
-        ret.integer.un_signed = true;                                         \
-        ret.integer.size = BITS_##sz;                                         \
+        ret.integer.type = U##sz;                                             \
         if (sv.length == 0) {                                                 \
             return ret;                                                       \
         }                                                                     \
@@ -445,8 +444,7 @@ int digit_value_in_base(int ch, size_t base)
     IntegerParseResult sv_parse_i##sz(StringView sv)                          \
     {                                                                         \
         IntegerParseResult ret = { 0 };                                       \
-        ret.integer.un_signed = false;                                        \
-        ret.integer.size = BITS_##sz;                                         \
+        ret.integer.type = I##sz;                                             \
         if (sv.length == 0) {                                                 \
             return ret;                                                       \
         }                                                                     \
@@ -499,13 +497,15 @@ int digit_value_in_base(int ch, size_t base)
 INTEGER_SIZES(INTEGER_SIZE)
 #undef INTEGER_SIZE
 
-IntegerParseResult sv_parse_integer(StringView sv, IntegerSize size, bool un_signed)
+IntegerParseResult sv_parse_integer(StringView sv, IntegerType type)
 {
-    switch (size) {
+    switch (type) {
 #undef INTEGER_SIZE
-#define INTEGER_SIZE(sz) \
-    case BITS_##sz:      \
-        return (un_signed) ? sv_parse_u##sz(sv) : sv_parse_i##sz(sv);
+#define INTEGER_SIZE(sz)           \
+    case U##sz:                    \
+        return sv_parse_u##sz(sv); \
+    case I##sz:                    \
+        return sv_parse_i##sz(sv);
         INTEGER_SIZES(INTEGER_SIZE)
 #undef INTEGER_SIZE
     default:

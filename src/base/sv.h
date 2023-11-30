@@ -68,7 +68,7 @@ extern bool               sv_eq_cstr(StringView s1, char const *s2);
 extern bool               sv_eq_chars(StringView s1, char const *s2, size_t n);
 extern bool               sv_startswith(StringView s1, StringView s2);
 extern bool               sv_endswith(StringView s1, StringView s2);
-extern IntegerParseResult sv_parse_integer(StringView sv, IntegerSize size, bool un_signed);
+extern IntegerParseResult sv_parse_integer(StringView sv, IntegerType type);
 extern StringView         sv_lchop(StringView sv, size_t num);
 extern StringView         sv_rchop(StringView sv, size_t num);
 extern int                sv_first(StringView sv, char ch);

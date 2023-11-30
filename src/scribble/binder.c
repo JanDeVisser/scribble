@@ -430,7 +430,7 @@ BoundNode *coerce_node(BoundNode *node, type_id type)
         return NULL;
     }
     if (node->type != BNT_INTEGER) {
-        if (BuiltinType_width(bit_node) > BuiltinType_width(bit_type)) {
+        if (BuiltinType_integer_type(bit_node) > BuiltinType_integer_type(bit_type)) {
             return NULL;
         }
         if (BuiltinType_is_unsigned(bit_node) != BuiltinType_is_unsigned(bit_type)) {
@@ -442,7 +442,7 @@ BoundNode *coerce_node(BoundNode *node, type_id type)
         cast->cast_expr.cast_to = type;
         return cast;
     } else {
-        OptionalInteger coerced_maybe = integer_coerce_to(node->integer, BuiltinType_width(bit_type), BuiltinType_is_unsigned(bit_type));
+        OptionalInteger coerced_maybe = integer_coerce_to(node->integer, BuiltinType_integer_type(bit_type));
         if (coerced_maybe.has_value) {
             node->integer = coerced_maybe.value;
             node->typespec.type_id = type;
@@ -604,7 +604,7 @@ __attribute__((unused)) BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt
     BoundNode *ret = bound_node_make(BNT_BOOL, parent);
     ret->name = stmt->token.text;
     ret->typespec = (TypeSpec) { BOOL_ID, false };
-    ret->integer = integer_create(BITS_8, true, sv_eq_cstr(ret->name, "true") ? 1 : 0);
+    ret->integer = integer_create(U8, sv_eq_cstr(ret->name, "true") ? 1 : 0);
     return ret;
 }
 
@@ -664,7 +664,7 @@ __attribute__((unused)) BoundNode *bind_ENUMERATION(BoundNode *parent, SyntaxNod
     if (!BuiltinType_is_integer(bit)) {
         fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
     }
-    Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
+    Integer cur_value = integer_create(BuiltinType_integer_type(bit), 0);
 
     EnumValues values = { 0 };
     for (BoundNode *value = ret->enumeration.values; value; value = value->next) {
@@ -836,9 +836,9 @@ __attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *s
     BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
 
     ret->name = stmt->token.text;
-    ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.width, stmt->integer.un_signed), false };
+    ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.type), false };
     BuiltinType        bit = typeid_builtin_type(typeid_canonical_type_id(ret->typespec.type_id));
-    IntegerParseResult parse_result = sv_parse_integer(ret->name, BuiltinType_width(bit), BuiltinType_is_unsigned(bit));
+    IntegerParseResult parse_result = sv_parse_integer(ret->name, stmt->integer.type);
     if (!parse_result.success) {
         fatal("Cannot hold value '%.*s' in integer of type '%.*s'", SV_ARG(ret->name), SV_ARG(typeid_name(ret->typespec.type_id)));
     }
@@ -1298,7 +1298,7 @@ __attribute__((unused)) BoundNode *bind_VARIANT(BoundNode *parent, SyntaxNode *s
         if (!BuiltinType_is_integer(bit)) {
             fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
         }
-        Integer cur_value = integer_create(BuiltinType_width(bit), BuiltinType_is_unsigned(bit), 0);
+        Integer cur_value = integer_create(BuiltinType_integer_type(bit), 0);
 
         EnumValues values = { 0 };
         for (BoundNode *option = ret->variant_def.options; option; option = option->next) {

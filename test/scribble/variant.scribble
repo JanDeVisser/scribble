@@ -10,7 +10,11 @@ struct B {
     f: int,
 };
 
-variant V {
+enum E : u8 {
+    A, B,
+}
+
+variant V : E {
     A(A),
     B(B),
 };

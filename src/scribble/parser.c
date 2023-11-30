@@ -354,32 +354,21 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         switch (token.code) {
         case TC_INTEGER: {
             SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
-            ret->integer.un_signed = false;
-            ret->integer.width = 32;
+            ret->integer.type = I32;
             Token type = lexer_next(ctx->lexer);
             if (token_matches_kind(type, TK_IDENTIFIER)) {
                 if (sv_eq_cstr(type.text, "u8") || sv_eq_cstr(type.text, "i8") || sv_eq_cstr(type.text, "u16") || sv_eq_cstr(type.text, "i16") || sv_eq_cstr(type.text, "u32") || sv_eq_cstr(type.text, "i32") || sv_eq_cstr(type.text, "u64") || sv_eq_cstr(type.text, "i64")) {
                     lexer_lex(ctx->lexer);
-                    ret->integer.un_signed = type.text.ptr[0] == 'u';
-                    if (type.text.ptr[1] == '8') {
-                        ret->integer.width = 8;
-                    } else if (type.text.ptr[1] == '1') {
-                        ret->integer.width = 16;
-                    } else if (type.text.ptr[1] == '3') {
-                        ret->integer.width = 32;
-                    } else {
-                        ret->integer.width = 64;
-                    }
+                    ret->integer.type = IntegerType_from_name(type.text);
                 }
             }
             return ret;
         }
         case TC_HEXNUMBER: {
             SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
-            ret->integer.un_signed = true;
-            ret->integer.width = 4 * (token.text.length - 2);
-            if (ret->integer.width % 8) {
-                ret->integer.width += 8 - (ret->integer.width % 8);
+            ret->integer.type = (IntegerType) 4 * (token.text.length - 2);
+            if ((int) ret->integer.type % 8) {
+                ret->integer.type += (IntegerType) 8 - ((int) ret->integer.type % 8);
             }
             return ret;
         }

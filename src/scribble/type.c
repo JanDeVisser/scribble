@@ -60,14 +60,29 @@ char const *BuiltinType_name(BuiltinType type)
     }
 }
 
-size_t BuiltinType_width(BuiltinType type)
+IntegerType BuiltinType_integer_type(BuiltinType type)
 {
-    return type & WIDTH_MASK;
+    IntegerType unsigned_type = (IntegerType) (~(type & WIDTH_MASK) + 1);
+    if (unsigned_type & UNSIGNED_MASK) {
+        unsigned_type = (IntegerType) (~((int) unsigned_type) + 1);
+    }
+    return unsigned_type;
 }
 
-BuiltinType BuiltinType_get_integer_type(size_t width, bool un_signed)
+BuiltinType BuiltinType_by_integer_spec(size_t width, bool un_signed)
 {
     return INTEGER_MASK | width | ((size_t) un_signed << 8);
+}
+
+BuiltinType BuiltinType_by_integer_type(IntegerType type)
+{
+    bool   un_signed = true;
+    size_t width = (size_t) type;
+    if ((int) type < 0) {
+        width = (size_t) (-((int) type));
+        un_signed = false;
+    }
+    return BuiltinType_by_integer_spec(width, un_signed);
 }
 
 bool BuiltinType_is_integer(BuiltinType type)
@@ -131,27 +146,20 @@ type_id type_registry_id_of_builtin_type(BuiltinType type)
     fatal("Builtin type '%s' (0x%04x) not found", BuiltinType_name(type), type);
 }
 
-type_id type_registry_id_of_integer_type(IntegerSize bits, bool un_signed)
+type_id type_registry_id_of_integer_type(IntegerType type)
 {
-    switch (bits) {
-    case BITS_8:
-        return (un_signed) ? U8_ID : I8_ID;
-    case BITS_16:
-        return (un_signed) ? U16_ID : I16_ID;
-    case BITS_32:
-        return (un_signed) ? U32_ID : I32_ID;
-    case BITS_64:
-        return (un_signed) ? U64_ID : I64_ID;
+    switch (type) {
+#undef INTEGER_SIZE
+#define INTEGER_SIZE(sz)   \
+    case I##sz:            \
+        return I##sz##_ID; \
+    case U##sz:            \
+        return U##sz##_ID;
+        INTEGER_SIZES(INTEGER_SIZE)
+#undef INTEGER_SIZE
     default:
         UNREACHABLE();
     }
-}
-
-int sort_type_ids(type_id const *t1, type_id const *t2)
-{
-    uint16_t tix1 = typeid_ix(*t1);
-    uint16_t tix2 = typeid_ix(*t2);
-    return (tix1 > tix2) ? 1 : ((tix2 > tix1) ? -1 : 0);
 }
 
 ErrorOrTypeID type_registry_make_type(StringView name, TypeKind kind, BuiltinType builtin_type)
@@ -322,7 +330,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
 {
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
-        RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
+        RETURN(Size, BuiltinType_integer_type(type->builtin_type) / 8);
     case TK_ENUM:
         RETURN(Size, typeid_sizeof(type->enumeration.underlying_type));
     case TK_ALIAS:
@@ -369,7 +377,7 @@ ErrorOrSize type_alignat(ExpressionType *type)
 {
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
-        RETURN(Size, BuiltinType_width(type->builtin_type) / 8);
+        RETURN(Size, BuiltinType_integer_type(type->builtin_type) / 8);
     case TK_ALIAS:
         return type_alignat(typeid_canonical_type(type->type_id));
     case TK_AGGREGATE: {

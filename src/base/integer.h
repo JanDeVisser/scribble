@@ -5,25 +5,29 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include <optional.h>
+#include <sv.h>
 
 #ifndef __INTEGER_H__
 #define __INTEGER_H__
 
 #define INTEGER_SIZES(S) S(8) S(16) S(32) S(64)
 
-typedef enum integer_size {
+typedef enum integer_type {
+    IU_NO_SUCH_TYPE = 0,
 #undef INTEGER_SIZE
 #define INTEGER_SIZE(sz) \
-    BITS_##sz = sz,
+    I##sz = -sz,         \
+    U##sz = sz,
     INTEGER_SIZES(INTEGER_SIZE)
 #undef INTEGER_SIZE
-} IntegerSize;
+} IntegerType;
 
 typedef struct integer {
-    IntegerSize size;
-    bool        un_signed;
+    IntegerType type;
     union {
 #undef INTEGER_SIZE
 #define INTEGER_SIZE(sz) \
@@ -36,12 +40,42 @@ typedef struct integer {
 
 OPTIONAL(Integer);
 
-extern Integer         integer_create(IntegerSize size, bool un_signed, uint64_t value);
+inline static char const *IntegerType_name(IntegerType type)
+{
+    switch (type) {
+#undef INTEGER_SIZE
+#define INTEGER_SIZE(sz) \
+    case I##sz:          \
+        return "i" #sz;  \
+    case U##sz:          \
+        return "u" #sz;
+        INTEGER_SIZES(INTEGER_SIZE)
+#undef INTEGER_SIZE
+    default:
+        fprintf(stderr, "Unknown integer type: %d\n", type);
+        exit(1);
+    }
+}
+
+struct string_view;
+extern IntegerType IntegerType_from_name(struct string_view name);
+
+static inline bool IntegerType_is_signed(IntegerType type)
+{
+    return (int) type < 0;
+}
+
+static inline bool IntegerType_is_unsigned(IntegerType type)
+{
+    return (int) type > 0;
+}
+
+extern Integer         integer_create(IntegerType type, uint64_t value);
 extern OptionalInt64   integer_signed_value(Integer i);
 extern OptionalUInt64  integer_unsigned_value(Integer i);
-extern OptionalInteger integer_coerce_to_signed(Integer i, IntegerSize size);
-extern OptionalInteger integer_coerce_to_unsigned(Integer i, IntegerSize size);
-extern OptionalInteger integer_coerce_to(Integer i, IntegerSize size, bool un_signed);
+extern OptionalInteger integer_coerce_to_signed(Integer i, IntegerType type);
+extern OptionalInteger integer_coerce_to_unsigned(Integer i, IntegerType type);
+extern OptionalInteger integer_coerce_to(Integer i, IntegerType type);
 extern Integer         integer_add(Integer i1, Integer i2);
 extern Integer         integer_subtract(Integer i1, Integer i2);
 extern Integer         integer_multiply(Integer i1, Integer i2);
@@ -64,16 +98,26 @@ extern Integer         integer_increment(Integer i);
 extern Integer         integer_decrement(Integer i);
 
 #undef INTEGER_SIZE
-#define INTEGER_SIZE(sz)                                \
-    static inline Integer i##sz(int64_t value)          \
-    {                                                   \
-        return integer_create(BITS_##sz, false, value); \
-    }                                                   \
-    static inline Integer u##sz(uint64_t value)         \
-    {                                                   \
-        return integer_create(BITS_##sz, true, value);  \
+#define INTEGER_SIZE(sz)                        \
+    static inline Integer i##sz(int64_t value)  \
+    {                                           \
+        return integer_create(I##sz, value);    \
+    }                                           \
+    static inline Integer u##sz(uint64_t value) \
+    {                                           \
+        return integer_create(U##sz, value);    \
     }
 INTEGER_SIZES(INTEGER_SIZE)
 #undef INTEGER_SIZE
+
+static inline bool integer_is_signed(Integer i)
+{
+    return IntegerType_is_signed(i.type);
+}
+
+static inline bool integer_is_unsigned(Integer i)
+{
+    return IntegerType_is_unsigned(i.type);
+}
 
 #endif /* __INTEGER_H__ */

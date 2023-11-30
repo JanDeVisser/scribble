@@ -189,8 +189,7 @@ typedef struct syntax_node {
             struct syntax_node *names;
         } variable;
         struct {
-            size_t width;
-            bool   un_signed;
+            IntegerType type;
         } integer;
         struct {
             struct syntax_node *expression;

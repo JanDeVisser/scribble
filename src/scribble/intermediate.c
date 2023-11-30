@@ -68,7 +68,7 @@ void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
 {
     IROperation op;
     op.operation = IR_PUSH_INT_CONSTANT;
-    op.integer = integer_create(BITS_64, true, value);
+    op.integer = integer_create(U64, value);
     ir_function_add_operation(fnc, op);
 }
 
@@ -128,7 +128,7 @@ __attribute__((unused)) void generate_CAST(BoundNode *node, IRObject *target)
     generate_node(node->cast_expr.expr, target);
     IROperation op;
     op.operation = IR_CAST;
-    op.integer = integer_create(BITS_64, true, node->cast_expr.cast_to);
+    op.type = node->cast_expr.cast_to;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -139,7 +139,7 @@ __attribute__((unused)) void generate_COMPOUND_INITIALIZER(BoundNode *node, IROb
     }
     IROperation op;
     op.operation = IR_NEW_DATUM;
-    op.integer = integer_create(BITS_64, true, node->typespec.type_id);
+    op.type = node->typespec.type_id;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -227,10 +227,7 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     ir_function_add_operation(fnc, op);
     op.operation = IR_PUSH_INT_CONSTANT;
     assert(typeid_builtin_type(range_of->type_id));
-    op.integer = integer_create(
-        BuiltinType_width(range_of->builtin_type),
-        BuiltinType_is_unsigned(range_of->builtin_type),
-        1);
+    op.integer = integer_create(BuiltinType_integer_type(range_of->builtin_type), 1);
     ir_function_add_operation(fnc, op);
     op.operation = IR_BINARY_OPERATOR;
     op.binary_operator.op = OP_ADD;
@@ -719,12 +716,12 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, "%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
-        if (op->integer.un_signed) {
+        if (integer_is_unsigned(op->integer)) {
             sb_printf(&sb, "%" PRIu64 " [0x%08" PRIx64 "]", op->integer.u64, op->integer.u64);
         } else {
             sb_printf(&sb, "%" PRIi64, op->integer.i64);
         }
-        sb_printf(&sb, " : %c%d", (op->integer.un_signed) ? 'u' : 'i', (int) op->integer.size);
+        sb_printf(&sb, " : %s", IntegerType_name(op->integer.type));
         break;
     case IR_NEW_DATUM:
         sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.u64)), op->integer.u64);

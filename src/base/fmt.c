@@ -69,7 +69,6 @@ typedef struct FormatSpecifier {
     FormatSpecifierAlignment alignment;
     StringView               fill;
     DisplaySign              display_sign;
-    bool                     alternate;
     GroupingOption           grouping_option;
     size_t                   width;
     size_t                   precision;
@@ -122,7 +121,7 @@ void prepare_integer(RenderableArgument *renderable)
     Integer         integer = renderable->arg.integer;
     FormatSpecifier specifier = renderable->specifier;
 
-    if (integer.un_signed) {
+    if ((int) integer.type > 0) {
         renderable->integer.abs_val = integer_unsigned_value(integer).value;
     } else {
         renderable->integer.signed_val = integer_signed_value(integer).value;
@@ -136,21 +135,19 @@ void prepare_integer(RenderableArgument *renderable)
     renderable->integer.sign = "";
     switch (specifier.display_sign) {
     case DS_ONLYFORNEGATIVE:
-        if (!integer.un_signed) {
-            if (integer_unsigned_value(integer).value < 0) {
-                renderable->integer.sign = "-";
-            }
+        if ((int) integer.type < 0 && integer_unsigned_value(integer).value < 0) {
+            renderable->integer.sign = "-";
         }
         break;
     case DS_ALWAYS:
-        if (integer.un_signed) {
+        if ((int) integer.type > 0) {
             renderable->integer.sign = "+";
         } else {
             renderable->integer.sign = (renderable->integer.signed_val < 0) ? "-" : "+";
         }
         break;
     case DS_SPACEFORPOSITIVE:
-        if (integer.un_signed) {
+        if ((int) integer.type > 0) {
             renderable->integer.sign = " ";
         } else {
             renderable->integer.sign = (renderable->integer.signed_val < 0) ? "-" : " ";
@@ -194,9 +191,6 @@ void render_integer(RenderableArgument *renderable, StringBuilder *sb)
 
 void prepare_string(RenderableArgument *renderable)
 {
-    Integer         integer = renderable->arg.integer;
-    FormatSpecifier specifier = renderable->specifier;
-
     renderable->sv = renderable->arg.sv;
     renderable->length = renderable->sv.length;
 }
@@ -400,10 +394,6 @@ FormatSpecifier format_specifier_init(StringView msg, size_t start, size_t len)
         ret.display_sign = (DisplaySign) display_sign;
         ss_reset(&scanner);
     }
-    if (ss_peek(&scanner) == '#') {
-        ret.alternate = true;
-        ss_reset(&scanner);
-    }
     if (ss_peek(&scanner) == '0') {
         ret.alignment = FSA_RIGHT_BUT_SIGN_LEFT;
         ret.fill = sv_from("0");
@@ -498,7 +488,6 @@ OptionalFormatSpecifier first_specifier(StringView msg)
 {
     FormatState state = FS_STRING;
     int         start = -1;
-    size_t      len = 0;
 
     for (int ix = 0; ix < msg.length; ix++) {
         char ch = msg.ptr[ix];
@@ -580,11 +569,10 @@ StringView vformat(StringView fmt, va_list args) // NOLINT(readability-non-const
     FMTArgs      fmt_args;
     for (size_t ix = 0; ix < fs.size; ++ix) {
         FormatSpecifier s = fs.elements[ix];
-        FMTArg          fmt_arg;
         switch (s.type) {
         case FST_INT: {
             int i = va_arg(args, int);
-            da_append_FMTArg(&fmt_args, (FMTArg) { .integer = { .size = BITS_32, .un_signed = false, .i32 = i } });
+            da_append_FMTArg(&fmt_args, (FMTArg) { .integer = { .type = I32, .i32 = i } });
         } break;
         case FST_STRING: {
             StringView sv = sv_from(va_arg(args, char *));
