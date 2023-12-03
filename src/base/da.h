@@ -13,7 +13,7 @@
     T     *elements
 
 #define DIA_APPEND(T, obj, elem)                                               \
-    {                                                                          \
+    do {                                                                       \
         if ((obj)->size == obj->cap) {                                         \
             if ((obj)->cap == 0) {                                             \
                 (obj)->elements = array_allocate(sizeof(T), 4);                \
@@ -30,7 +30,7 @@
             }                                                                  \
         }                                                                      \
         (obj)->elements[(obj)->size++] = (elem);                               \
-    }
+    } while (0);
 
 #define DA_STRUCT_ELEMENTS(T, S, E)                  \
     typedef struct _da_##T {                         \
