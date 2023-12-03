@@ -207,6 +207,11 @@ typedef struct register_pointer {
     int64_t  offset;
 } RegisterPointer;
 
+typedef struct {
+    StringView symbol;
+    int64_t    offset;
+} StaticData;
+
 #define VALUELOCATIONKINDS(S) \
     S(POINTER)                \
     S(REGISTER)               \
@@ -247,7 +252,7 @@ typedef struct value_location {
         Register        reg;
         RegisterRange   range;
         int64_t         offset;
-        StringView      symbol;
+        StaticData      static_data;
         double          float_value;
         Integer         integer;
     };
@@ -270,13 +275,11 @@ typedef struct string_id {
     struct string_id *next;
 } StringID;
 
-#define VARIABLEKINDS(S)   \
-    S(PARAMETER)           \
-    S(LOCAL)               \
-    S(STATIC)              \
-    S(GLOBAL)              \
-    S(AGGREGATE_COMPONENT) \
-    S(ARRAY_ELEMENT)
+#define VARIABLEKINDS(S) \
+    S(PARAMETER)         \
+    S(LOCAL)             \
+    S(STATIC)            \
+    S(GLOBAL)
 
 typedef enum variable_kind {
 #undef VARIABLEKIND
@@ -349,6 +352,7 @@ typedef struct arm64_variable {
             int64_t offset;
         } local_address;
         struct {
+            int64_t    offset;
             StringView label;
         } static_address;
         struct {
@@ -528,11 +532,11 @@ extern ValueLocation         arm64function_location_for_type(ARM64Function *func
 extern ValueLocation         arm64function_return_location(ARM64Function *function, type_id type);
 extern ValueLocation         arm64function_allocate_space(ARM64Function *function, type_id type);
 extern void                  arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr);
+extern void                  arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr);
 extern StringView            arm64variable_to_string(ARM64Variable *var);
-extern void                  arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location);
-extern void                  arm64variable_load_variable(ARM64Variable *variable);
 extern ValueLocation         arm64variable_pointer(ARM64Variable *variable);
 extern ValueLocation         arm64variable_reference(ARM64Variable *variable);
+extern ARM64Variable         arm64variable_component(ARM64Variable *variable, size_t index);
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);

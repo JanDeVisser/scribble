@@ -79,7 +79,6 @@ typedef struct operator_mapping {
     S(BLOCK)                \
     S(BOOL)                 \
     S(BREAK)                \
-    S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(DECIMAL)              \
     S(ENUMERATION)          \
@@ -98,7 +97,6 @@ typedef struct operator_mapping {
     S(NAME)                 \
     S(NATIVE_FUNCTION)      \
     S(PARAMETER)            \
-    S(PROCEDURE_CALL)       \
     S(PROGRAM)              \
     S(RETURN)               \
     S(STRING)               \
@@ -151,6 +149,11 @@ typedef struct syntax_node {
             struct syntax_node *function_impl;
         } function;
         struct {
+            struct syntax_node *function;
+            struct syntax_node *arguments;
+            bool                discard_result;
+        } call;
+        struct {
             struct syntax_node *statements;
         } function_impl;
         struct {
@@ -165,6 +168,7 @@ typedef struct syntax_node {
             struct syntax_node *argument;
         } arguments;
         struct {
+            struct syntax_node *variable;
             struct syntax_node *expression;
             Operator operator;
         } assignment;
@@ -186,7 +190,7 @@ typedef struct syntax_node {
             struct syntax_node *statement;
         } for_statement;
         struct {
-            struct syntax_node *names;
+            struct syntax_node *subscript;
         } variable;
         struct {
             IntegerType type;
@@ -208,6 +212,7 @@ typedef struct syntax_node {
             Operator operator;
         } unary_expr;
         struct {
+            struct syntax_node *variable;
             struct syntax_node *var_type;
             struct syntax_node *init_expr;
             bool                is_const;

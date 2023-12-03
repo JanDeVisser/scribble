@@ -52,11 +52,6 @@ StringView arm64variable_to_string(ARM64Variable *var)
     return sb.view;
 }
 
-void arm64variable_store_variable(ARM64Variable *variable, ValueLocation from_location)
-{
-    arm64function_copy(variable->scope->function, arm64variable_pointer(variable), from_location);
-}
-
 ValueLocation arm64variable_pointer(ARM64Variable *variable)
 {
     type_id type = variable->var_decl.type.type_id;
@@ -69,7 +64,8 @@ ValueLocation arm64variable_pointer(ARM64Variable *variable)
             .kind = VLK_POINTER,
             .pointer = {
                 .reg = REG_FP,
-                .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset }
+                .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset,
+            }
         };
     }
     case VK_STATIC:
@@ -77,29 +73,15 @@ ValueLocation arm64variable_pointer(ARM64Variable *variable)
         return (ValueLocation) {
             .type = type,
             .kind = VLK_DATA,
-            .symbol = variable->static_address.label
+            .static_data = {
+                .symbol = variable->static_address.label,
+                .offset = variable->static_address.offset,
+            }
         };
-    }
-    case VK_AGGREGATE_COMPONENT: {
-        NYI("VK_AGGREGATE_COMPONENT load");
-    }
-    case VK_ARRAY_ELEMENT: {
-        NYI("VK_ARRAY_ELEMENT load");
     }
     default:
         UNREACHABLE();
     }
-}
-
-void arm64variable_load_variable(ARM64Variable *variable)
-{
-    type_id        type = variable->var_decl.type.type_id;
-    ARM64Function *function = variable->scope->function;
-    ValueLocation  from_location = arm64variable_pointer(variable);
-    ValueLocation  to_location = arm64function_location_for_type(function, type);
-
-    arm64function_copy(function, to_location, from_location);
-    arm64function_push_location(function, to_location);
 }
 
 ValueLocation arm64variable_reference(ARM64Variable *variable)
@@ -120,4 +102,39 @@ ValueLocation arm64variable_reference(ARM64Variable *variable)
         NYI("arm64variable_reference('%s')", VariableKind_name(variable->kind));
     }
     return to_location;
+}
+
+ARM64Variable arm64variable_component(ARM64Variable *variable, size_t index)
+{
+    ExpressionType *et = type_registry_get_type_by_id(variable->var_decl.type.type_id);
+    assert(type_has_kind(et, TK_AGGREGATE));
+    assert(index < et->components.num_components);
+    TypeComponent *tc = &et->components.components[index];
+    int64_t        offset = (int64_t) typeid_offsetof(et->type_id, index);
+    ARM64Variable  ret = {
+         .scope = variable->scope,
+         .kind = variable->kind,
+         .var_decl = {
+             .name = tc->name,
+             .type = {
+                 .type_id = tc->type_id,
+                 .optional = false,
+            } },
+    };
+    switch (variable->kind) {
+    case VK_LOCAL:
+        ret.local_address.offset = variable->local_address.offset - offset;
+        break;
+    case VK_PARAMETER:
+        ret.parameter.offset = variable->local_address.offset - offset;
+        break;
+    case VK_STATIC:
+    case VK_GLOBAL:
+        ret.static_address.offset = variable->static_address.offset + offset;
+        ret.static_address.label = variable->static_address.label;
+        break;
+    default:
+        UNREACHABLE();
+    }
+    return ret;
 }

@@ -1,10 +1,12 @@
 struct S {
-  s1: int;
-  s2: int;
-}
+  s1: int,
+  s2: int,
+};
 
 func main() : int {
   var s: S = { 69, 420 };
   puti(s.s1); endln();
+  s.s2 = 42;
+  puti(s.s2); endln();
   return 0;
 }

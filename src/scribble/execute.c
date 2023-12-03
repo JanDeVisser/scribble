@@ -40,8 +40,8 @@ void                   call_stack_push(CallStack *stack, IRFunction *function, s
 void                   call_stack_dump(CallStack *stack);
 VarList               *scope_variable(Scope *scope, StringView name);
 char const            *scope_declare_variable(Scope *scope, StringView name, type_id type);
-char const            *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack);
-char const            *scope_push_variable(Scope *scope, StringView name, DatumStack *stack);
+char const            *scope_pop_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack);
+char const            *scope_push_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 
@@ -160,7 +160,7 @@ char const *scope_declare_variable(Scope *scope, StringView name, type_id type)
     return NULL;
 }
 
-char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
+char const *scope_pop_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack)
 {
     Scope *s = scope;
     while (s) {
@@ -173,6 +173,27 @@ char const *scope_pop_variable(Scope *scope, StringView name, DatumStack *stack)
             if (v->value) {
                 datum_free(v->value);
             }
+
+            Datum *component = v->value;
+            for (size_t ix = 0; ix < num; ++ix) {
+                size_t index = indices[ix];
+                switch (datum_kind(v->value)) {
+                case TK_PRIMITIVE:
+                case TK_VARIANT:
+                    return "Attempted pop of component of non-compound datum";
+                case TK_AGGREGATE:
+                    if (index >= v->value->aggregate.num_components) {
+                        return "Attempted pop of out-of-range component index";
+                    }
+                    component = component->aggregate.components + index;
+                    break;
+                default:
+                    UNREACHABLE();
+                }
+            }
+            assert(component);
+            datum_copy(component, d);
+            datum_free(d);
             v->value = d;
             return NULL;
         }
@@ -215,41 +236,28 @@ char const *scope_pop_variable_component(Scope *scope, StringView name, size_t i
     return "Cannot assign undeclared variable";
 }
 
-char const *scope_push_variable(Scope *scope, StringView name, DatumStack *stack)
+char const *scope_push_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack)
 {
     Scope *s = scope;
     while (s) {
         VarList *v = scope_variable(s, name);
         if (v) {
-            Datum *copy = datum_allocate(v->value->type);
-            datum_copy(copy, v->value);
-            datum_stack_push(stack, copy);
-            return NULL;
-        }
-        s = s->enclosing;
-    }
-    return "Cannot get value of undeclared variable";
-}
-
-char const *scope_push_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
-{
-    Scope *s = scope;
-    while (s) {
-        VarList *v = scope_variable(s, name);
-        if (v) {
-            Datum *component;
-            switch (datum_kind(v->value)) {
-            case TK_PRIMITIVE:
-            case TK_VARIANT:
-                return "Attempted push of component of non-compound datum";
-            case TK_AGGREGATE:
-                if (index >= v->value->aggregate.num_components) {
-                    return "Attempted push of out-of-range component index";
+            Datum *component = v->value;
+            for (int ix = 0; ix < num; ++ix) {
+                size_t index = indices[ix];
+                switch (datum_kind(component)) {
+                case TK_PRIMITIVE:
+                case TK_VARIANT:
+                    return "Attempted push of component of non-compound datum";
+                case TK_AGGREGATE:
+                    if (index >= v->value->aggregate.num_components) {
+                        return "Attempted push of out-of-range component index";
+                    }
+                    component = v->value->aggregate.components + index;
+                    break;
+                default:
+                    UNREACHABLE();
                 }
-                component = v->value->aggregate.components + index;
-                break;
-            default:
-                UNREACHABLE();
             }
             assert(component);
             Datum *copy = datum_allocate(component->type);
@@ -486,15 +494,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_free(d2);
     } break;
     case IR_POP_VAR: {
-        char const *err = scope_pop_variable(ctx->scope, op->sv, &ctx->stack);
-        if (err) {
-            next.type = NIT_EXCEPTION;
-            next.exception = err;
-            return next;
-        }
-    } break;
-    case IR_POP_VAR_COMPONENT: {
-        char const *err = scope_pop_variable_component(ctx->scope, op->var_component.name, op->var_component.component, &ctx->stack);
+        char const *err = scope_pop_variable(ctx->scope, op->sv, op->var_component.size, op->var_component.elements, &ctx->stack);
         if (err) {
             next.type = NIT_EXCEPTION;
             next.exception = err;
@@ -521,7 +521,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_VAR: {
-        char const *err = scope_push_variable(ctx->scope, op->sv, &ctx->stack);
+        char const *err = scope_push_variable(ctx->scope, op->sv, op->var_component.size, op->var_component.elements, &ctx->stack);
         if (err) {
             next.type = NIT_EXCEPTION;
             next.exception = err;
@@ -536,14 +536,6 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         next.type = NIT_EXCEPTION;
         next.exception = "DEREFERENCE not supported in execution mode";
         return next;
-    case IR_PUSH_VAR_COMPONENT: {
-        char const *err = scope_push_variable_component(ctx->scope, op->var_component.name, op->var_component.component, &ctx->stack);
-        if (err) {
-            next.type = NIT_EXCEPTION;
-            next.exception = err;
-            return next;
-        }
-    } break;
     case IR_RETURN: {
         NextInstructionPointer nip = { 0 };
         nip.type = NIT_RETURN;
@@ -800,7 +792,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         IRVarDecl  *var_decl = function->parameters + param_ix;
         char const *err = scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
         if (!err) {
-            err = scope_pop_variable(ctx->scope, var_decl->name, &ctx->stack);
+            err = scope_pop_variable(ctx->scope, var_decl->name, 0, NULL, &ctx->stack);
         }
         if (err) {
             FunctionReturn ret = { 0 };

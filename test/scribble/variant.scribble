@@ -12,7 +12,7 @@ struct B {
 
 enum E : u8 {
     A, B,
-}
+};
 
 variant V : E {
     A(A),

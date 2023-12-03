@@ -18,7 +18,6 @@
     S(BOOL)                 \
     S(BREAK)                \
     S(CAST)                 \
-    S(COMPOUND_INITIALIZER) \
     S(CONTINUE)             \
     S(DECIMAL)              \
     S(ENUMERATION)          \
@@ -72,50 +71,22 @@ typedef struct bound_node {
     struct intermediate *intermediate;
     union {
         struct {
-            struct bound_node *modules;
-        } import;
-        struct {
-            struct bound_node *types;
-            struct bound_node *imports;
-            struct bound_node *modules;
-        } program;
-        struct {
-            struct bound_node *statements;
-        } block;
-        struct bound_node *controlled_statement;
-        struct {
-            struct bound_node *parameter;
-            struct bound_node *function_impl;
-        } function;
+            struct bound_node *variable;
+            struct bound_node *expression;
+        } assignment;
         struct {
             struct bound_node *lhs;
             struct bound_node *rhs;
             Operator operator;
         } binary_expr;
         struct {
-            struct bound_node *expression;
-        } assignment;
+            struct bound_node *statements;
+        } block;
         struct {
             struct bound_node *function;
             struct bound_node *argument;
             bool               discard_result;
         } call;
-        struct {
-            struct bound_node *argument;
-        } compound_initializer;
-        struct {
-            struct bound_node *condition;
-            struct bound_node *if_true;
-            struct bound_node *if_false;
-        } if_statement;
-        struct {
-            struct bound_node *variable;
-            struct bound_node *range;
-            struct bound_node *statement;
-        } for_statement;
-        struct {
-            struct bound_node *expression;
-        } return_stmt;
         struct {
             struct bound_node *expr;
             type_id            cast_to;
@@ -123,7 +94,8 @@ typedef struct bound_node {
         struct {
             struct bound_node *components;
         } compound_def;
-        double decimal_value;
+        struct bound_node *controlled_statement;
+        double             decimal_value;
         struct {
             TypeSpec           underlying_type;
             struct bound_node *values;
@@ -131,7 +103,32 @@ typedef struct bound_node {
         struct {
             struct bound_node *underlying_value;
         } enum_value;
+        struct {
+            struct bound_node *variable;
+            struct bound_node *range;
+            struct bound_node *statement;
+        } for_statement;
+        struct {
+            struct bound_node *parameter;
+            struct bound_node *function_impl;
+        } function;
+        struct {
+            struct bound_node *condition;
+            struct bound_node *if_true;
+            struct bound_node *if_false;
+        } if_statement;
+        struct {
+            struct bound_node *modules;
+        } import;
         Integer integer;
+        struct {
+            struct bound_node *types;
+            struct bound_node *imports;
+            struct bound_node *modules;
+        } program;
+        struct {
+            struct bound_node *expression;
+        } return_stmt;
         struct {
             struct bound_node *condition;
             struct bound_node *if_true;
@@ -145,8 +142,9 @@ typedef struct bound_node {
             Operator operator;
         } unary_expr;
         struct {
+            type_id            type;
             struct bound_node *decl;
-            struct bound_node *names;
+            struct bound_node *subscript;
         } variable;
         struct {
             struct bound_node *init_expr;

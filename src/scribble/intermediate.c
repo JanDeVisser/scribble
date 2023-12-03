@@ -57,6 +57,12 @@ char const *ir_operation_type_name(IROperationType optype)
     }
 }
 
+void ir_operation_set(IROperation *op, IROperationType operation)
+{
+    memset(op, 0, sizeof(IROperation));
+    op->operation = operation;
+}
+
 void ir_function_add_operation(IRFunction *fnc, IROperation op)
 {
     assert(fnc->kind == FK_SCRIBBLE);
@@ -67,7 +73,7 @@ void ir_function_add_operation(IRFunction *fnc, IROperation op)
 void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
 {
     IROperation op;
-    op.operation = IR_PUSH_INT_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_INT_CONSTANT);
     op.integer = integer_create(U64, value);
     ir_function_add_operation(fnc, op);
 }
@@ -76,8 +82,22 @@ __attribute__((unused)) void generate_ASSIGNMENT(BoundNode *node, IRObject *targ
 {
     generate_node(node->assignment.expression, target);
     IROperation op;
-    op.operation = IR_POP_VAR;
+    ir_operation_set(&op, IR_POP_VAR);
     op.sv = node->name;
+    BoundNode      *variable = node->assignment.variable;
+    ExpressionType *et = type_registry_get_type_by_id(variable->variable.type);
+    for (BoundNode *sub = variable->variable.subscript; sub; sub = sub->variable.subscript) {
+        bool found = false;
+        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+            if (sv_eq(sub->name, et->components.components[ix].name)) {
+                DIA_APPEND(size_t, (&op.var_component), ix);
+                found = true;
+                break;
+            }
+        }
+        assert(found);
+        et = type_registry_get_type_by_id(sub->variable.type);
+    }
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -86,7 +106,7 @@ __attribute__((unused)) void generate_BINARYEXPRESSION(BoundNode *node, IRObject
     IROperation op;
     generate_node(node->binary_expr.lhs, target);
     generate_node(node->binary_expr.rhs, target);
-    op.operation = IR_BINARY_OPERATOR;
+    ir_operation_set(&op, IR_BINARY_OPERATOR);
     op.binary_operator.op = node->binary_expr.operator;
     op.binary_operator.lhs = node->binary_expr.lhs->typespec.type_id;
     op.binary_operator.rhs = node->binary_expr.rhs->typespec.type_id;
@@ -97,19 +117,19 @@ __attribute__((unused)) void generate_BLOCK(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
-    op.operation = IR_SCOPE_BEGIN;
+    ir_operation_set(&op, IR_SCOPE_BEGIN);
     ir_function_add_operation(fnc, op);
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
         generate_node(stmt, target);
     }
-    op.operation = IR_SCOPE_END;
+    ir_operation_set(&op, IR_SCOPE_END);
     ir_function_add_operation(fnc, op);
 }
 
 __attribute__((unused)) void generate_BOOL(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    op.operation = IR_PUSH_BOOL_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_BOOL_CONSTANT);
     op.bool_value = (bool) node->integer.u8;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -118,7 +138,7 @@ __attribute__((unused)) void generate_BREAK(BoundNode *node, IRObject *target)
 {
     assert(node->block.statements->intermediate);
     IROperation op;
-    op.operation = IR_JUMP;
+    ir_operation_set(&op, IR_JUMP);
     op.label = node->controlled_statement->intermediate->loop.done;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -127,19 +147,8 @@ __attribute__((unused)) void generate_CAST(BoundNode *node, IRObject *target)
 {
     generate_node(node->cast_expr.expr, target);
     IROperation op;
-    op.operation = IR_CAST;
+    ir_operation_set(&op, IR_CAST);
     op.type = node->cast_expr.cast_to;
-    ir_function_add_operation((IRFunction *) target, op);
-}
-
-__attribute__((unused)) void generate_COMPOUND_INITIALIZER(BoundNode *node, IRObject *target)
-{
-    for (BoundNode *arg = node->compound_initializer.argument; arg; arg = arg->next) {
-        generate_node(arg, target);
-    }
-    IROperation op;
-    op.operation = IR_NEW_DATUM;
-    op.type = node->typespec.type_id;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
@@ -147,7 +156,7 @@ __attribute__((unused)) void generate_CONTINUE(BoundNode *node, IRObject *target
 {
     assert(node->block.statements->intermediate);
     IROperation op;
-    op.operation = IR_JUMP;
+    ir_operation_set(&op, IR_JUMP);
     op.label = node->controlled_statement->intermediate->loop.loop;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -155,16 +164,16 @@ __attribute__((unused)) void generate_CONTINUE(BoundNode *node, IRObject *target
 __attribute__((unused)) void generate_DECIMAL(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    op.operation = IR_PUSH_FLOAT_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_FLOAT_CONSTANT);
     op.double_value = node->decimal_value;
     ir_function_add_operation((IRFunction *) target, op);
 }
 
-__attribute__((unused)) void generate_ENUMERATION(BoundNode *node, IRObject *target)
+__attribute__((unused)) void generate_ENUMERATION(BoundNode *, IRObject *)
 {
 }
 
-__attribute__((unused)) void generate_ENUM_VALUE(BoundNode *node, IRObject *target)
+__attribute__((unused)) void generate_ENUM_VALUE(BoundNode *, IRObject *)
 {
 }
 
@@ -172,78 +181,78 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
 {
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
-    op.operation = IR_SCOPE_BEGIN;
+    ir_operation_set(&op, IR_SCOPE_BEGIN);
     ir_function_add_operation(fnc, op);
     ExpressionType *range = type_registry_get_type_by_id(node->for_statement.range->typespec.type_id);
     ExpressionType *range_of = typeid_canonical_type(type_get_argument(range, sv_from("T"))->type);
 
-    op.operation = IR_DECL_VAR;
+    ir_operation_set(&op, IR_DECL_VAR);
     op.var_decl.name = sv_from("$range");
     op.var_decl.type.type_id = range->type_id;
     ir_function_add_operation(fnc, op);
     generate_node(node->for_statement.range, target);
-    op.operation = IR_POP_VAR;
+    ir_operation_set(&op, IR_POP_VAR);
     op.sv = sv_from("$range");
     ir_function_add_operation(fnc, op);
 
-    op.operation = IR_DECL_VAR;
+    ir_operation_set(&op, IR_DECL_VAR);
     op.var_decl.name = node->for_statement.variable->name;
     op.var_decl.type.type_id = range_of->type_id;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_PUSH_VAR_COMPONENT;
+    ir_operation_set(&op, IR_PUSH_VAR);
     op.var_component.name = sv_from("$range");
-    op.var_component.component = 0;
+    DIA_APPEND(size_t, (&op.var_component), 0);
     ir_function_add_operation(fnc, op);
 
     node->intermediate = allocate_new(Intermediate);
     node->intermediate->loop.loop = next_label();
     node->intermediate->loop.done = next_label();
-    op.operation = IR_POP_VAR;
+    ir_operation_set(&op, IR_POP_VAR);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_PUSH_VAR;
+    ir_operation_set(&op, IR_PUSH_VAR);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_PUSH_VAR_COMPONENT;
+    ir_operation_set(&op, IR_PUSH_VAR);
     op.var_component.name = sv_from("$range");
-    op.var_component.component = 1;
+    DIA_APPEND(size_t, (&op.var_component), 1);
     ir_function_add_operation(fnc, op);
-    op.operation = IR_BINARY_OPERATOR;
+    ir_operation_set(&op, IR_BINARY_OPERATOR);
     op.binary_operator.op = OP_LESS;
     op.binary_operator.lhs = op.binary_operator.rhs = range_of->type_id;
 
     ir_function_add_operation(fnc, op);
-    op.operation = IR_JUMP_F;
+    ir_operation_set(&op, IR_JUMP_F);
     op.label = node->intermediate->loop.done;
     ir_function_add_operation(fnc, op);
 
     generate_node(node->for_statement.statement, target);
 
-    op.operation = IR_PUSH_VAR;
+    ir_operation_set(&op, IR_PUSH_VAR);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_PUSH_INT_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_INT_CONSTANT);
     assert(typeid_builtin_type(range_of->type_id));
     op.integer = integer_create(BuiltinType_integer_type(range_of->builtin_type), 1);
     ir_function_add_operation(fnc, op);
-    op.operation = IR_BINARY_OPERATOR;
+    ir_operation_set(&op, IR_BINARY_OPERATOR);
     op.binary_operator.op = OP_ADD;
     op.binary_operator.lhs = op.binary_operator.rhs = range_of->type_id;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_POP_VAR;
+    ir_operation_set(&op, IR_POP_VAR);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
 
-    op.operation = IR_JUMP;
+    ir_operation_set(&op, IR_JUMP);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.done;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_SCOPE_END;
+    ir_operation_set(&op, IR_SCOPE_END);
     ir_function_add_operation(fnc, op);
 }
 
@@ -288,7 +297,8 @@ __attribute__((unused)) void generate_FUNCTION_CALL(BoundNode *node, IRObject *t
         generate_node(arg, target);
     }
     IROperation op;
-    op.operation = IR_CALL;
+    ir_operation_set(&op, IR_CALL);
+    op.sv = node->name;
     op.call.name = node->name;
     op.call.discard_result = node->call.discard_result;
     ir_function_add_operation((IRFunction *) target, op);
@@ -299,12 +309,12 @@ __attribute__((unused)) void generate_FUNCTION_IMPL(BoundNode *node, IRObject *t
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
     da_resize_IROperation(&fnc->operations, 256);
-    op.operation = IR_SCOPE_BEGIN;
+    ir_operation_set(&op, IR_SCOPE_BEGIN);
     ir_function_add_operation(fnc, op);
     for (BoundNode *stmt = node->block.statements; stmt; stmt = stmt->next) {
         generate_node(stmt, target);
     }
-    op.operation = IR_SCOPE_END;
+    ir_operation_set(&op, IR_SCOPE_END);
     ir_function_add_operation(fnc, op);
 }
 
@@ -315,24 +325,24 @@ __attribute__((unused)) void generate_IF(BoundNode *node, IRObject *target)
     unsigned int else_label = next_label();
 
     generate_node(node->if_statement.condition, target);
-    op.operation = IR_JUMP_F;
+    ir_operation_set(&op, IR_JUMP_F);
     op.label = else_label;
     ir_function_add_operation(fnc, op);
     generate_node(node->if_statement.if_true, target);
     if (node->if_statement.if_false) {
         unsigned int end_label = next_label();
-        op.operation = IR_JUMP;
+        ir_operation_set(&op, IR_JUMP);
         op.label = end_label;
         ir_function_add_operation(fnc, op);
-        op.operation = IR_LABEL;
+        ir_operation_set(&op, IR_LABEL);
         op.label = else_label;
         ir_function_add_operation(fnc, op);
         generate_node(node->if_statement.if_false, target);
-        op.operation = IR_LABEL;
+        ir_operation_set(&op, IR_LABEL);
         op.label = end_label;
         ir_function_add_operation(fnc, op);
     } else {
-        op.operation = IR_LABEL;
+        ir_operation_set(&op, IR_LABEL);
         op.label = else_label;
         ir_function_add_operation(fnc, op);
     }
@@ -348,7 +358,7 @@ __attribute__((unused)) void generate_IMPORT(BoundNode *node, IRObject *target)
 __attribute__((unused)) void generate_INTEGER(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    op.operation = IR_PUSH_INT_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_INT_CONSTANT);
     op.integer = node->integer;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -360,14 +370,14 @@ __attribute__((unused)) void generate_LOOP(BoundNode *node, IRObject *target)
     node->intermediate->loop.loop = next_label();
     node->intermediate->loop.done = next_label();
     IROperation op;
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
     generate_node(node->block.statements, target);
-    op.operation = IR_JUMP;
+    ir_operation_set(&op, IR_JUMP);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.done;
     ir_function_add_operation(fnc, op);
 }
@@ -447,7 +457,7 @@ __attribute__((unused)) void generate_RETURN(BoundNode *node, IRObject *target)
         generate_node(node->return_stmt.expression, target);
     }
     IROperation op;
-    op.operation = IR_RETURN;
+    ir_operation_set(&op, IR_RETURN);
     op.bool_value = node->return_stmt.expression != NULL;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -455,7 +465,7 @@ __attribute__((unused)) void generate_RETURN(BoundNode *node, IRObject *target)
 __attribute__((unused)) void generate_STRING(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    op.operation = IR_PUSH_STRING_CONSTANT;
+    ir_operation_set(&op, IR_PUSH_STRING_CONSTANT);
     op.sv = node->name;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -475,7 +485,7 @@ __attribute__((unused)) void generate_STRUCT(BoundNode *node, IRObject *target)
     }
     ir_function_add_push_u64((IRFunction *) target, components);
     IROperation op;
-    op.operation = (node->type == BNT_STRUCT) ? IR_DEFINE_AGGREGATE : IR_DEFINE_VARIANT;
+    ir_operation_set(&op, (node->type == BNT_STRUCT) ? IR_DEFINE_AGGREGATE : IR_DEFINE_VARIANT);
     op.sv = node->name;
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -513,19 +523,19 @@ __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject 
     IROperation op;
     switch (node->unary_expr.operator) {
     case OP_ADDRESS_OF:
-        op.operation = IR_PUSH_VAR_ADDRESS;
+        ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
         op.sv = node->unary_expr.operand->name;
         ir_function_add_operation((IRFunction *) target, op);
         break;
     case OP_DEREFERENCE:
         generate_node(node->unary_expr.operand, target);
-        op.operation = IR_DEREFERENCE;
+        ir_operation_set(&op, IR_DEREFERENCE);
         op.type = node->typespec.type_id;
         ir_function_add_operation((IRFunction *) target, op);
         break;
     default:
         generate_node(node->unary_expr.operand, target);
-        op.operation = IR_UNARY_OPERATOR;
+        ir_operation_set(&op, IR_UNARY_OPERATOR);
         op.unary_operator.op = node->unary_expr.operator;
         op.unary_operator.operand = node->unary_expr.operand->typespec.type_id;
         ir_function_add_operation((IRFunction *) target, op);
@@ -533,37 +543,35 @@ __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject 
     }
 }
 
-__attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *node, IRObject *target)
+__attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *, IRObject *)
 {
-    IRFunction *fnc = (IRFunction *) target;
+    UNREACHABLE();
 }
 
-__attribute__((unused)) void generate_UNBOUND_TYPE(BoundNode *node, IRObject *target)
+__attribute__((unused)) void generate_UNBOUND_TYPE(BoundNode *, IRObject *)
 {
-    IRFunction *fnc = (IRFunction *) target;
+    UNREACHABLE();
 }
 
 __attribute__((unused)) void generate_VARIABLE(BoundNode *node, IRObject *target)
 {
     IROperation op;
-    if (node->variable.names->next) {
-        op.operation = IR_PUSH_VAR_COMPONENT;
-        op.var_component.name = node->variable.names->name;
-        ExpressionType *et = type_registry_get_type_by_id(node->variable.names->typespec.type_id);
+    ir_operation_set(&op, IR_PUSH_VAR);
+    op.sv = node->name;
+    ExpressionType *et = type_registry_get_type_by_id(node->variable.type);
+    for (BoundNode *sub = node->variable.subscript; sub; sub = sub->variable.subscript) {
+        bool found = false;
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            if (sv_eq(node->variable.names->next->name, et->components.components->name)) {
-                op.var_component.component = ix;
-                ir_function_add_operation((IRFunction *) target, op);
-                return;
+            if (sv_eq(sub->name, et->components.components[ix].name)) {
+                DIA_APPEND(size_t, (&op.var_component), ix);
+                found = true;
+                break;
             }
         }
-        fatal("Could not find index of component '" SV_SPEC "' of type '" SV_SPEC "'. This shouldn't happen",
-            SV_ARG(node->variable.names->next->name), SV_ARG(et->name));
-    } else {
-        op.operation = IR_PUSH_VAR;
-        op.sv = node->name;
-        ir_function_add_operation((IRFunction *) target, op);
+        assert(found);
+        et = type_registry_get_type_by_id(sub->variable.type);
     }
+    ir_function_add_operation((IRFunction *) target, op);
 }
 
 __attribute__((unused)) void generate_VARIABLE_DECL(BoundNode *node, IRObject *target)
@@ -573,13 +581,15 @@ __attribute__((unused)) void generate_VARIABLE_DECL(BoundNode *node, IRObject *t
     }
     IRFunction *fnc = (IRFunction *) target;
     IROperation op;
-    op.operation = IR_DECL_VAR;
+    ir_operation_set(&op, IR_DECL_VAR);
     op.var_decl.name = node->name;
     op.var_decl.type = node->typespec;
     ir_function_add_operation(fnc, op);
     if (node->variable_decl.init_expr) {
-        generate_node(node->variable_decl.init_expr, (IRObject *) fnc);
-        op.operation = IR_POP_VAR;
+        for (BoundNode *expr = node->variable_decl.init_expr; expr; expr = expr->next) {
+            generate_node(expr, target);
+        }
+        ir_operation_set(&op, IR_POP_VAR);
         op.sv = node->name;
         ir_function_add_operation(fnc, op);
     }
@@ -600,18 +610,18 @@ __attribute__((unused)) void generate_WHILE(BoundNode *node, IRObject *target)
     node->intermediate = allocate(sizeof(Intermediate));
     node->intermediate->loop.loop = next_label();
     node->intermediate->loop.done = next_label();
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
     generate_node(node->while_statement.condition, target);
-    op.operation = IR_JUMP_F;
+    ir_operation_set(&op, IR_JUMP_F);
     op.label = node->intermediate->loop.done;
     ir_function_add_operation(fnc, op);
     generate_node(node->while_statement.statement, target);
-    op.operation = IR_JUMP;
+    ir_operation_set(&op, IR_JUMP);
     op.label = node->intermediate->loop.loop;
     ir_function_add_operation(fnc, op);
-    op.operation = IR_LABEL;
+    ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.done;
     ir_function_add_operation(fnc, op);
 }
@@ -698,13 +708,15 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         break;
     case IR_POP_VAR:
     case IR_PUSH_VAR:
+        sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
+        for (size_t ix = 0; ix < op->var_component.size; ++ix) {
+            sb_append_cstr(&sb, ".");
+            sb_printf(&sb, "[%zu]", op->var_component.elements[ix]);
+        }
+        break;
     case IR_PUSH_VAR_ADDRESS:
     case IR_PUSH_STRING_CONSTANT:
         sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
-        break;
-    case IR_POP_VAR_COMPONENT:
-    case IR_PUSH_VAR_COMPONENT:
-        sb_printf(&sb, SV_SPEC ".%zu", SV_ARG(op->var_component.name), op->var_component.component);
         break;
     case IR_DECL_VAR:
         sb_printf(&sb, "%.*s", SV_ARG(ir_var_decl_to_string(&op->var_decl)));

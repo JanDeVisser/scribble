@@ -168,11 +168,15 @@ void code_select_code(Code *code)
     code->active = &code->code;
 }
 
-void code_load_label(Code *code, Register reg, StringView label)
+void code_load_label(Code *code, Register reg, StaticData label)
 {
-    code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(reg), SV_ARG(label));
+    code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(reg), SV_ARG(label.symbol));
     code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
-        x_reg(reg), x_reg(reg), SV_ARG(label));
+        x_reg(reg), x_reg(reg), SV_ARG(label.symbol));
+    if (label.offset != 0) {
+        code_add_instruction(code, "add", "%s,%s,#0x%0x",
+            x_reg(reg), x_reg(reg), label.offset);
+    }
 }
 
 void code_copy_pointer(Code *code, Register reg, Register from, int64_t offset)
@@ -227,11 +231,12 @@ void code_copy_memory(Code *code, Register to_pointer, size_t to_offset, Registe
 
 void code_copy_to_registers(Code *code, Register r, Register from_pointer, size_t from_offset, size_t size)
 {
-    assert(size % 8 == 0);
-    size_t double_words = size / 8;
-    size_t quad_words = double_words / 2;
+    size_t   half_words = size / 2;
+    size_t   words = size / 4;
+    size_t   double_words = size / 8;
+    size_t   quad_words = double_words / 2;
+    Register next_reg = r + 1;
     for (size_t ix = 0; ix < quad_words; ++ix) {
-        Register next_reg = r + 1;
         code_add_instruction(code, "ldp", "%s,%s,[%s,#%zu]",
             x_reg(r), x_reg(next_reg), x_reg(from_pointer), from_offset + 16 * ix);
         r = next_reg + 1;
@@ -239,16 +244,32 @@ void code_copy_to_registers(Code *code, Register r, Register from_pointer, size_
     if (double_words % 2) {
         code_add_instruction(code, "ldr", "%s,[%s,#%zu]",
             x_reg(r), x_reg(from_pointer), from_offset + 16 * quad_words);
+        r = next_reg + 1;
+    }
+    if (words % 2) {
+        code_add_instruction(code, "ldr", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(from_pointer), from_offset + 8 * double_words);
+        r = next_reg + 1;
+    }
+    if (half_words % 2) {
+        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(from_pointer), from_offset + 4 * words);
+        r = next_reg + 1;
+    }
+    if (size % 1) {
+        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(from_pointer), from_offset + 2 * half_words);
     }
 }
 
 void code_copy_from_registers(Code *code, Register to_pointer, size_t to_offset, Register r, size_t size)
 {
-    assert(size % 8 == 0);
-    size_t double_words = size / 8;
-    size_t quad_words = double_words / 2;
+    size_t   half_words = size / 2;
+    size_t   words = size / 4;
+    size_t   double_words = size / 8;
+    size_t   quad_words = double_words / 2;
+    Register next_reg = r + 1;
     for (size_t ix = 0; ix < quad_words; ++ix) {
-        Register next_reg = r + 1;
         code_add_instruction(code, "stp", "%s,%s,[%s,#%zu]",
             x_reg(r), x_reg(next_reg), x_reg(to_pointer), to_offset + 16 * ix);
         r = next_reg + 1;
@@ -256,6 +277,21 @@ void code_copy_from_registers(Code *code, Register to_pointer, size_t to_offset,
     if (double_words % 2) {
         code_add_instruction(code, "str", "%s,[%s,#%zu]",
             x_reg(r), x_reg(to_pointer), to_offset + 16 * quad_words);
+        r = next_reg + 1;
+    }
+    if (words % 2) {
+        code_add_instruction(code, "str", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(to_pointer), to_offset + 8 * double_words);
+        r = next_reg + 1;
+    }
+    if (half_words % 2) {
+        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(to_pointer), to_offset + 4 * words);
+        r = next_reg + 1;
+    }
+    if (size % 1) {
+        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+            w_reg(r), x_reg(to_pointer), to_offset + 2 * half_words);
     }
 }
 
@@ -295,7 +331,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         SV_ARG(value_location_to_string(from_location)),
         SV_ARG(value_location_to_string(to_location)));
     assert(typeid_underlying_type_id(to_location.type) == typeid_underlying_type_id(from_location.type));
-    size_t    sz = align_at(typeid_sizeof(from_location.type), 8);
+    size_t    sz = typeid_sizeof(from_location.type);
     size_t    aligned_sz = align_at(sz, 16);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);
     code_add_comment(code, "       Copy %.*s to %.*s",
@@ -311,29 +347,30 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, from_location.pointer.reg, from_location.pointer.offset, sz);
         } break;
         case VLK_REGISTER: {
-            assert(sz == 8);
+            assert(sz <= 8);
             code_copy_from_registers(code, to_location.pointer.reg, to_location.pointer.offset, from_location.reg, sz);
         } break;
         case VLK_REGISTER_RANGE: {
-            assert(8 * ((int) from_location.range.end - (int) from_location.range.start) == sz);
             code_copy_from_registers(code, to_location.pointer.reg, to_location.pointer.offset, from_location.range.start, sz);
         } break;
         case VLK_STACK: {
             code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, REG_SP, 0, sz);
         } break;
         case VLK_LABEL: {
-            assert(sz == 8);
             Register label = arm64function_allocate_register(code->function);
-            code_load_label(code, label, from_location.symbol);
+            code_load_label(code, label, from_location.static_data);
             code_copy_from_registers(code, to_location.pointer.reg, to_location.pointer.offset, label, sz);
             arm64function_release_register(code->function, label);
         } break;
         case VLK_DATA: {
-            assert(sz == 8);
             Register pointer = arm64function_allocate_register(code->function);
-            code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
+            code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.static_data.symbol));
             code_add_instruction(code, "add", "%s,%s,%.*s@PAGEOFF",
-                x_reg(pointer), x_reg(pointer), SV_ARG(from_location.symbol));
+                x_reg(pointer), x_reg(pointer), SV_ARG(from_location.static_data.symbol));
+            if (from_location.static_data.offset != 0) {
+                code_add_instruction(code, "add", "%s,%s,#0x%0x",
+                    x_reg(pointer), x_reg(pointer), from_location.static_data.offset);
+            }
             code_copy_memory(code, to_location.pointer.reg, to_location.pointer.offset, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
         } break;
@@ -351,7 +388,6 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         }
     } break;
     case VLK_REGISTER: {
-        assert(sz == 8);
         switch (from_location.kind) {
         case VLK_POINTER: {
             code_add_instruction(code, opcode_map.load_opcode, "%s,[%s,#%ld]",
@@ -374,14 +410,11 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
                 reg_with_width(to_location.reg, opcode_map.reg_width), reg(REG_SP));
         } break;
         case VLK_LABEL: {
-            code_load_label(code, to_location.reg, from_location.symbol);
+            code_load_label(code, to_location.reg, from_location.static_data);
         } break;
         case VLK_DATA: {
             Register pointer = arm64function_allocate_register(code->function);
-            code_add_instruction(code, "adrp", "%s,%.*s@PAGE", x_reg(pointer), SV_ARG(from_location.symbol));
-            code_add_instruction(code, opcode_map.load_opcode, "%s,[%s,%.*s@PAGEOFF]",
-                reg_with_width(to_location.reg, opcode_map.reg_width),
-                x_reg(pointer), SV_ARG(from_location.symbol));
+            code_load_label(code, pointer, from_location.static_data);
             arm64function_release_register(code->function, pointer);
         } break;
         case VLK_IMMEDIATE: {
@@ -418,11 +451,11 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_to_registers(code, to_location.range.start, REG_SP, 0, sz);
         } break;
         case VLK_LABEL: {
-            code_load_label(code, to_location.range.start, from_location.symbol);
+            code_load_label(code, to_location.range.start, from_location.static_data);
         } break;
         case VLK_DATA: {
             Register pointer = arm64function_allocate_register(code->function);
-            code_load_label(code, pointer, from_location.symbol);
+            code_load_label(code, pointer, from_location.static_data);
             code_copy_to_registers(code, to_location.range.start, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
         } break;
@@ -444,7 +477,6 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_memory(code, REG_SP, 0, from_location.pointer.reg, from_location.pointer.offset, sz);
         } break;
         case VLK_REGISTER: {
-            assert(sz == 8);
             code_add_instruction(code, opcode_map.store_opcode, "%s,[%s,-#%ld]!",
                 reg_with_width(from_location.reg, opcode_map.reg_width),
                 reg(REG_SP), aligned_sz);
@@ -459,14 +491,14 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         } break;
         case VLK_LABEL: {
             Register label = arm64function_allocate_register(code->function);
-            code_load_label(code, label, from_location.symbol);
+            code_load_label(code, label, from_location.static_data);
             code_add_instruction(code, "str", "%s,[%s,-#%ld]!", x_reg(label), reg(REG_SP), aligned_sz);
             arm64function_release_register(code->function, label);
         } break;
         case VLK_DATA: {
             code_add_instruction(code, "sub", "sp,sp,#%zu", aligned_sz);
             Register pointer = arm64function_allocate_register(code->function);
-            code_load_label(code, pointer, from_location.symbol);
+            code_load_label(code, pointer, from_location.static_data);
             code_copy_memory(code, REG_SP, 0, pointer, 0, sz);
             arm64function_release_register(code->function, pointer);
         } break;
@@ -487,13 +519,12 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     } break;
     case VLK_DATA: {
         Register to_pointer = arm64function_allocate_register(code->function);
-        code_load_label(code, to_pointer, to_location.symbol);
+        code_load_label(code, to_pointer, to_location.static_data);
         switch (from_location.kind) {
         case VLK_POINTER: {
             code_copy_memory(code, to_pointer, 0, from_location.pointer.reg, from_location.pointer.offset, sz);
         } break;
         case VLK_REGISTER: {
-            assert(sz == 8);
             code_add_instruction(code, opcode_map.store_opcode, "%s,[%s]",
                 reg_with_width(from_location.reg, opcode_map.reg_width), to_pointer);
         } break;
@@ -505,15 +536,14 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             code_copy_memory(code, to_pointer, 0, REG_SP, from_location.offset, sz);
         } break;
         case VLK_LABEL: {
-            assert(sz == 8);
             Register label = arm64function_allocate_register(code->function);
-            code_load_label(code, label, from_location.symbol);
+            code_load_label(code, label, from_location.static_data);
             code_copy_from_registers(code, to_pointer, 0, label, sz);
             arm64function_release_register(code->function, label);
         } break;
         case VLK_DATA: {
             Register from_pointer = arm64function_allocate_register(code->function);
-            code_load_label(code, from_pointer, from_location.symbol);
+            code_load_label(code, from_pointer, from_location.static_data);
             code_copy_memory(code, to_pointer, 0, from_pointer, 0, sz);
             arm64function_release_register(code->function, from_pointer);
         } break;

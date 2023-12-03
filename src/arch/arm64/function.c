@@ -310,9 +310,63 @@ ValueLocation arm64function_allocate_space(ARM64Function *function, type_id type
 
 void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)
 {
-    ValueLocation to_location = arm64function_location_for_type(function, ptr.type);
-    arm64function_copy(function, to_location, ptr);
-    arm64function_push_location(function, to_location);
+    ExpressionType *et = type_registry_get_type_by_id(ptr.type);
+    size_t          base_offset = ptr.pointer.offset;
+    switch (typeid_kind(ptr.type)) {
+    case TK_PRIMITIVE:
+    case TK_ENUM: {
+        ValueLocation to_location = arm64function_location_for_type(function, ptr.type);
+        arm64function_copy(function, to_location, ptr);
+        arm64function_push_location(function, to_location);
+    } break;
+    case TK_AGGREGATE:
+        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+            TypeComponent *comp = et->components.components + ix;
+            if (comp->kind != CK_TYPE) {
+                continue;
+            }
+            ptr.pointer.offset = base_offset + typeid_offsetof(et->type_id, ix);
+            ptr.type = comp->type_id;
+            arm64function_load_from_pointer(function, ptr);
+        }
+        break;
+    default:
+        NYI("store aggregate for component type kind '%s'", TypeKind_name(typeid_kind(ptr.type)));
+    }
+}
+
+/**
+ * Pops the values making up the variable at the top of the stack and stores
+ * them in the variable.
+ *
+ * Note that they are popped in reverse order; pushing them in load_from_pointer
+ * happens in the right order.
+ */
+void arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr)
+{
+    ExpressionType *et = type_registry_get_type_by_id(ptr.type);
+    int64_t         base_offset = ptr.pointer.offset;
+    switch (typeid_kind(ptr.type)) {
+    case TK_PRIMITIVE:
+    case TK_ENUM: {
+        ValueLocation from_location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+        assert(from_location.type == ptr.type);
+        arm64function_copy(function, ptr, from_location);
+    } break;
+    case TK_AGGREGATE:
+        for (size_t ix = et->components.num_components - 1; (ssize_t) ix >= 0; --ix) {
+            TypeComponent *comp = et->components.components + ix;
+            if (comp->kind != CK_TYPE) {
+                continue;
+            }
+            ptr.pointer.offset = base_offset + (int64_t) typeid_offsetof(et->type_id, ix);
+            ptr.type = comp->type_id;
+            arm64function_store_to_pointer(function, ptr);
+        }
+        break;
+    default:
+        NYI("store aggregate for component type kind '%s'", TypeKind_name(typeid_kind(ptr.type)));
+    }
 }
 
 void arm64function_enter(ARM64Function *function)
@@ -532,8 +586,11 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
                     x_reg(param->parameter.reg), arg_location.offset);
                 break;
             case VLK_LABEL:
-                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
-                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(param->parameter.reg), SV_ARG(arg_location.static_data.symbol));
+                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(param->parameter.reg), x_reg(param->parameter.reg), SV_ARG(arg_location.static_data.symbol));
+                if (arg_location.static_data.offset) {
+                    code_add_instruction(marshalling, "add", "%s,%s,#0x%x", x_reg(param->parameter.reg), x_reg(param->parameter.reg), arg_location.static_data.offset);
+                }
                 break;
             default:
                 UNREACHABLE();
@@ -551,8 +608,11 @@ void arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Func
                     x_reg(param->parameter.reg), reg(REG_SP), arg_location.offset);
                 break;
             case VLK_LABEL:
-                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(r), SV_ARG(arg_location.symbol));
-                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(r), reg(param->parameter.reg), SV_ARG(arg_location.symbol));
+                code_add_instruction(marshalling, "adrp", "%s,%.*s@PAGE", x_reg(r), SV_ARG(arg_location.static_data.symbol));
+                code_add_instruction(marshalling, "add", "%s,%s,%.*s@PAGEOFF", x_reg(r), reg(param->parameter.reg), SV_ARG(arg_location.static_data.symbol));
+                if (arg_location.static_data.offset) {
+                    code_add_instruction(marshalling, "add", "%s,%s,#0x%x", x_reg(r), x_reg(r), arg_location.static_data.offset);
+                }
                 break;
             default:
                 UNREACHABLE();

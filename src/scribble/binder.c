@@ -19,13 +19,13 @@
 typedef struct bind_context {
     struct bind_context *parent;
     int                  unbound;
+    bool                 main;
 } BindContext;
 
 static BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent);
 static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindContext *ctx);
-static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name);
-static BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, StringView name);
-static BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name);
+static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, SyntaxNode *variable);
+static BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, SyntaxNode *variable);
 static bool       resolve_binary_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, TypeSpec *ret);
 static bool       resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec);
 static int        bind_nodes(BoundNode *parent, SyntaxNode *first, BoundNode **first_dst, BindContext *ctx);
@@ -59,6 +59,38 @@ BindContext *context_make_subcontext(BindContext *ctx)
     return ret;
 }
 
+void context_function_is_main(BindContext *ctx, BoundNode *function)
+{
+    if (ctx->parent) {
+        context_function_is_main(ctx->parent, function);
+        return;
+    }
+    if (function->type != BNT_FUNCTION) {
+        return;
+    }
+    if (!sv_eq(function->name, sv_from("main"))) {
+        return;
+    }
+    if (typeid_canonical_type_id(function->typespec.type_id) != I32_ID) {
+        fatal("main function must return an integer");
+    }
+    if (function->function.parameter) {
+        if (!function->function.parameter->next) {
+            fatal("main function can have at most one parameter");
+        }
+        type_id         param_type = typeid_canonical_type_id(function->function.parameter->typespec.type_id);
+        ExpressionType *et = type_registry_get_type_by_id(param_type);
+        assert(et);
+        if (et->type_id != ARRAY_ID || et->num_arguments != 1 || et->template_arguments[0].arg_type != TPT_TYPE || et->template_arguments[0].type != STRING_ID) {
+            fatal("main function parameter must be an string array");
+        }
+    }
+    if (ctx->main) {
+        fatal("Multiple main functions defined");
+    }
+    ctx->main = true;
+}
+
 void context_increment_unbound(BindContext *ctx)
 {
     ++ctx->unbound;
@@ -87,8 +119,9 @@ BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindCont
     return unbound;
 }
 
-BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView name)
+BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, SyntaxNode *variable)
 {
+    StringView name = variable->name;
     switch (node->type) {
     case BNT_BLOCK:
     case BNT_MODULE: {
@@ -122,7 +155,7 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
     } break;
     case BNT_IMPORT: {
         for (BoundNode *module = node->import.modules; module; module = module->next) {
-            BoundNode *n = bound_node_find_here(module, type, name);
+            BoundNode *n = bound_node_find_here(module, type, variable);
             if (n) {
                 return n;
             }
@@ -138,9 +171,19 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
             }
         }
         for (BoundNode *module = node->program.modules; module; module = module->next) {
-            BoundNode *n = bound_node_find_here(module, type, name);
+            BoundNode *n = bound_node_find_here(module, type, variable);
             if (n) {
                 return n;
+            }
+        }
+        if (!has_option("no-std")) {
+            for (BoundNode *import = node->program.imports; import; import = import->next) {
+                if (sv_eq_cstr(import->name, "std")) {
+                    BoundNode *n = bound_node_find_here(import, type, variable);
+                    if (n) {
+                        return n;
+                    }
+                }
             }
         }
     } break;
@@ -150,9 +193,9 @@ BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, StringView 
     return NULL;
 }
 
-BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, StringView name)
+BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, SyntaxNode *variable)
 {
-    BoundNode *ret = bound_node_find_here(node, type, name);
+    BoundNode *ret = bound_node_find_here(node, type, variable);
     if (ret) {
         return ret;
     }
@@ -160,33 +203,8 @@ BoundNode *bound_node_find_recurse_up(BoundNode *node, BoundNodeType type, Strin
     if (!p) {
         return NULL;
     }
-    ret = bound_node_find_recurse_up(p, type, name);
+    ret = bound_node_find(p, type, variable);
     return ret;
-}
-
-BoundNode *bound_node_find(BoundNode *node, BoundNodeType type, StringView name)
-{
-    StringView pkg = sv_null();
-    if (sv_first(name, '.') > 0) {
-        StringList components = sv_split(name, sv_from("."));
-        name = sl_pop(&components);
-        pkg = sl_join(&components, sv_from("."));
-    }
-    BoundNode *ret = NULL;
-    if (sv_empty(pkg)) {
-        ret = bound_node_find_recurse_up(node, type, name);
-        if (ret) {
-            return ret;
-        }
-        if (has_option("no-std")) {
-            return NULL;
-        }
-        BoundNode *std = bound_node_find_recurse_up(node, BNT_IMPORT, sv_from("std"));
-        return (std) ? bound_node_find_here(std, type, name) : NULL;
-    } else {
-        BoundNode *import = bound_node_find_recurse_up(node, BNT_IMPORT, pkg);
-        return bound_node_find_here(import, type, name);
-    }
 }
 
 typedef struct binary_operator_signature {
@@ -454,14 +472,48 @@ BoundNode *coerce_node(BoundNode *node, type_id type)
 
 __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
+    BoundNode *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->assignment.variable);
     if (!decl) {
         fprintf(stderr, "Assignment to undeclared variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
+    ExpressionType *et = type_registry_get_type_by_id(decl->typespec.type_id);
+    assert(et != NULL);
+
     BoundNode *ret = bound_node_make(BNT_ASSIGNMENT, parent);
     ret->name = stmt->name;
     ret->typespec = decl->typespec;
+
+    BoundNode *variable = bound_node_make(BNT_VARIABLE, ret);
+    variable->name = stmt->assignment.variable->name;
+    variable->typespec = ret->typespec;
+    variable->variable.type = ret->typespec.type_id;
+    ret->assignment.variable = variable;
+    BoundNode **name_part = &ret->assignment.variable->variable.subscript;
+    SyntaxNode *name_stmt;
+    for (name_stmt = stmt->assignment.variable->variable.subscript; name_stmt != NULL; name_stmt = name_stmt->variable.subscript) {
+        if (type_kind(et) != TK_AGGREGATE) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        }
+        TypeComponent *comp = type_get_component(et, name_stmt->name);
+        if (comp == NULL) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
+                SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+        }
+        et = type_registry_get_type_by_id(comp->type_id);
+        if (!type_is_concrete(et)) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        }
+        *name_part = bound_node_make(BNT_VARIABLE, parent);
+        (*name_part)->name = name_stmt->name;
+        (*name_part)->variable.type = et->type_id;
+        ret->typespec = variable->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
+        name_part = &(*name_part)->next;
+    }
+    for (BoundNode *component = ret->variable.subscript; component; component = component->variable.subscript) {
+        component->typespec = ret->typespec;
+    }
+
     ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);
     if (ret->assignment.expression->type == BNT_UNBOUND_NODE) {
         return ret;
@@ -625,14 +677,6 @@ __attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stm
     return ret;
 }
 
-__attribute__((unused)) BoundNode *bind_COMPOUND_INITIALIZER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{
-    BoundNode *ret = bound_node_make(BNT_COMPOUND_INITIALIZER, parent);
-    ret->name = stmt->name;
-    bind_nodes(ret, stmt->arguments.argument, &ret->compound_initializer.argument, ctx);
-    return ret;
-}
-
 __attribute__((unused)) BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     return bind_BREAK(parent, stmt, ctx);
@@ -762,12 +806,13 @@ __attribute__((unused)) BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *
     }
     BindContext *func_ctx = context_make_subcontext(ctx);
     ret->function.function_impl = bind_node(ret, stmt->function.function_impl, func_ctx);
+    context_function_is_main(ctx, ret);
     return ret;
 }
 
 __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
+    BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->call.function);
     if (!fnc) {
         fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
@@ -796,13 +841,31 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
         }
         return macro_ret;
     }
+
     BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
     ret->name = stmt->name;
     ret->call.function = fnc;
-    ret->call.discard_result = false;
+    ret->call.discard_result = stmt->call.discard_result;
     ret->typespec = fnc->typespec;
-    bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx);
+    bind_nodes(ret, stmt->call.arguments, &ret->call.argument, ctx);
     // FIXME Typecheck parameters
+
+    if (fnc->function.function_impl->type == BNT_MACRO) {
+        Datum **args = allocate_array(Datum *, 2);
+        args[0] = datum_allocate(POINTER_ID);
+        args[0]->pointer = ret;
+        args[1] = datum_allocate(POINTER_ID);
+        args[1]->pointer = ctx;
+
+        Datum *processed = datum_allocate(POINTER_ID);
+        native_call(fnc->function.function_impl->name, 2, args, processed);
+        BoundNode *macro_ret = (BoundNode *) processed->pointer;
+        if (macro_ret) {
+            assert(macro_ret->type == BNT_FUNCTION_CALL);
+            macro_ret->call.discard_result = stmt->call.discard_result;
+        }
+        return macro_ret;
+    }
     return ret;
 }
 
@@ -904,40 +967,6 @@ __attribute__((unused)) BoundNode *bind_PARAMETER(BoundNode *parent, SyntaxNode 
     ret->name = stmt->name;
     ret->typespec = param_type;
     ret->variable_decl.init_expr = NULL;
-    return ret;
-}
-
-__attribute__((unused)) BoundNode *bind_PROCEDURE_CALL(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{
-    BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->name);
-    if (!fnc) {
-        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
-        return bound_node_make_unbound(parent, stmt, ctx);
-    }
-    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
-    ret->name = stmt->name;
-    ret->call.function = fnc;
-    ret->call.discard_result = true;
-    ret->typespec = fnc->typespec;
-    if (bind_nodes(ret, stmt->arguments.argument, &ret->call.argument, ctx)) {
-        return bound_node_make_unbound(parent, stmt, ctx);
-    }
-    if (fnc->function.function_impl->type == BNT_MACRO) {
-        Datum **args = allocate_array(Datum *, 2);
-        args[0] = datum_allocate(POINTER_ID);
-        args[0]->pointer = ret;
-        args[1] = datum_allocate(POINTER_ID);
-        args[1]->pointer = ctx;
-
-        Datum *processed = datum_allocate(POINTER_ID);
-        native_call(fnc->function.function_impl->name, 2, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->pointer;
-        if (macro_ret) {
-            assert(macro_ret->type == BNT_FUNCTION_CALL);
-            macro_ret->call.discard_result = true;
-        }
-        return macro_ret;
-    }
     return ret;
 }
 
@@ -1131,11 +1160,11 @@ __attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, Synta
 
 __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode      *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->variable.names->name);
+    BoundNode      *decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt);
     BoundNode      *ret = NULL;
     ExpressionType *et = NULL;
     if (decl) {
-        if (stmt->variable.names->next == NULL && decl->variable_decl.is_const) {
+        if (stmt->variable.subscript == NULL && decl->variable_decl.is_const) {
             switch (decl->variable_decl.init_expr->type) {
             case BNT_BOOL:
             case BNT_INTEGER:
@@ -1162,12 +1191,15 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         }
         et = type_registry_get_type_by_id(decl->typespec.type_id);
         assert(et != NULL);
+        if (!type_is_concrete(et)) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(stmt->token.loc), SV_ARG(et->name));
+        }
     }
     if (!et) {
-        et = type_registry_get_type_by_name(stmt->variable.names->name);
+        et = type_registry_get_type_by_name(stmt->name);
         if (et) {
-            if (type_kind(et) == TK_ENUM && stmt->variable.names->next != NULL) {
-                SyntaxNode *value_name = stmt->variable.names->next;
+            if (type_kind(et) == TK_ENUM && stmt->variable.subscript != NULL) {
+                SyntaxNode *value_name = stmt->variable.subscript;
                 if (value_name->next != NULL) {
                     fatal(LOC_SPEC "Enumeration value '" SV_SPEC "' has too many name parts", LOC_ARG(stmt->token.loc), SV_ARG(value_name->name));
                 }
@@ -1192,29 +1224,32 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
     ret = bound_node_make(BNT_VARIABLE, parent);
     ret->variable.decl = decl;
     ret->name = stmt->name;
+    ret->typespec = (TypeSpec) { et->type_id, false };
+    ret->variable.type = et->type_id;
 
-    BoundNode **name_part = &ret->variable.names;
+    BoundNode **name_part = &ret->variable.subscript;
     SyntaxNode *name_stmt;
-    for (name_stmt = stmt->variable.names; name_stmt->next != NULL; name_stmt = name_stmt->next) {
+    for (name_stmt = stmt->variable.subscript; name_stmt != NULL; name_stmt = name_stmt->variable.subscript) {
         if (type_kind(et) != TK_AGGREGATE) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
         }
-        if (!type_is_concrete(et)) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
-        }
-        *name_part = bound_node_make(BNT_NAME, parent);
-        (*name_part)->name = name_stmt->name;
-        ret->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
-        TypeComponent *comp = type_get_component(et, name_stmt->next->name);
+        TypeComponent *comp = type_get_component(et, name_stmt->name);
         if (comp == NULL) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name), SV_ARG(name_stmt->name));
         }
         et = type_registry_get_type_by_id(comp->type_id);
+        if (!type_is_concrete(et)) {
+            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        }
+        *name_part = bound_node_make(BNT_VARIABLE, parent);
+        (*name_part)->name = name_stmt->name;
+        (*name_part)->variable.type = et->type_id;
+        ret->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
         name_part = &(*name_part)->next;
     }
-    *name_part = bound_node_make(BNT_NAME, parent);
-    (*name_part)->name = name_stmt->name;
-    ret->typespec = (*name_part)->typespec = (TypeSpec) { et->type_id, false };
+    for (BoundNode *component = ret->variable.subscript; component; component = component->variable.subscript) {
+        component->typespec = ret->typespec;
+    }
     return ret;
 }
 
@@ -1227,15 +1262,15 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
     }
     BoundNode *ret = bound_node_make(BNT_VARIABLE_DECL, parent);
     if (stmt->variable_decl.init_expr) {
-        expr = bind_node(parent, stmt->variable_decl.init_expr, ctx);
-        if (expr->type == BNT_UNBOUND_NODE) {
+        if (bind_nodes(parent, stmt->variable_decl.init_expr, &expr, ctx)) {
             return bound_node_make_unbound(parent, stmt, NULL);
         }
     }
     if (expr) {
-        if (expr->type != BNT_COMPOUND_INITIALIZER) {
+        if (expr->next == NULL) { // Not a compound initializer
             if (var_type.type_id != VOID_ID && expr->typespec.type_id != var_type.type_id) {
-                fatal("Declaration type '%.*s' and expression type '%.*s' are different",
+                fatal(LOC_SPEC "Declaration type '%.*s' and expression type '%.*s' are different",
+                    SN_LOC_ARG(stmt),
                     SV_ARG(typeid_name(var_type.type_id)),
                     SV_ARG(typeid_name(expr->typespec.type_id)));
             }
@@ -1244,27 +1279,28 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
             }
         } else {
             if (var_type.type_id == VOID_ID) {
-                fatal("Variable type with compound initializer cannot be inferred");
+                fatal(LOC_SPEC "Variable type with compound initializer cannot be inferred", SN_LOC_ARG(stmt));
             }
             ExpressionType *et = type_registry_get_type_by_id(var_type.type_id);
             assert(et);
             if (type_kind(et) != TK_AGGREGATE) {
                 fatal(LOC_SPEC "Cannot initialize variables with non-compound types using a compound initializer", LOC_ARG(stmt->token.loc));
             }
-            expr->typespec = var_type;
-            BoundNode *arg = expr->compound_initializer.argument;
+            BoundNode *arg = expr;
             for (size_t ix = 0; ix < et->components.num_components; ++ix) {
                 TypeComponent *type_component = &et->components.components[ix];
                 if (!arg) {
-                    fatal("No initializer argument values for " SV_SPEC "." SV_SPEC, SV_ARG(et->name), SV_ARG(type_component->name));
+                    fatal(LOC_SPEC "Not enough initializer argument value for " SV_SPEC "." SV_SPEC,
+                        SN_LOC_ARG(stmt), SV_ARG(et->name), SV_ARG(type_component->name));
                 }
                 if (!typespec_assignment_compatible((TypeSpec) { type_component->type_id, false }, arg->typespec)) {
-                    fatal("Declaration type element and initializer argument value types are different");
+                    fatal(LOC_SPEC "Declaration element type '%.*s' and initializer argument value type '%.*s' are different",
+                        SN_LOC_ARG(stmt), SV_ARG(typeid_name(type_component->type_id)), SV_ARG(typespec_name(arg->typespec)));
                 }
                 arg = arg->next;
             }
             if (arg) {
-                fatal("Too many initializer argument values for type '" SV_SPEC "'", et->name);
+                fatal(LOC_SPEC "Too many initializer argument values for type '" SV_SPEC "'", SN_LOC_ARG(stmt), et->name);
             }
         }
     } else if (var_type.type_id == VOID_ID) {
@@ -1520,17 +1556,6 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
 }
 
-void find_main(BoundNode *program)
-{
-    for (BoundNode *module = program->program.modules; module != NULL; module = module->next) {
-        BoundNode *main = bound_node_find(module, BNT_FUNCTION, sv_from("main"));
-        if (main) {
-            return;
-        }
-    }
-    fatal("No main function found");
-}
-
 static BindingObserver s_observer = NULL;
 
 BoundNode *bind(SyntaxNode *program)
@@ -1555,7 +1580,9 @@ BoundNode *bind(SyntaxNode *program)
         fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
     }
     fprintf(stderr, "Iteration %d: All bound\n", iter);
-    find_main(ret);
+    if (!ctx->main) {
+        fatal("No main function found");
+    }
     return ret;
 }
 

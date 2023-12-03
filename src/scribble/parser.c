@@ -18,6 +18,7 @@
 #include <options.h>
 #include <parser.h>
 #include <sv.h>
+#include <type.h>
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
@@ -26,7 +27,7 @@ static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token 
 static SyntaxNode *parse_expression(ParserContext *ctx);
 static SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence);
 static SyntaxNode *parse_primary_expression(ParserContext *ctx);
-static void        parse_arguments(ParserContext *ctx, SyntaxNode *node, char start, char end);
+static void        parse_arguments(ParserContext *ctx, SyntaxNode **dst, char start, char end);
 static SyntaxNode *parse_statement(ParserContext *ctx);
 static SyntaxNode *parse_type(ParserContext *ctx);
 static SyntaxNode *parse_import(ParserContext *ctx);
@@ -152,33 +153,25 @@ bool parser_context_accept_and_discard(ParserContext *ctx, TokenKind kind, Token
     return ret;
 }
 
-void parse_arguments(ParserContext *ctx, SyntaxNode *node, char start, char end)
+void parse_arguments(ParserContext *ctx, SyntaxNode **dst, char start, char end)
 {
     if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, start)) {
         return;
     }
-    Token token = lexer_next(ctx->lexer);
-    if (token_matches(token, TK_SYMBOL, end)) {
-        lexer_lex(ctx->lexer);
+    if (parser_context_accept_and_discard(ctx, TK_SYMBOL, end)) {
         return;
     }
-    SyntaxNode *last_arg = NULL;
     while (true) {
         SyntaxNode *arg = parse_expression(ctx);
         if (!arg) {
             return;
         }
-        if (!last_arg) {
-            node->arguments.argument = arg;
-        } else {
-            last_arg->next = arg;
-        }
-        last_arg = arg;
-        token = lexer_lex(ctx->lexer);
-        if (token_matches(token, TK_SYMBOL, end)) {
+        (*dst) = arg;
+        dst = &(*dst)->next;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, end)) {
             return;
         }
-        if (!parser_context_match(ctx, token, TK_SYMBOL, ',')) {
+        if (!parser_context_expect_and_discard(ctx, TK_SYMBOL, ',')) {
             return;
         }
     }
@@ -228,7 +221,7 @@ OperatorMapping operator_for_token(Token token, bool binary)
 
 bool skip_semicolon(ParserContext *ctx)
 {
-    return parser_context_expect_and_discard(ctx, TK_SYMBOL, ';');
+    return parser_context_accept_and_discard(ctx, TK_SYMBOL, ';');
 }
 
 /*
@@ -322,32 +315,26 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
     switch (token.kind) {
     case TK_IDENTIFIER: {
         lexer_lex(ctx->lexer);
-        Token next = lexer_next(ctx->lexer);
-        if (token_matches(next, TK_SYMBOL, '(')) {
-            SyntaxNode *call = syntax_node_make(SNT_FUNCTION_CALL, token.text, token);
-            parse_arguments(ctx, call, '(', ')');
-            return call;
-        } else {
-            StringBuilder sb = sb_create();
-            SyntaxNode   *var = syntax_node_make(SNT_VARIABLE, token.text, token);
-            SyntaxNode  **name_part = &var->variable.names;
-            while (true) {
-                *name_part = syntax_node_make(SNT_NAME, token.text, token);
-                sb_append_sv(&sb, token.text);
-                name_part = &(*name_part)->next;
-                if (!lexer_next_matches(ctx->lexer, TK_SYMBOL, '.')) {
-                    var->name = sb.view;
-                    return var;
-                }
-                lexer_lex(ctx->lexer);
-                if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
-                    var->name = sb.view;
-                    return var;
-                }
-                token = lexer_lex(ctx->lexer);
-                sb_append_cstr(&sb, ".");
+        SyntaxNode  *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+        SyntaxNode **name_part = &var->variable.subscript;
+        for (token = lexer_next(ctx->lexer); token_matches(token, TK_SYMBOL, '.'); token = lexer_next(ctx->lexer)) {
+            lexer_lex(ctx->lexer);
+            if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
+                return NULL;
             }
+            token = lexer_lex(ctx->lexer);
+            *name_part = syntax_node_make(SNT_VARIABLE, token.text, token);
+            name_part = &(*name_part)->variable.subscript;
         }
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '(')) {
+            SyntaxNode *call = syntax_node_make(SNT_FUNCTION_CALL, var->name, var->token);
+            var->type = SNT_FUNCTION;
+            call->call.function = var;
+            call->call.discard_result = false;
+            parse_arguments(ctx, &call->call.arguments, '(', ')');
+            return call;
+        }
+        return var;
     }
     case TK_NUMBER: {
         lexer_lex(ctx->lexer);
@@ -357,19 +344,17 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             ret->integer.type = I32;
             Token type = lexer_next(ctx->lexer);
             if (token_matches_kind(type, TK_IDENTIFIER)) {
-                if (sv_eq_cstr(type.text, "u8") || sv_eq_cstr(type.text, "i8") || sv_eq_cstr(type.text, "u16") || sv_eq_cstr(type.text, "i16") || sv_eq_cstr(type.text, "u32") || sv_eq_cstr(type.text, "i32") || sv_eq_cstr(type.text, "u64") || sv_eq_cstr(type.text, "i64")) {
+                IntegerType integer_type = IntegerType_from_name(type.text);
+                if (integer_type != IU_NO_SUCH_TYPE) {
                     lexer_lex(ctx->lexer);
-                    ret->integer.type = IntegerType_from_name(type.text);
+                    ret->integer.type = integer_type;
                 }
             }
             return ret;
         }
         case TC_HEXNUMBER: {
             SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
-            ret->integer.type = (IntegerType) 4 * (token.text.length - 2);
-            if ((int) ret->integer.type % 8) {
-                ret->integer.type += (IntegerType) 8 - ((int) ret->integer.type % 8);
-            }
+            ret->integer.type = (IntegerType) align_at(4 * (token.text.length - 2), 8);
             return ret;
         }
         case TC_DECIMAL: {
@@ -436,28 +421,22 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
     if (!parser_context_match(ctx, ident, TK_IDENTIFIER, TC_IDENTIFIER)) {
         return NULL;
     }
-    token = lexer_next(ctx->lexer);
-    if (token_matches(token, TK_SYMBOL, ':')) {
-        lexer_lex(ctx->lexer);
+    SyntaxNode *ret = syntax_node_make(SNT_VARIABLE_DECL, ident.text, var);
+    ret->variable_decl.variable = syntax_node_make(SNT_VARIABLE, ident.text, ident);
+    if (parser_context_accept_and_discard(ctx, TK_SYMBOL, ':')) {
         type = parse_type(ctx);
     }
-    token = lexer_next(ctx->lexer);
-    if (token_matches(token, TK_SYMBOL, '=')) {
-        lexer_lex(ctx->lexer);
-        token = lexer_next(ctx->lexer);
-        if (token_matches(token, TK_SYMBOL, '{')) {
-            expr = syntax_node_make(SNT_COMPOUND_INITIALIZER, ident.text, t);
-            parse_arguments(ctx, expr, '{', '}');
+    ret->variable_decl.var_type = type;
+    if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '=')) {
+        if (parser_context_accept(ctx, TK_SYMBOL, '{')) {
+            parse_arguments(ctx, &ret->variable_decl.init_expr, '{', '}');
         } else {
-            expr = parse_expression(ctx);
+            ret->variable_decl.init_expr = parse_expression(ctx);
         }
     } else if (is_const) {
-        parser_context_add_error(ctx, token, sv_from("'const' declaration without initializer expression"));
+        parser_context_add_error(ctx, ident, sv_from("'const' declaration without initializer expression"));
         return NULL;
     }
-    SyntaxNode *ret = syntax_node_make(SNT_VARIABLE_DECL, ident.text, var);
-    ret->variable_decl.var_type = type;
-    ret->variable_decl.init_expr = expr;
     ret->variable_decl.is_const = is_const;
     if (skip_semicolon(ctx)) {
         return ret;
@@ -595,43 +574,36 @@ SyntaxNode *parse_block(ParserContext *ctx)
 
 SyntaxNode *parse_identifier(ParserContext *ctx)
 {
-    Token       token = lexer_lex(ctx->lexer);
-    StringView  name = token.text;
-    Token       t = lexer_next(ctx->lexer);
-    SyntaxNode *ret;
-    switch (t.kind) {
-    case TK_SYMBOL:
-        switch (t.code) {
-        case '=': {
-            lexer_lex(ctx->lexer);
-            SyntaxNode *expression;
-            t = lexer_next(ctx->lexer);
-            if (token_matches(t, TK_SYMBOL, '{')) {
-                expression = syntax_node_make(SNT_COMPOUND_INITIALIZER, name, t);
-                parse_arguments(ctx, expression, '{', '}');
-            } else {
-                expression = parse_expression(ctx);
-            }
-            ret = syntax_node_make(SNT_ASSIGNMENT, name, token);
-            ret->assignment.expression = expression;
-        } break;
-        case '(': {
-            ret = syntax_node_make(SNT_PROCEDURE_CALL, name, token);
-            parse_arguments(ctx, ret, '(', ')');
-        } break;
-        case ':': {
-            ret = syntax_node_make(SNT_LABEL, name, token);
-            lexer_lex(ctx->lexer);
-            return ret;
-        }
-        default:
-            parser_context_add_error(ctx, token, sv_from("Expected '=', '(', or ':' after identifier"));
+    Token        token = lexer_lex(ctx->lexer);
+    SyntaxNode  *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+    SyntaxNode **name_part = &var->variable.subscript;
+    SyntaxNode  *ret = NULL;
+    for (token = lexer_next(ctx->lexer); token_matches(token, TK_SYMBOL, '.'); token = lexer_next(ctx->lexer)) {
+        lexer_lex(ctx->lexer);
+        if (!parser_context_expect(ctx, TK_IDENTIFIER, TC_IDENTIFIER)) {
             return NULL;
         }
-        break;
-    default:
-        parser_context_add_error(ctx, token, sv_from("Expected '=', '(', or ':' after identifier"));
-        return NULL;
+        token = lexer_lex(ctx->lexer);
+        *name_part = syntax_node_make(SNT_VARIABLE, token.text, token);
+        name_part = &(*name_part)->variable.subscript;
+    }
+    if (parser_context_accept(ctx, TK_SYMBOL, '(')) {
+        ret = syntax_node_make(SNT_FUNCTION_CALL, var->name, var->token);
+        var->type = SNT_FUNCTION;
+        ret->call.function = var;
+        ret->call.discard_result = true;
+        parse_arguments(ctx, &ret->call.arguments, '(', ')');
+    } else if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '=')) {
+        ret = syntax_node_make(SNT_ASSIGNMENT, var->name, var->token);
+        ret->assignment.variable = var;
+        if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '{')) {
+            parse_arguments(ctx, &ret->assignment.expression, '{', '}');
+        } else {
+            ret->assignment.expression = parse_expression(ctx);
+        }
+    } else if (parser_context_accept_and_discard(ctx, TK_SYMBOL, ':')) {
+        ret = syntax_node_make(SNT_LABEL, var->name, var->token);
+        return ret;
     }
     if (!skip_semicolon(ctx)) {
         return NULL;
@@ -863,17 +835,19 @@ SyntaxNode *parse_function(ParserContext *ctx)
         SyntaxNode *last_stmt = NULL;
         while (true) {
             token = lexer_next(ctx->lexer);
-            if (token_matches(token, TK_SYMBOL, '}')) {
-                lexer_lex(ctx->lexer);
+            if (parser_context_accept_and_discard(ctx, TK_SYMBOL, '}')) {
                 return func;
             }
-            if (token_matches_kind(token, TK_END_OF_FILE)) {
+            if (parser_context_accept_and_discard(ctx, TK_END_OF_FILE, TC_NONE)) {
                 parser_context_add_error(ctx, token, sv_from("Expected '}' to end function definition"));
                 return NULL;
             }
             SyntaxNode *stmt = parse_statement(ctx);
             if (!stmt) {
-                return NULL;
+                do {
+                    token = lexer_lex(ctx->lexer);
+                } while (!token_matches(token, TK_SYMBOL, ';') && !token_matches(token, TK_SYMBOL, '}') && !token_matches(token, TK_END_OF_FILE, TC_NONE));
+                continue;
             }
             if (last_stmt == NULL) {
                 impl->function_impl.statements = stmt;

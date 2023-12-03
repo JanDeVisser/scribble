@@ -76,7 +76,10 @@ StringView value_location_to_string(ValueLocation loc)
         break;
     case VLK_LABEL:
     case VLK_DATA:
-        sb_printf(&sb, "%.*s", SV_ARG(loc.symbol));
+        sb_printf(&sb, "%.*s", SV_ARG(loc.static_data.symbol));
+        if (loc.static_data.offset > 0) {
+            sb_printf(&sb, "+0x%0x", loc.static_data.offset);
+        }
         break;
     case VLK_IMMEDIATE:
         if ((int) loc.integer.type > 0) {

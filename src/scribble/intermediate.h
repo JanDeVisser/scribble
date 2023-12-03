@@ -33,14 +33,12 @@
     S(MATCH)                  \
     S(NEW_DATUM)              \
     S(POP_VAR)                \
-    S(POP_VAR_COMPONENT)      \
     S(PUSH_BOOL_CONSTANT)     \
     S(PUSH_FLOAT_CONSTANT)    \
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
     S(PUSH_VAR)               \
     S(PUSH_VAR_ADDRESS)       \
-    S(PUSH_VAR_COMPONENT)     \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \
     S(SCOPE_END)              \
@@ -61,14 +59,14 @@ typedef struct ir_var_decl {
 typedef struct ir_operation {
     IROperationType operation;
     size_t          index;
+    StringView      sv;
     union {
-        Integer    integer;
-        size_t     label;
-        double     double_value;
-        bool       bool_value;
-        type_id    type;
-        StringView sv;
-        IRVarDecl  var_decl;
+        Integer   integer;
+        size_t    label;
+        double    double_value;
+        bool      bool_value;
+        type_id   type;
+        IRVarDecl var_decl;
         struct {
             StringView name;
             bool       discard_result;
@@ -84,7 +82,7 @@ typedef struct ir_operation {
         } unary_operator;
         struct {
             StringView name;
-            size_t     component;
+            DIA(size_t);
         } var_component;
     };
 } IROperation;
