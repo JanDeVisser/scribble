@@ -241,6 +241,7 @@ typedef struct scribble_error {
     ScribbleErrorKind      kind;
     Token                  token;
     StringView             message;
+    struct scribble_error *notes;
     struct scribble_error *next;
 } ScribbleError;
 
