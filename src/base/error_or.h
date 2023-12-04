@@ -21,7 +21,9 @@
     S(OutOfMemory, 3)      \
     S(ProcessError, 4)     \
     S(TypeError, 5)        \
-    S(LexerError, 6)
+    S(LexerError, 6)       \
+    S(ParserError, 7)      \
+    S(CompilerError, 8)
 
 typedef enum {
 #undef ERRORCATEGORY_ENUM
@@ -112,6 +114,22 @@ extern char const *Error_to_string(Error error);
         }                                             \
         name##_maybe.value;                           \
     })
+
+#define TRY_OR_FALSE(name, expr) ({               \
+    ErrorOr##name name##_maybe = (expr);          \
+    if (ErrorOr##name##_is_error(name##_maybe)) { \
+        return false;                             \
+    }                                             \
+    name##_maybe.value;                           \
+})
+
+#define TRY_OR_NULL(name, expr) ({                \
+    ErrorOr##name name##_maybe = (expr);          \
+    if (ErrorOr##name##_is_error(name##_maybe)) { \
+        return NULL;                              \
+    }                                             \
+    name##_maybe.value;                           \
+})
 
 #define TRY_TO(name, to_name, typ, var, expr)             \
     typ var;                                              \
