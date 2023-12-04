@@ -23,7 +23,8 @@
     S(TypeError, 5)        \
     S(LexerError, 6)       \
     S(ParserError, 7)      \
-    S(CompilerError, 8)
+    S(CompilerError, 8)    \
+    S(RuntimeError, 9)
 
 typedef enum {
 #undef ERRORCATEGORY_ENUM

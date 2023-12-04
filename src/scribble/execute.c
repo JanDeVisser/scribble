@@ -853,7 +853,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ix += pointer.pointer;
                 break;
             case NIT_LABEL: {
-                ix = ir_function_resolve_label(func_scope.owner, pointer.pointer);
+                ix = MUST(Size, ir_function_resolve_label(func_scope.owner, pointer.pointer));
             } break;
             case NIT_RESET:
                 ix = 0;
