@@ -123,7 +123,7 @@ __attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation 
     arm64function_push_location(
         function,
         (ValueLocation) {
-            .type = op->integer.u64,
+            .type = op->type,
             .kind = VLK_REGISTER,
             .reg = reg,
         });

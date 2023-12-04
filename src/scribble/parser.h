@@ -73,42 +73,43 @@ typedef struct operator_mapping {
     int       precedence;
 } OperatorMapping;
 
-#define SYNTAXNODETYPES(S)  \
-    S(ASSIGNMENT)           \
-    S(BINARYEXPRESSION)     \
-    S(BLOCK)                \
-    S(BOOL)                 \
-    S(BREAK)                \
-    S(CONTINUE)             \
-    S(DECIMAL)              \
-    S(ENUMERATION)          \
-    S(ENUM_VALUE)           \
-    S(FOR)                  \
-    S(FUNCTION)             \
-    S(FUNCTION_CALL)        \
-    S(FUNCTION_IMPL)        \
-    S(IF)                   \
-    S(INTEGER)              \
-    S(IMPORT)               \
-    S(LABEL)                \
-    S(LOOP)                 \
-    S(MACRO)                \
-    S(MODULE)               \
-    S(NAME)                 \
-    S(NATIVE_FUNCTION)      \
-    S(PARAMETER)            \
-    S(PROGRAM)              \
-    S(RETURN)               \
-    S(STRING)               \
-    S(STRUCT)               \
-    S(TERNARYEXPRESSION)    \
-    S(TYPE)                 \
-    S(TYPE_COMPONENT)       \
-    S(UNARYEXPRESSION)      \
-    S(VARIABLE)             \
-    S(VARIABLE_DECL)        \
-    S(VARIANT)              \
-    S(VARIANT_OPTION)       \
+#define SYNTAXNODETYPES(S) \
+    S(ASSIGNMENT)          \
+    S(BINARYEXPRESSION)    \
+    S(BLOCK)               \
+    S(BOOL)                \
+    S(BREAK)               \
+    S(CAST)                \
+    S(CONTINUE)            \
+    S(DECIMAL)             \
+    S(ENUMERATION)         \
+    S(ENUM_VALUE)          \
+    S(FOR)                 \
+    S(FUNCTION)            \
+    S(FUNCTION_CALL)       \
+    S(FUNCTION_IMPL)       \
+    S(IF)                  \
+    S(INTEGER)             \
+    S(IMPORT)              \
+    S(LABEL)               \
+    S(LOOP)                \
+    S(MACRO)               \
+    S(MODULE)              \
+    S(NAME)                \
+    S(NATIVE_FUNCTION)     \
+    S(PARAMETER)           \
+    S(PROGRAM)             \
+    S(RETURN)              \
+    S(STRING)              \
+    S(STRUCT)              \
+    S(TERNARYEXPRESSION)   \
+    S(TYPE)                \
+    S(TYPE_COMPONENT)      \
+    S(UNARYEXPRESSION)     \
+    S(VARIABLE)            \
+    S(VARIABLE_DECL)       \
+    S(VARIANT)             \
+    S(VARIANT_OPTION)      \
     S(WHILE)
 
 typedef enum {
@@ -153,6 +154,10 @@ typedef struct syntax_node {
             struct syntax_node *arguments;
             bool                discard_result;
         } call;
+        struct {
+            struct syntax_node *expr;
+            struct syntax_node *cast_to;
+        } cast_expr;
         struct {
             struct syntax_node *statements;
         } function_impl;

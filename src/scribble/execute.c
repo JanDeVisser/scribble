@@ -545,7 +545,7 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         Datum *d = datum_stack_pop(&ctx->stack);
         datum_stack_push(&ctx->stack, datum_apply(d, op->binary_operator.op, NULL));
         datum_free(d);
-    }
+    } break;
     default:
         UNREACHABLE();
     }

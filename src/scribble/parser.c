@@ -384,7 +384,13 @@ SyntaxNode *parse_expression(ParserContext *ctx)
         ternary->ternary_expr.if_false = if_false;
         return ternary;
     }
-    return ret;
+    ACCEPT_KEYWORD_OR(ctx, KW_AS, ret);
+    SyntaxNode *cast = syntax_node_make(SNT_CAST, sv_from("AS"), ret->token);
+    cast->cast_expr.expr = ret;
+    if ((cast->cast_expr.cast_to = parse_type(ctx)) == NULL) {
+        return NULL;
+    }
+    return cast;
 }
 
 SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence)

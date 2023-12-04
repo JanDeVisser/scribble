@@ -8,6 +8,7 @@
 
 #include <error_or.h>
 #include <log.h>
+#include <optional.h>
 #include <sv.h>
 
 #ifndef __LEXER_H__
@@ -75,47 +76,48 @@ typedef struct {
 } Keyword;
 
 #define KEYWORDS(S)                \
-    S(BREAK, break, 0)             \
-    S(CONST, const, 1)             \
-    S(CONTINUE, continue, 2)       \
-    S(ELIF, elif, 3)               \
-    S(ELSE, else, 4)               \
-    S(ENUM, enum, 5)               \
-    S(ERROR, error, 6)             \
-    S(FOR, for, 7)                 \
-    S(FUNC, func, 8)               \
-    S(IF, if, 9)                   \
-    S(IMPORT, import, 10)          \
-    S(IN, in, 11)                  \
-    S(LOOP, loop, 12)              \
-    S(MATCH, match, 13)            \
-    S(RETURN, return, 14)          \
-    S(STRUCT, struct, 15)          \
-    S(VAR, var, 16)                \
-    S(VARIANT, variant, 17)        \
-    S(WHILE, while, 18)            \
-    S(TRUE, true, 19)              \
-    S(FALSE, false, 20)            \
-    S(ASSIGN_BITWISE_AND, &=, 21)  \
-    S(ASSIGN_BITWISE_OR, |=, 22)   \
-    S(ASSIGN_BITWISE_XOR, ^=, 23)  \
-    S(ASSIGN_SHIFT_LEFT, <<=, 24)  \
-    S(ASSIGN_SHIFT_RIGHT, >>=, 25) \
-    S(BINARY_DECREMENT, -=, 26)    \
-    S(BINARY_INCREMENT, +=, 27)    \
-    S(BIT_SHIFT_LEFT, <<, 28)      \
-    S(BIT_SHIFT_RIGHT, >>, 29)     \
-    S(EQUALS, ==, 30)              \
-    S(GREATER_EQUALS, >=, 31)      \
-    S(LESS_EQUALS, <=, 32)         \
-    S(LOGICAL_AND, &&, 33)         \
-    S(LOGICAL_OR, ||, 34)          \
-    S(NOT_EQUALS, !=, 35)          \
-    S(RANGE, .., 36)               \
-    S(FUNC_BINDING, ->, 37)        \
-    S(MACRO_BINDING, = >, 38)      \
-    S(UNARY_DECREMENT, --, 39)     \
-    S(UNARY_INCREMENT, ++, 40)
+    S(AS, as, 0)                   \
+    S(BREAK, break, 1)             \
+    S(CONST, const, 2)             \
+    S(CONTINUE, continue, 3)       \
+    S(ELIF, elif, 4)               \
+    S(ELSE, else, 5)               \
+    S(ENUM, enum, 6)               \
+    S(ERROR, error, 7)             \
+    S(FOR, for, 8)                 \
+    S(FUNC, func, 9)               \
+    S(IF, if, 10)                  \
+    S(IMPORT, import, 11)          \
+    S(IN, in, 12)                  \
+    S(LOOP, loop, 13)              \
+    S(MATCH, match, 14)            \
+    S(RETURN, return, 15)          \
+    S(STRUCT, struct, 16)          \
+    S(VAR, var, 17)                \
+    S(VARIANT, variant, 18)        \
+    S(WHILE, while, 19)            \
+    S(TRUE, true, 20)              \
+    S(FALSE, false, 21)            \
+    S(ASSIGN_BITWISE_AND, &=, 22)  \
+    S(ASSIGN_BITWISE_OR, |=, 23)   \
+    S(ASSIGN_BITWISE_XOR, ^=, 24)  \
+    S(ASSIGN_SHIFT_LEFT, <<=, 25)  \
+    S(ASSIGN_SHIFT_RIGHT, >>=, 26) \
+    S(BINARY_DECREMENT, -=, 27)    \
+    S(BINARY_INCREMENT, +=, 28)    \
+    S(BIT_SHIFT_LEFT, <<, 29)      \
+    S(BIT_SHIFT_RIGHT, >>, 30)     \
+    S(EQUALS, ==, 31)              \
+    S(GREATER_EQUALS, >=, 32)      \
+    S(LESS_EQUALS, <=, 33)         \
+    S(LOGICAL_AND, &&, 34)         \
+    S(LOGICAL_OR, ||, 35)          \
+    S(NOT_EQUALS, !=, 36)          \
+    S(RANGE, .., 37)               \
+    S(FUNC_BINDING, ->, 38)        \
+    S(MACRO_BINDING, = >, 39)      \
+    S(UNARY_DECREMENT, --, 40)     \
+    S(UNARY_INCREMENT, ++, 41)
 
 typedef enum {
 #undef KEYWORD_ENUM
@@ -135,11 +137,12 @@ typedef struct {
 } Token;
 
 ErrorOr(Token, Token)
+    OPTIONAL(Token)
 
 #define TOKEN_SPEC "%.*s:%zu:%zu: %s %s [%.*s]:%zu"
 #define TOKEN_ARG(t) (int) t.loc.file.length, t.loc.file.ptr, t.loc.line, t.loc.column, TokenKind_name(t.kind), TokenCode_name(t.code), (int) t.text.length, t.text.ptr, t.text.length
 
-    typedef struct _source {
+        typedef struct _source {
     Location        loc;
     StringView      source;
     struct _source *prev;
@@ -153,6 +156,7 @@ typedef struct {
 
 extern char const *TokenKind_name(TokenKind kind);
 extern char const *TokenCode_name(int code);
+extern char const *Keyword_text(KeywordCode code);
 
 #define token_matches_kind(t, k) ((t).kind == k)
 #define token_matches(t, k, c) (token_matches_kind((t), (k)) && (t).code == c)

@@ -55,6 +55,20 @@ char const *TokenCode_name(int code)
     }
 }
 
+char const *Keyword_text(KeywordCode code)
+{
+    switch (code) {
+#undef KEYWORD_ENUM
+#define KEYWORD_ENUM(keyword, text, code) \
+    case KW_##keyword:                    \
+        return #text;
+        KEYWORDS(KEYWORD_ENUM)
+#undef KEYWORD_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
 Token scan_number(char const *buffer)
 {
     TokenCode code = TC_INTEGER;

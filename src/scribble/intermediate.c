@@ -728,10 +728,9 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, "%f", op->double_value);
         break;
     case IR_PUSH_INT_CONSTANT:
+        sb_append_sv(&sb, sv_render_integer(op->integer));
         if (integer_is_unsigned(op->integer)) {
-            sb_printf(&sb, "%" PRIu64 " [0x%08" PRIx64 "]", op->integer.u64, op->integer.u64);
-        } else {
-            sb_printf(&sb, "%" PRIi64, op->integer.i64);
+            sb_printf(&sb, " [%.*s]", SV_ARG(sv_render_hex_integer(op->integer)));
         }
         sb_printf(&sb, " : %s", IntegerType_name(op->integer.type));
         break;

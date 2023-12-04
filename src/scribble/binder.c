@@ -677,6 +677,22 @@ __attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stm
     return ret;
 }
 
+__attribute__((unused)) BoundNode *bind_CAST(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+{
+    BoundNode *cast = bound_node_make(BNT_CAST, parent);
+    cast->name = stmt->name;
+    cast->cast_expr.expr = bind_node(cast, stmt->cast_expr.expr, ctx);
+    if (cast->cast_expr.expr->type == BNT_UNBOUND_NODE) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    TypeSpec spec;
+    if (!resolve_type_node(stmt->cast_expr.cast_to, &spec)) {
+        return bound_node_make_unbound(parent, stmt, ctx);
+    }
+    cast->cast_expr.cast_to = spec.type_id;
+    return cast;
+}
+
 __attribute__((unused)) BoundNode *bind_CONTINUE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     return bind_BREAK(parent, stmt, ctx);
