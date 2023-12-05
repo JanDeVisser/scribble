@@ -776,7 +776,7 @@ ErrorOrTypeID type_registry_get_variant_by_types(type_id enumeration, type_id *t
 
 ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 {
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS, BIT_NOTYPE));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_ALIAS, BIT_ALIAS));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     type->alias_for_id = aliased;
@@ -785,7 +785,7 @@ ErrorOrTypeID type_registry_alias(StringView name, type_id aliased)
 
 ErrorOrTypeID type_registry_make_aggregate(StringView name, size_t num, TypeComponent *components)
 {
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_AGGREGATE, BIT_NOTYPE));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_AGGREGATE, BIT_AGGREGATE));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     assert(type);
     return type_set_components(new_id, num, components);
@@ -824,7 +824,7 @@ ErrorOrTypeID type_registry_make_variant(StringView name, type_id enumeration, T
         ERROR(TypeID, TypeError, 0, "Enumeration size does not match number of variant options");
     }
 
-    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_VARIANT, BIT_NOTYPE));
+    type_id         new_id = TRY(TypeID, type_registry_make_type(name, TK_VARIANT, BIT_VARIANT));
     ExpressionType *type = type_registry_get_type_by_id(new_id);
     type->variant.enumeration = enumeration;
     for (int ix = 0; ix < options->size; ++ix) {

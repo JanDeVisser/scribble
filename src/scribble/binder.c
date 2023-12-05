@@ -362,10 +362,15 @@ bool resolve_unary_expression_type(Operator op, BoundNode *operand, TypeSpec *re
         if (typeid_builtin_type(operand->typespec.type_id) != BIT_POINTER) {
             return false;
         }
-        ExpressionType   *et = type_registry_get_type_by_id(operand->typespec.type_id);
-        TemplateArgument *template_arg = type_get_argument(et, sv_from("T"));
-        ret->type_id = template_arg->type;
+        ret->type_id = typeid_pointer_references(operand->typespec.type_id);
         return true;
+    }
+    if (typeid_kind(operand->typespec.type_id) == TK_VARIANT) {
+        ExpressionType *et = type_registry_get_type_by_id(operand->typespec.type_id);
+        if (op == OP_CARDINALITY) {
+            ret->type_id = typeid_underlying_type_id(et->variant.enumeration);
+            return true;
+        }
     }
 
     type_id     type = operand->typespec.type_id;
@@ -492,15 +497,47 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
     BoundNode **name_part = &ret->assignment.variable->variable.subscript;
     SyntaxNode *name_stmt;
     for (name_stmt = stmt->assignment.variable->variable.subscript; name_stmt != NULL; name_stmt = name_stmt->variable.subscript) {
-        if (type_kind(et) != TK_AGGREGATE) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        switch (type_kind(et)) {
+        case TK_AGGREGATE: {
+            TypeComponent *comp = type_get_component(et, name_stmt->name);
+            if (comp == NULL) {
+                fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
+                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+            }
+            et = type_registry_get_type_by_id(comp->type_id);
+            if (!type_is_concrete(et)) {
+                fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+            }
+        } break;
+        case TK_VARIANT: {
+            ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+            assert(enumeration != NULL);
+            ExpressionType *payload = NULL;
+            for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+                EnumValue *v = enumeration->enumeration.elements + ix;
+                if (sv_eq(v->name, name_stmt->name)) {
+                    payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
+                    break;
+                }
+            }
+            if (payload == NULL) {
+                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+            }
+            if (name_stmt->variable.subscript != NULL) {
+                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' cannot (yet) be subscripted",
+                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+            }
+            et = payload;
+        } break;
+        default:
+            fatal(LOC_SPEC "'" SV_SPEC "' is not a compound type", SN_LOC_ARG(name_stmt), SV_ARG(et->name));
         }
-        TypeComponent *comp = type_get_component(et, name_stmt->name);
-        if (comp == NULL) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
-                SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+        if (type_kind(et) == TK_VARIANT && name_stmt->variable.subscript == NULL) {
+            fatal(LOC_SPEC "Must specify payload for variant '%.*s'",
+                SN_LOC_ARG(name_stmt),
+                SV_ARG(et->name));
         }
-        et = type_registry_get_type_by_id(comp->type_id);
         if (!type_is_concrete(et)) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
         }
@@ -916,7 +953,6 @@ __attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *s
 
     ret->name = stmt->token.text;
     ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.type), false };
-    BuiltinType        bit = typeid_builtin_type(typeid_canonical_type_id(ret->typespec.type_id));
     IntegerParseResult parse_result = sv_parse_integer(ret->name, stmt->integer.type);
     if (!parse_result.success) {
         fatal("Cannot hold value '%.*s' in integer of type '%.*s'", SV_ARG(ret->name), SV_ARG(typeid_name(ret->typespec.type_id)));
@@ -1165,7 +1201,7 @@ __attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, Synta
     TypeSpec type;
     if (!resolve_unary_expression_type(stmt->unary_expr.operator, operand, &type)) {
         fatal("Could not resolve return type of operator '%s' with operand type '%.*s'",
-            Operator_name(stmt->binary_expr.operator), SV_ARG(typeid_name(operand->typespec.type_id)));
+            Operator_name(stmt->unary_expr.operator), SV_ARG(typeid_name(operand->typespec.type_id)));
     }
     ret->typespec = type;
     ret->name = sv_from(Operator_name(stmt->unary_expr.operator));
@@ -1246,14 +1282,34 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
     BoundNode **name_part = &ret->variable.subscript;
     SyntaxNode *name_stmt;
     for (name_stmt = stmt->variable.subscript; name_stmt != NULL; name_stmt = name_stmt->variable.subscript) {
-        if (type_kind(et) != TK_AGGREGATE) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' is not an aggregate", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+        switch (type_kind(et)) {
+        case TK_AGGREGATE: {
+            TypeComponent *comp = type_get_component(et, name_stmt->name);
+            if (comp == NULL) {
+                fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name), SV_ARG(name_stmt->name));
+            }
+            et = type_registry_get_type_by_id(comp->type_id);
+        } break;
+        case TK_VARIANT: {
+            ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+            assert(enumeration != NULL);
+            ExpressionType *payload = NULL;
+            for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+                EnumValue *v = enumeration->enumeration.elements + ix;
+                if (sv_eq(v->name, name_stmt->name)) {
+                    payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
+                    break;
+                }
+            }
+            if (payload == NULL) {
+                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+            }
+            et = payload;
+        } break;
+        default:
+            fatal(LOC_SPEC "'" SV_SPEC "' is not a compound type", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
         }
-        TypeComponent *comp = type_get_component(et, name_stmt->name);
-        if (comp == NULL) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name), SV_ARG(name_stmt->name));
-        }
-        et = type_registry_get_type_by_id(comp->type_id);
         if (!type_is_concrete(et)) {
             fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
         }

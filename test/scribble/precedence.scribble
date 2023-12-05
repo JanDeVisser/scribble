@@ -1,4 +1,4 @@
-func main() {
+func main() : i32 {
     puti(3+1); endln();     // 4
     puti(3*3); endln();     // 9
     puti(1+3*3); endln();   // 10

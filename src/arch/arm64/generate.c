@@ -87,6 +87,13 @@ __attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation 
 {
     ValueLocation expr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(expr.kind == VLK_REGISTER);
+
+    if (typeid_builtin_type(expr.type) == BIT_POINTER && typeid_builtin_type(op->type) == BIT_POINTER) {
+        expr.type = op->type;
+        arm64function_push_location(function, expr);
+        return;
+    }
+
     BuiltinType bit_cast = typeid_builtin_type(op->type);
     IntegerType sz_cast = BuiltinType_integer_type(bit_cast);
     Register    reg = arm64function_allocate_register(function);
@@ -259,8 +266,39 @@ __attribute__((unused)) void generate_NEW_DATUM(ARM64Function *, IROperation *)
 __attribute__((unused)) void generate_POP_VAR(ARM64Function *function, IROperation *op)
 {
     ARM64Variable var = *arm64function_variable_by_name(function, op->sv);
+    if (typeid_kind(var.var_decl.type.type_id) == TK_VARIANT) {
+        assert(op->var_component.size > 0);
+        ExpressionType *variant = type_registry_get_type_by_id(var.var_decl.type.type_id);
+        type_id         underlying = typeid_underlying_type_id(variant->variant.enumeration);
+        IntegerType     int_type = BuiltinType_integer_type(typeid_builtin_type(underlying));
+        Integer         value = integer_create(int_type, op->var_component.elements[0]);
+        ValueLocation   value_ptr = arm64variable_pointer(&var);
+        ValueLocation   enum_value = {
+              .type = underlying,
+              .kind = VLK_IMMEDIATE,
+              .integer = value,
+        };
+        value_ptr.type = underlying;
+        arm64function_push_location(function, enum_value);
+        arm64function_store_to_pointer(function, value_ptr);
+    }
     for (size_t ix = 0; ix < op->var_component.size; ++ix) {
         var = arm64variable_component(&var, op->var_component.elements[ix]);
+        if (typeid_kind(var.var_decl.type.type_id) == TK_VARIANT) {
+            assert(ix + 1 < op->var_component.size);
+            ExpressionType *variant = type_registry_get_type_by_id(var.var_decl.type.type_id);
+            type_id         underlying = typeid_underlying_type_id(variant->variant.enumeration);
+            IntegerType     int_type = BuiltinType_integer_type(typeid_builtin_type(underlying));
+            Integer         value = integer_create(int_type, op->var_component.elements[ix + 1]);
+            ValueLocation   value_ptr = arm64variable_pointer(&var);
+            ValueLocation   enum_value = {
+                  .type = var.var_decl.type.type_id,
+                  .kind = VLK_IMMEDIATE,
+                  .integer = value,
+            };
+            arm64function_push_location(function, enum_value);
+            arm64function_store_to_pointer(function, value_ptr);
+        }
     }
     ValueLocation var_ptr = arm64variable_pointer(&var);
     assert(var_ptr.kind == VLK_POINTER);

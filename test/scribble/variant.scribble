@@ -10,16 +10,19 @@ struct B {
     f: int,
 };
 
-enum E : u8 {
+enum E : i32 {
     A, B,
 };
 
 variant V : E {
-    A(A),
-    B(B),
+    A(int),
+    B(int),
 };
 
 func main() : i32 {
-    putln("Hello, world!");
-    return 0;
+    var v: V;
+    v.B = 42;
+    puti(v.B); endln();
+    puti(#v); endln();
+    return v.A;
 }

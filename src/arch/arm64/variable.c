@@ -107,20 +107,42 @@ ValueLocation arm64variable_reference(ARM64Variable *variable)
 ARM64Variable arm64variable_component(ARM64Variable *variable, size_t index)
 {
     ExpressionType *et = type_registry_get_type_by_id(variable->var_decl.type.type_id);
-    assert(type_has_kind(et, TK_AGGREGATE));
-    assert(index < et->components.num_components);
-    TypeComponent *tc = &et->components.components[index];
-    int64_t        offset = (int64_t) typeid_offsetof(et->type_id, index);
-    ARM64Variable  ret = {
-         .scope = variable->scope,
-         .kind = variable->kind,
-         .var_decl = {
-             .name = tc->name,
-             .type = {
-                 .type_id = tc->type_id,
-                 .optional = false,
-            } },
-    };
+    int64_t         offset = 0;
+    ARM64Variable   ret = { 0 };
+    switch (type_kind(et)) {
+    case TK_AGGREGATE: {
+        assert(index < et->components.num_components);
+        TypeComponent *tc = et->components.components + index;
+        offset = (int64_t) typeid_offsetof(et->type_id, index);
+        ret = (ARM64Variable) {
+            .scope = variable->scope,
+            .kind = variable->kind,
+            .var_decl = {
+                .name = tc->name,
+                .type = {
+                    .type_id = tc->type_id,
+                    .optional = false,
+                } },
+        };
+    } break;
+    case TK_VARIANT: {
+        assert(index < et->variant.size);
+        TypeComponent *tc = et->variant.elements + index;
+        offset = (int64_t) typeid_offsetof_payload(et->type_id);
+        ret = (ARM64Variable) {
+            .scope = variable->scope,
+            .kind = variable->kind,
+            .var_decl = {
+                .name = tc->name,
+                .type = {
+                    .type_id = tc->type_id,
+                    .optional = false,
+                } },
+        };
+    } break;
+    default:
+        UNREACHABLE();
+    }
     switch (variable->kind) {
     case VK_LOCAL:
         ret.local_address.offset = variable->local_address.offset - offset;

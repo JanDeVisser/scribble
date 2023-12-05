@@ -31,7 +31,7 @@ static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token 
 static SyntaxNode *parse_expression(ParserContext *ctx);
 static SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence);
 static SyntaxNode *parse_primary_expression(ParserContext *ctx);
-static void        parse_arguments(ParserContext *ctx, SyntaxNode **dst, char start, char end);
+static bool        parse_arguments(ParserContext *ctx, SyntaxNode **dst, char end);
 static SyntaxNode *parse_statement(ParserContext *ctx);
 static SyntaxNode *parse_type(ParserContext *ctx);
 static SyntaxNode *parse_import(ParserContext *ctx);
@@ -198,12 +198,14 @@ bool parser_context_expect_keyword(ParserContext *ctx, KeywordCode keyword)
     return parser_context_expect_and_discard(ctx, TK_KEYWORD, (TokenCode) keyword);
 }
 
-#define EXPECT_SYMBOL(ctx, symbol)                            \
+#define EXPECT_SYMBOL_OR(ctx, symbol, ret)                    \
     do {                                                      \
         if (!parser_context_expect_symbol((ctx), (symbol))) { \
-            return NULL;                                      \
+            return (ret);                                     \
         }                                                     \
     } while (0)
+
+#define EXPECT_SYMBOL(ctx, symbol) EXPECT_SYMBOL_OR(ctx, symbol, NULL)
 
 #define EXPECT_KEYWORD(ctx, kw)                            \
     do {                                                   \
@@ -274,27 +276,18 @@ bool parser_context_accept_keyword(ParserContext *ctx, KeywordCode keyword)
         }                                                 \
     } while (0)
 
-void parse_arguments(ParserContext *ctx, SyntaxNode **dst, char start, char end)
+bool parse_arguments(ParserContext *ctx, SyntaxNode **dst, char end)
 {
-    if (!parser_context_expect_symbol(ctx, start)) {
-        return;
-    }
-    if (parser_context_accept_symbol(ctx, end)) {
-        return;
-    }
+    ACCEPT_SYMBOL_AND(ctx, end, true);
     while (true) {
         SyntaxNode *arg = parse_expression(ctx);
         if (!arg) {
-            return;
+            return false;
         }
         (*dst) = arg;
         dst = &(*dst)->next;
-        if (parser_context_accept_symbol(ctx, end)) {
-            return;
-        }
-        if (!parser_context_expect_symbol(ctx, ',')) {
-            return;
-        }
+        ACCEPT_SYMBOL_AND(ctx, end, true);
+        EXPECT_SYMBOL_OR(ctx, ',', false);
     }
 }
 
@@ -367,7 +360,6 @@ SyntaxNode *parse_expression(ParserContext *ctx)
     if (!primary)
         return NULL;
     SyntaxNode *ret = parse_expression_1(ctx, primary, 0);
-    ACCEPT_SYMBOL_AND(ctx, ')', ret);
     if (parser_context_accept_symbol(ctx, '?')) {
         SyntaxNode *if_true = parse_expression(ctx);
         if (!if_true) {
@@ -445,7 +437,9 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         var->type = SNT_FUNCTION;
         call->call.function = var;
         call->call.discard_result = false;
-        parse_arguments(ctx, &call->call.arguments, '(', ')');
+        if (!parse_arguments(ctx, &call->call.arguments, ')')) {
+            return NULL;
+        }
         return call;
     }
     case TK_NUMBER: {
@@ -537,9 +531,14 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
     ret->variable_decl.var_type = type;
     if (parser_context_accept_symbol(ctx, '=')) {
         if (parser_context_accept(ctx, TK_SYMBOL, '{')) {
-            parse_arguments(ctx, &ret->variable_decl.init_expr, '{', '}');
+            if (!parse_arguments(ctx, &ret->variable_decl.init_expr, '}')) {
+                return NULL;
+            }
         } else {
             ret->variable_decl.init_expr = parse_expression(ctx);
+            if (ret->variable_decl.init_expr == NULL) {
+                return NULL;
+            }
         }
     } else if (is_const) {
         parser_context_add_error(ctx, ident, "'const' declaration without initializer expression");
@@ -672,19 +671,26 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
         *name_part = syntax_node_make(SNT_VARIABLE, token.text, token);
         name_part = &(*name_part)->variable.subscript;
     }
-    if (parser_context_accept(ctx, TK_SYMBOL, '(')) {
+    if (parser_context_accept_symbol(ctx, '(')) {
         ret = syntax_node_make(SNT_FUNCTION_CALL, var->name, var->token);
         var->type = SNT_FUNCTION;
         ret->call.function = var;
         ret->call.discard_result = true;
-        parse_arguments(ctx, &ret->call.arguments, '(', ')');
+        if (!parse_arguments(ctx, &ret->call.arguments, ')')) {
+            return NULL;
+        }
     } else if (parser_context_accept_symbol(ctx, '=')) {
         ret = syntax_node_make(SNT_ASSIGNMENT, var->name, var->token);
         ret->assignment.variable = var;
-        if (parser_context_accept(ctx, TK_SYMBOL, '{')) {
-            parse_arguments(ctx, &ret->assignment.expression, '{', '}');
+        if (parser_context_accept_symbol(ctx, '{')) {
+            if (!parse_arguments(ctx, &ret->assignment.expression, '}')) {
+                return NULL;
+            }
         } else {
             ret->assignment.expression = parse_expression(ctx);
+            if (ret->assignment.expression == NULL) {
+                return NULL;
+            }
         }
     } else if (parser_context_accept_symbol(ctx, ':')) {
         ret = syntax_node_make(SNT_LABEL, var->name, var->token);
@@ -916,7 +922,7 @@ SyntaxNode *parse_enum_def(ParserContext *ctx)
             return NULL;
         }
     }
-    EXPECT_SYMBOL(ctx, '}');
+    EXPECT_SYMBOL(ctx, '{');
     SyntaxNode *enum_node = syntax_node_make(SNT_ENUMERATION, ident.text, ident);
     enum_node->enumeration.underlying_type = underlying_type;
     SyntaxNode **value = &enum_node->enumeration.values;

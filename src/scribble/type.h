@@ -102,6 +102,12 @@ typedef enum {
     S(RANGE, range, 0x1202)         \
     S(ARRAY, array, 0x1302)
 
+#define MARKER_BUILTINTYPES(S) \
+    S(AGGREGATE, 0x1000)       \
+    S(VARIANT, 0x2000)         \
+    S(ALIAS, 0x4000)           \
+    S(ENUMERATION, 0x8000)
+
 #define NUMERICTYPES(S)   \
     S(U8, u8, uint8_t)    \
     S(I8, i8, int8_t)     \
@@ -139,6 +145,10 @@ typedef enum /* : uint16_t */ {
 #undef BUILTINTYPE_ENUM
 #define BUILTINTYPE_ENUM(type, name, code) BIT_##type = code,
     BUILTINTYPES(BUILTINTYPE_ENUM)
+#undef BUILTINTYPE_ENUM
+#undef BUILTINTYPE_ENUM
+#define BUILTINTYPE_ENUM(type, code) BIT_##type = code,
+        MARKER_BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
 } BuiltinType;
 

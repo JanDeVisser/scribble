@@ -311,9 +311,10 @@ ValueLocation arm64function_allocate_space(ARM64Function *function, type_id type
 void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)
 {
     ExpressionType *et = type_registry_get_type_by_id(ptr.type);
-    size_t          base_offset = ptr.pointer.offset;
+    int64_t         base_offset = ptr.pointer.offset;
     switch (typeid_kind(ptr.type)) {
     case TK_PRIMITIVE:
+    case TK_VARIANT:
     case TK_ENUM: {
         ValueLocation to_location = arm64function_location_for_type(function, ptr.type);
         arm64function_copy(function, to_location, ptr);
@@ -325,7 +326,7 @@ void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)
             if (comp->kind != CK_TYPE) {
                 continue;
             }
-            ptr.pointer.offset = base_offset + typeid_offsetof(et->type_id, ix);
+            ptr.pointer.offset = base_offset + (int64_t) typeid_offsetof(et->type_id, ix);
             ptr.type = comp->type_id;
             arm64function_load_from_pointer(function, ptr);
         }
@@ -348,7 +349,8 @@ void arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr)
     int64_t         base_offset = ptr.pointer.offset;
     switch (typeid_kind(ptr.type)) {
     case TK_PRIMITIVE:
-    case TK_ENUM: {
+    case TK_ENUM:
+    case TK_VARIANT: {
         ValueLocation from_location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
         assert(from_location.type == ptr.type);
         arm64function_copy(function, ptr, from_location);
@@ -679,7 +681,8 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
             .reg = arm64function_allocate_register(function),
         };
     }
-    case TK_AGGREGATE: {
+    case TK_AGGREGATE:
+    case TK_VARIANT: {
         size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
         if (size_in_double_words <= 2) {
             return (ValueLocation) {

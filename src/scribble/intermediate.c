@@ -52,16 +52,37 @@ __attribute__((unused)) void generate_ASSIGNMENT(BoundNode *node, IRObject *targ
     BoundNode      *variable = node->assignment.variable;
     ExpressionType *et = type_registry_get_type_by_id(variable->variable.type);
     for (BoundNode *sub = variable->variable.subscript; sub; sub = sub->variable.subscript) {
-        bool found = false;
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            if (sv_eq(sub->name, et->components.components[ix].name)) {
-                DIA_APPEND(size_t, (&op.var_component), ix);
-                found = true;
-                break;
+        switch (type_kind(et)) {
+        case TK_AGGREGATE: {
+            bool found = false;
+            for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                if (sv_eq(sub->name, et->components.components[ix].name)) {
+                    DIA_APPEND(size_t, (&op.var_component), ix);
+                    found = true;
+                    break;
+                }
             }
+            assert(found);
+            et = type_registry_get_type_by_id(sub->variable.type);
+        } break;
+        case TK_VARIANT: {
+            ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+            assert(enumeration != NULL);
+            ExpressionType *payload = NULL;
+            for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+                EnumValue *v = enumeration->enumeration.elements + ix;
+                if (sv_eq(v->name, sub->name)) {
+                    payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
+                    DIA_APPEND(size_t, (&op.var_component), ix);
+                    break;
+                }
+            }
+            assert(payload != NULL);
+            et = payload;
+        } break;
+        default:
+            UNREACHABLE();
         }
-        assert(found);
-        et = type_registry_get_type_by_id(sub->variable.type);
     }
     ir_function_add_operation((IRFunction *) target, op);
 }
@@ -486,6 +507,23 @@ __attribute__((unused)) void generate_TYPE_COMPONENT(BoundNode *node, IRObject *
 __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IROperation op;
+    if (typeid_kind(node->unary_expr.operand->typespec.type_id) == TK_VARIANT && node->unary_expr.operator== OP_CARDINALITY) {
+        ExpressionType *et = type_registry_get_type_by_id(node->unary_expr.operand->typespec.type_id);
+        ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
+        op.sv = node->unary_expr.operand->name;
+        ir_function_add_operation((IRFunction *) target, op);
+
+        type_id ptr_type = typeid_pointer_to(typeid_underlying_type_id(et->enumeration.underlying_type));
+        ir_operation_set(&op, IR_CAST);
+        op.type = ptr_type;
+        ir_function_add_operation((IRFunction *) target, op);
+
+        ir_operation_set(&op, IR_DEREFERENCE);
+        op.type = ptr_type;
+        ir_function_add_operation((IRFunction *) target, op);
+        return;
+    }
+
     switch (node->unary_expr.operator) {
     case OP_ADDRESS_OF:
         ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
@@ -525,16 +563,37 @@ __attribute__((unused)) void generate_VARIABLE(BoundNode *node, IRObject *target
     op.sv = node->name;
     ExpressionType *et = type_registry_get_type_by_id(node->variable.type);
     for (BoundNode *sub = node->variable.subscript; sub; sub = sub->variable.subscript) {
-        bool found = false;
-        for (size_t ix = 0; ix < et->components.num_components; ++ix) {
-            if (sv_eq(sub->name, et->components.components[ix].name)) {
-                DIA_APPEND(size_t, (&op.var_component), ix);
-                found = true;
-                break;
+        switch (type_kind(et)) {
+        case TK_AGGREGATE: {
+            bool found = false;
+            for (size_t ix = 0; ix < et->components.num_components; ++ix) {
+                if (sv_eq(sub->name, et->components.components[ix].name)) {
+                    DIA_APPEND(size_t, (&op.var_component), ix);
+                    found = true;
+                    break;
+                }
             }
+            assert(found);
+            et = type_registry_get_type_by_id(sub->variable.type);
+        } break;
+        case TK_VARIANT: {
+            ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+            assert(enumeration != NULL);
+            ExpressionType *payload = NULL;
+            for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+                EnumValue *v = enumeration->enumeration.elements + ix;
+                if (sv_eq(v->name, sub->name)) {
+                    payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
+                    DIA_APPEND(size_t, (&op.var_component), ix);
+                    break;
+                }
+            }
+            assert(payload != NULL);
+            et = payload;
+        } break;
+        default:
+            UNREACHABLE();
         }
-        assert(found);
-        et = type_registry_get_type_by_id(sub->variable.type);
     }
     ir_function_add_operation((IRFunction *) target, op);
 }
