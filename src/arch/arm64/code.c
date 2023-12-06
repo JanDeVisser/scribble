@@ -574,6 +574,9 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
             arm64function_release_register(code->function, ix);
         }
     } break;
+    case VLK_POINTER: {
+        arm64function_release_register(code->function, from_location.pointer.reg);
+    } break;
     case VLK_STACK: {
         if (to_location.kind != VLK_STACK) {
             code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
