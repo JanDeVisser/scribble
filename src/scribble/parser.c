@@ -1003,9 +1003,7 @@ SyntaxNode *parse_variant_def(ParserContext *ctx)
         if (parser_context_accept_symbol(ctx, '}')) {
             break;
         }
-        if (!parser_context_expect_symbol(ctx, ',')) {
-            return NULL;
-        }
+        EXPECT_SYMBOL(ctx, ',');
         value = &(*value)->next;
     }
     SKIP_SEMICOLON(ctx);
