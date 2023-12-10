@@ -253,6 +253,11 @@ OptionalValueLocation arm64function_pop_location(ARM64Function *function)
         ARM64Scope *scope = &function->scope;
         assert(scope);
         scope->expression_stack = scope->expression_stack->next;
+        size_t depth = 0;
+        for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
+            ++depth;
+        }
+        trace(CAT_COMPILE, "[%zu] -> %s", depth, value_location_to_string(ret.value));
     }
     return ret;
 }
@@ -280,6 +285,11 @@ void arm64function_push_location(ARM64Function *function, ValueLocation entry)
     memcpy(new_entry, &entry, sizeof(ValueLocation));
     new_entry->next = scope->expression_stack;
     scope->expression_stack = new_entry;
+    size_t depth = 0;
+    for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
+        ++depth;
+    }
+    trace(CAT_COMPILE, "[%zu] <- %s", depth, value_location_to_string(entry));
 }
 
 void arm64function_push_register(ARM64Function *function, type_id type, Register reg)
@@ -699,6 +709,85 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
     default:
         NYI("arm64function_location_for_type for non-primitive, non-aggregate type");
     }
+}
+
+ValueLocation arm64function_component(ARM64Function *function, ValueLocation reference, size_t index)
+{
+    ExpressionType *et = type_registry_get_type_by_id(reference.type);
+    int64_t         offset = 0;
+    type_id         type = 0;
+    ValueLocation   ret = { 0 };
+    switch (type_kind(et)) {
+    case TK_AGGREGATE: {
+        assert(index < et->components.num_components);
+        TypeComponent *tc = et->components.components + index;
+        offset = (int64_t) typeid_offsetof(et->type_id, index);
+        type = tc->type_id;
+    } break;
+    case TK_VARIANT: {
+        assert(index < et->variant.size || index == (size_t) -1);
+        if (index == (size_t) -1) {
+            offset = 0;
+            type = et->variant.enumeration;
+            break;
+        }
+        TypeComponent *tc = et->variant.elements + index;
+        offset = (int64_t) typeid_offsetof_payload(et->type_id);
+        type = tc->type_id;
+    } break;
+    default:
+        UNREACHABLE();
+    }
+    switch (reference.kind) {
+    case VLK_POINTER:
+        ret = (ValueLocation) {
+            .type = type,
+            .kind = VLK_POINTER,
+            .pointer = {
+                .reg = reference.pointer.reg,
+                .offset = reference.pointer.offset + offset,
+            }
+        };
+        break;
+    case VLK_REGISTER: {
+        // Move value into new register and shift right.
+        size_t sz = typeid_sizeof(type);
+        ret = (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+        arm64function_copy(function, ret, reference);
+        arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset);
+    } break;
+    case VLK_REGISTER_RANGE: {
+        ret = (ValueLocation) {
+            .type = type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+        arm64function_copy(function, ret, (ValueLocation) {
+                                              .type = type,
+                                              .kind = VLK_REGISTER,
+                                              .reg = reference.reg + offset / 8,
+                                          });
+        arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset % 8);
+    } break;
+    case VLK_DATA:
+    case VLK_LABEL:
+        ret = (ValueLocation) {
+            .type = type,
+            .kind = reference.kind,
+            .static_data = {
+                .symbol = reference.static_data.symbol,
+                .offset = reference.static_data.offset + offset,
+            }
+        };
+        break;
+    default:
+        UNREACHABLE();
+    }
+    return ret;
 }
 
 ValueLocation arm64function_return_location(ARM64Function *function, type_id type)

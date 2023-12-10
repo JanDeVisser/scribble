@@ -67,43 +67,6 @@ Datum *allocate_datums(size_t num)
     return ret;
 }
 
-void datum_initialize(Datum *d)
-{
-    ExpressionType *et = type_registry_get_type_by_id(d->type);
-    ErrorOrSize     size_maybe = type_sizeof(et);
-    if (!type_is_concrete(et)) {
-        fatal("Cannot initialize datum of type '" SV_SPEC "': %s", SV_ARG(et->name), Error_to_string(size_maybe.error));
-    }
-    switch (typeid_kind(d->type)) {
-    case TK_PRIMITIVE:
-        break;
-    case TK_AGGREGATE: {
-        if (d->type == STRING_ID) {
-            break;
-        }
-        d->aggregate.num_components = et->components.num_components;
-        d->aggregate.components = allocate_datums(d->aggregate.num_components);
-        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
-            d->aggregate.components[ix].type = typeid_canonical_type_id(et->components.components[ix].type_id);
-            datum_initialize(d->aggregate.components + ix);
-        }
-    } break;
-    case TK_VARIANT:
-        d->variant = datum_allocate(et->components.components[0].type_id);
-        break;
-    default:
-        UNREACHABLE();
-    }
-}
-
-Datum *datum_allocate(type_id type)
-{
-    Datum *ret = allocate_datums(1);
-    ret->type = typeid_canonical_type_id(type);
-    datum_initialize(ret);
-    return ret;
-}
-
 void free_datums(Datum *datums, size_t num)
 {
     size_t cap = 1;
@@ -124,6 +87,84 @@ void free_datums(Datum *datums, size_t num)
     }
 }
 
+Datum *datum_initialize(Datum *d)
+{
+    ExpressionType *et = type_registry_get_type_by_id(d->type);
+    if (!type_is_concrete(et)) {
+        fatal("Cannot initialize datum of type '" SV_SPEC "' because it is a template", SV_ARG(et->name));
+    }
+    switch (typeid_kind(d->type)) {
+    case TK_PRIMITIVE:
+        break;
+    case TK_AGGREGATE: {
+        if (d->type == STRING_ID) {
+            break;
+        }
+        d->aggregate.num_components = et->components.num_components;
+        d->aggregate.components = allocate_datums(d->aggregate.num_components);
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+            d->aggregate.components[ix].type = typeid_canonical_type_id(et->components.components[ix].type_id);
+            datum_initialize(d->aggregate.components + ix);
+        }
+    } break;
+    case TK_VARIANT:
+        d->variant.tag = datum_allocate(et->variant.enumeration);
+        break;
+    default:
+        UNREACHABLE();
+    }
+    return d;
+}
+
+Datum *datum_clone(Datum *d)
+{
+    Datum *ret = datum_allocate(d->type);
+    return datum_copy(ret, d);
+}
+
+Datum *datum_clone_into(Datum *into, Datum *from)
+{
+    assert(into->type == from->type);
+    datum_free_contents(into);
+    datum_initialize(into);
+    return datum_copy(into, from);
+}
+
+Datum *datum_allocate(type_id type)
+{
+    Datum *ret = allocate_datums(1);
+    ret->type = typeid_canonical_type_id(type);
+    datum_initialize(ret);
+    return ret;
+}
+
+void datum_free_contents(Datum *d)
+{
+    type_id type = d->type;
+    switch (datum_kind(d)) {
+    case TK_AGGREGATE: {
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+            datum_free(d->aggregate.components + ix);
+        }
+        free_datums(d->aggregate.components, d->aggregate.num_components);
+    } break;
+    case TK_VARIANT: {
+        datum_free(d->variant.tag);
+        datum_free(d->variant.payload);
+    } break;
+    default:
+        break;
+    }
+    memset(d, 0, sizeof(Datum));
+    d->type = type;
+}
+
+void datum_free(Datum *d)
+{
+    datum_free_contents(d);
+    free_datums(d, 1);
+}
+
 #define INTEGERCASE(dt, n, ct, is_signed, format, size) case BIT_##dt:
 #define INTEGERCASES INTEGERTYPES(INTEGERCASE)
 
@@ -135,7 +176,7 @@ unsigned long datum_unsigned_integer_value(Datum *d)
     case BIT_BOOL:
         return (unsigned long) d->bool_value;
     case BIT_POINTER:
-        return (unsigned long) d->pointer;
+        return (unsigned long) d->pointer.ptr;
     default:
         fatal("datum_unsigned_integer_value(): Cannot get get integer value of '%.*s'", SV_ARG(typeid_name(d->type)));
         UNREACHABLE();
@@ -151,7 +192,7 @@ long datum_signed_integer_value(Datum *d)
     case BIT_BOOL:
         return (long) d->bool_value;
     case BIT_POINTER:
-        return (long) d->pointer;
+        return (long) d->pointer.ptr;
     default:
         UNREACHABLE();
     }
@@ -182,12 +223,18 @@ Datum *datum_copy(Datum *dest, Datum *src)
             }
         } break;
         case TK_VARIANT:
-            dest->variant = datum_allocate(dest->variant->type);
-            datum_copy(dest->variant, src->variant);
+            dest->variant.tag = datum_allocate(src->variant.tag->type);
+            datum_copy(dest->variant.tag, src->variant.tag);
+            dest->variant.payload = datum_allocate(src->variant.payload->type);
+            datum_copy(dest->variant.payload, src->variant.payload);
             break;
         default:
             UNREACHABLE();
         }
+    }
+    if (src->type == POINTER_ID && src->pointer.datum_ptr.size > 0) {
+        dest->pointer.datum_ptr.components = allocate_array(size_t, dest->pointer.datum_ptr.cap);
+        memcpy(dest->pointer.datum_ptr.components, src->pointer.datum_ptr.components, src->pointer.datum_ptr.size * sizeof(size_t));
     }
     return dest;
 }
@@ -348,7 +395,18 @@ Datum *datum_EQUALS(Datum *d1, Datum *d2)
         ret->bool_value = d1->bool_value == d2->bool_value;
         break;
     case BIT_POINTER:
-        ret->bool_value = d1->pointer == d2->pointer;
+        ret->bool_value = d1->pointer.datum_ptr.pointer == d2->pointer.datum_ptr.pointer;
+        if (ret->bool_value) {
+            ret->bool_value = d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size;
+            if (ret->bool_value) {
+                for (size_t ix = 0; ix < d1->pointer.datum_ptr.size; ++ix) {
+                    ret->bool_value = d1->pointer.datum_ptr.components[ix] == d2->pointer.datum_ptr.components[ix];
+                    if (!ret->bool_value) {
+                        break;
+                    }
+                }
+            }
+        }
         break;
     default:
         fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
@@ -359,23 +417,8 @@ Datum *datum_EQUALS(Datum *d1, Datum *d2)
 Datum *datum_NOT_EQUALS(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
-    Datum *ret = datum_allocate(BOOL_ID);
-    switch (typeid_builtin_type(d1->type)) {
-        INTEGERCASES
-        ret->bool_value = integer_not_equals(d1->integer, d2->integer);
-        break;
-    case BIT_FLOAT:
-        ret->bool_value = d1->float_value != d2->float_value;
-        break;
-    case BIT_BOOL:
-        ret->bool_value = d1->bool_value != d2->bool_value;
-        break;
-    case BIT_POINTER:
-        ret->bool_value = d1->pointer != d2->pointer;
-        break;
-    default:
-        fatal("Cannot determine inequality of data of type '%s' yet", BuiltinType_name(d1->type));
-    }
+    Datum *ret = datum_EQUALS(d1, d2);
+    ret->bool_value = !ret->bool_value;
     return ret;
 }
 
@@ -394,7 +437,21 @@ Datum *datum_LESS(Datum *d1, Datum *d2)
         ret->bool_value = d1->bool_value < d2->bool_value;
         break;
     case BIT_POINTER:
-        ret->bool_value = d1->pointer < d2->pointer;
+        if (d1->pointer.datum_ptr.pointer == d2->pointer.datum_ptr.pointer) {
+            if (d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size) {
+                ret->bool_value = false;
+                for (size_t ix = 0; ix < d1->pointer.datum_ptr.size; ++ix) {
+                    if (d1->pointer.datum_ptr.components[ix] != d2->pointer.datum_ptr.components[ix]) {
+                        ret->bool_value = d1->pointer.datum_ptr.components[ix] < d2->pointer.datum_ptr.components[ix];
+                        break;
+                    }
+                }
+            } else {
+                ret->bool_value = d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size;
+            }
+        } else {
+            ret->bool_value = d1->pointer.datum_ptr.pointer < d2->pointer.datum_ptr.pointer;
+        }
         break;
     default:
         fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
@@ -404,70 +461,24 @@ Datum *datum_LESS(Datum *d1, Datum *d2)
 
 Datum *datum_LESS_EQUALS(Datum *d1, Datum *d2)
 {
-    assert(d1->type == d2->type);
-    Datum *ret = datum_allocate(BOOL_ID);
-    switch (typeid_builtin_type(d1->type)) {
-        INTEGERCASES
-        ret->bool_value = integer_less_equals(d1->integer, d2->integer);
-        break;
-    case BIT_FLOAT:
-        ret->bool_value = d1->float_value <= d2->float_value;
-        break;
-    case BIT_BOOL:
-        ret->bool_value = d1->bool_value <= d2->bool_value;
-        break;
-    case BIT_POINTER:
-        ret->bool_value = d1->pointer <= d2->pointer;
-        break;
-    default:
-        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
+    Datum *ret = datum_EQUALS(d1, d2);
+    if (!ret->bool_value) {
+        ret = datum_LESS(d1, d2);
     }
     return ret;
 }
 
 Datum *datum_GREATER(Datum *d1, Datum *d2)
 {
-    assert(d1->type == d2->type);
-    Datum *ret = datum_allocate(BOOL_ID);
-    switch (typeid_builtin_type(d1->type)) {
-        INTEGERCASES
-        ret->bool_value = integer_greater(d1->integer, d2->integer);
-        break;
-    case BIT_FLOAT:
-        ret->bool_value = d1->float_value > d2->float_value;
-        break;
-    case BIT_BOOL:
-        ret->bool_value = d1->bool_value > d2->bool_value;
-        break;
-    case BIT_POINTER:
-        ret->bool_value = d1->pointer > d2->pointer;
-        break;
-    default:
-        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
-    }
+    Datum *ret = datum_LESS_EQUALS(d1, d2);
+    ret->bool_value = !ret->bool_value;
     return ret;
 }
 
 Datum *datum_GREATER_EQUALS(Datum *d1, Datum *d2)
 {
-    assert(d1->type == d2->type);
-    Datum *ret = datum_allocate(BOOL_ID);
-    switch (typeid_builtin_type(d1->type)) {
-        INTEGERCASES
-        ret->bool_value = integer_greater_equals(d1->integer, d2->integer);
-        break;
-    case BIT_FLOAT:
-        ret->bool_value = d1->float_value >= d2->float_value;
-        break;
-    case BIT_BOOL:
-        ret->bool_value = d1->bool_value >= d2->bool_value;
-        break;
-    case BIT_POINTER:
-        ret->bool_value = d1->pointer >= d2->pointer;
-        break;
-    default:
-        fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
-    }
+    Datum *ret = datum_LESS(d1, d2);
+    ret->bool_value = !ret->bool_value;
     return ret;
 }
 
@@ -747,10 +758,16 @@ StringView datum_sprint(Datum *d)
         sb_append_cstr(&sb, " }");
     } break;
     case TK_VARIANT: {
-        ExpressionType *et = type_registry_get_type_by_id(d->variant->type);
-        sb_append_sv(&sb, et->name);
-        sb_append_cstr(&sb, ":");
-        sb_append_sv(&sb, datum_sprint(d->variant));
+        ExpressionType *et = type_registry_get_type_by_id(d->variant.tag->type);
+        ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+        for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+            if (integer_equals(d->variant.tag->integer, enumeration->enumeration.elements[ix].value)) {
+                sb_append_sv(&sb, enumeration->enumeration.elements[ix].name);
+                break;
+            }
+        }
+        sb_append_cstr(&sb, ".");
+        sb_append_sv(&sb, datum_sprint(d->variant.payload));
     } break;
     default:
         UNREACHABLE();
@@ -765,27 +782,4 @@ Datum *datum_make_integer(Integer value)
             BuiltinType_by_integer_type(value.type)));
     d->integer = value;
     return d;
-}
-
-void datum_free_contents(Datum *d)
-{
-    switch (datum_kind(d)) {
-    case TK_AGGREGATE: {
-        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
-            datum_free(d->aggregate.components + ix);
-        }
-        free_datums(d->aggregate.components, d->aggregate.num_components);
-    } break;
-    case TK_VARIANT: {
-        datum_free(d->variant);
-    } break;
-    default:
-        break;
-    }
-}
-
-void datum_free(Datum *d)
-{
-    datum_free_contents(d);
-    free_datums(d, 1);
 }

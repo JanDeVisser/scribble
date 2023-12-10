@@ -221,7 +221,7 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
         ret->bool_value = (bool) t.int_return_value;
         break;
     case BIT_POINTER:
-        ret->pointer = (void *) t.int_return_value;
+        ret->pointer.ptr = (void *) t.int_return_value;
         break;
     case BIT_FLOAT:
         ret->float_value = t.double_return_value;

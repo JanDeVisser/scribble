@@ -529,6 +529,7 @@ extern ValueLocation         arm64function_call(ARM64Function *calling_function,
 extern void                  arm64function_marshall_arguments(ARM64Function *calling_function, ARM64Function *called_function);
 extern void                  arm64function_marshall_return(ARM64Function *calling_function, ARM64Function *called_function, bool discard_result);
 extern ValueLocation         arm64function_location_for_type(ARM64Function *function, type_id type);
+extern ValueLocation         arm64function_component(ARM64Function *function, ValueLocation reference, size_t index);
 extern ValueLocation         arm64function_return_location(ARM64Function *function, type_id type);
 extern ValueLocation         arm64function_allocate_space(ARM64Function *function, type_id type);
 extern void                  arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr);

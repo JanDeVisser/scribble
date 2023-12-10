@@ -15,12 +15,22 @@ typedef struct error_info {
     void       *operation;
 } ErrorInfo;
 
-#define DATUM_NONINTEGERPRIMITIVES(S) \
-    S(VOID, void_value, int)          \
-    S(ERROR, error, ErrorInfo)        \
-    S(POINTER, pointer, void *)       \
-    S(BOOL, bool_value, bool)         \
-    S(FLOAT, float_value, double)     \
+typedef struct variable_pointer {
+    union {
+        struct {
+            struct datum *pointer;
+            DIA_ELEMENTS(size_t, components);
+        } datum_ptr;
+        void *ptr;
+    };
+} VariablePointer;
+
+#define DATUM_NONINTEGERPRIMITIVES(S)    \
+    S(VOID, void_value, int)             \
+    S(ERROR, error, ErrorInfo)           \
+    S(POINTER, pointer, VariablePointer) \
+    S(BOOL, bool_value, bool)            \
+    S(FLOAT, float_value, double)        \
     S(STRING, string, StringView)
 
 typedef struct datum {
@@ -35,11 +45,17 @@ typedef struct datum {
             size_t        num_components;
             struct datum *components;
         } aggregate;
-        struct datum *variant;
+        struct {
+            struct datum *tag;
+            struct datum *payload;
+        } variant;
     };
 } Datum;
 
 extern Datum        *datum_allocate(type_id type);
+Datum               *datum_initialize(Datum *d);
+Datum               *datum_clone(Datum *d);
+Datum               *datum_clone_into(Datum *into, Datum *from);
 extern Datum        *datum_make_integer(Integer value);
 extern unsigned long datum_unsigned_integer_value(Datum *d);
 extern long          datum_signed_integer_value(Datum *d);

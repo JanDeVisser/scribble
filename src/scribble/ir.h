@@ -23,7 +23,6 @@
     S(DEFINE_AGGREGATE)       \
     S(DEFINE_ALIAS)           \
     S(DEFINE_VARIANT)         \
-    S(DEREFERENCE)            \
     S(END_CASE)               \
     S(END_MATCH)              \
     S(JUMP)                   \
@@ -32,16 +31,17 @@
     S(LABEL)                  \
     S(MATCH)                  \
     S(NEW_DATUM)              \
-    S(POP_VAR)                \
+    S(POP_VALUE)              \
     S(PUSH_BOOL_CONSTANT)     \
     S(PUSH_FLOAT_CONSTANT)    \
     S(PUSH_INT_CONSTANT)      \
     S(PUSH_STRING_CONSTANT)   \
-    S(PUSH_VAR)               \
+    S(PUSH_VALUE)             \
     S(PUSH_VAR_ADDRESS)       \
     S(RETURN)                 \
     S(SCOPE_BEGIN)            \
     S(SCOPE_END)              \
+    S(SUBSCRIPT)              \
     S(UNARY_OPERATOR)
 
 typedef enum ir_operation_type {
@@ -72,16 +72,16 @@ typedef struct ir_operation {
             bool       discard_result;
         } call;
         struct {
-            Operator op;
             type_id  lhs;
+            Operator op;
             type_id  rhs;
         } binary_operator;
         struct {
-            Operator op;
             type_id  operand;
+            Operator op;
         } unary_operator;
         struct {
-            StringView name;
+            type_id type;
             DIA(size_t);
         } var_component;
     };

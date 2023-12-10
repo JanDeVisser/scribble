@@ -93,9 +93,14 @@ ValueLocation arm64variable_reference(ARM64Variable *variable)
     switch (variable->kind) {
     case VK_PARAMETER:
     case VK_LOCAL: {
-        arm64function_add_instruction(function, "add", "%s,fp,#0x%x", x_reg(to_location.reg),
-            variable->scope->function->scribble.stack_depth - variable->local_address.offset);
-        arm64function_push_location(function, to_location);
+        to_location = (ValueLocation) {
+            .type = variable->var_decl.type.type_id,
+            .kind = VLK_POINTER,
+            .pointer = {
+                .reg = REG_FP,
+                .offset = variable->scope->function->scribble.stack_depth - variable->local_address.offset,
+            }
+        };
         break;
     }
     default:

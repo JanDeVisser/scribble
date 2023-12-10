@@ -873,15 +873,15 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
     if (fnc->function.function_impl->type == BNT_MACRO) {
         Datum **args = allocate_array(Datum *, 3);
         args[0] = datum_allocate(POINTER_ID);
-        args[0]->pointer = parent;
+        args[0]->pointer.ptr = parent;
         args[1] = datum_allocate(POINTER_ID);
-        args[1]->pointer = stmt;
+        args[1]->pointer.ptr = stmt;
         args[2] = datum_allocate(POINTER_ID);
-        args[3]->pointer = ctx;
+        args[3]->pointer.ptr = ctx;
 
         Datum *processed = datum_allocate(POINTER_ID);
         native_call(fnc->function.function_impl->name, 3, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->pointer;
+        BoundNode *macro_ret = (BoundNode *) processed->pointer.ptr;
         if (macro_ret) {
             if (macro_ret->type == BNT_FUNCTION_CALL) {
                 if (macro_ret->typespec.type_id == VOID_ID) {
@@ -906,13 +906,13 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
     if (fnc->function.function_impl->type == BNT_MACRO) {
         Datum **args = allocate_array(Datum *, 2);
         args[0] = datum_allocate(POINTER_ID);
-        args[0]->pointer = ret;
+        args[0]->pointer.ptr = ret;
         args[1] = datum_allocate(POINTER_ID);
-        args[1]->pointer = ctx;
+        args[1]->pointer.ptr = ctx;
 
         Datum *processed = datum_allocate(POINTER_ID);
         native_call(fnc->function.function_impl->name, 2, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->pointer;
+        BoundNode *macro_ret = (BoundNode *) processed->pointer.ptr;
         if (macro_ret) {
             assert(macro_ret->type == BNT_FUNCTION_CALL);
             macro_ret->call.discard_result = stmt->call.discard_result;
@@ -1688,7 +1688,7 @@ __attribute__((unused)) BoundNode *static_message(BoundNode *node, void *v_ctx)
             } else if (evaluated->type == STRING_ID) {
                 fmt_arg.sv = evaluated->string;
             } else if (typeid_builtin_type(evaluated->type) == BIT_POINTER) {
-                fmt_arg.pointer = evaluated->pointer;
+                fmt_arg.pointer = evaluated->pointer.ptr;
             } else {
                 fatal("Unsupported type in static_message");
             }

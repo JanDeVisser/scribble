@@ -39,9 +39,9 @@ CallStackEntry         call_stack_pop(CallStack *stack);
 void                   call_stack_push(CallStack *stack, IRFunction *function, size_t index);
 void                   call_stack_dump(CallStack *stack);
 VarList               *scope_variable(Scope *scope, StringView name);
-char const            *scope_declare_variable(Scope *scope, StringView name, type_id type);
-char const            *scope_pop_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack);
-char const            *scope_push_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack);
+VarList               *scope_declare_variable(Scope *scope, StringView name, type_id type);
+Datum                 *pointer_assign(ExecutionContext *ctx, VariablePointer pointer);
+char const            *pointer_dereference(ExecutionContext *ctx, VariablePointer pointer);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 
@@ -141,12 +141,12 @@ VarList *scope_variable(Scope *scope, StringView name)
     return NULL;
 }
 
-char const *scope_declare_variable(Scope *scope, StringView name, type_id type)
+VarList *scope_declare_variable(Scope *scope, StringView name, type_id type)
 {
     VarList *end;
     for (end = scope->var_list; end && end->next; end = end->next) {
         if (sv_eq(end->name, name)) {
-            return "Variable was previously declared";
+            return NULL;
         }
     }
     VarList *new = allocate(sizeof(VarList));
@@ -157,117 +157,152 @@ char const *scope_declare_variable(Scope *scope, StringView name, type_id type)
     } else {
         scope->var_list = new;
     }
-    return NULL;
+    return new;
 }
 
-char const *scope_pop_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack)
+Datum *datum_error(char const *msg)
 {
-    Scope *s = scope;
-    while (s) {
-        VarList *v = scope_variable(s, name);
-        if (v) {
-            Datum *d = datum_stack_pop(stack);
-            if (d->type == ERROR_ID) {
-                return d->error.exception;
-            }
-            if (v->value) {
-                datum_free(v->value);
-            }
-
-            Datum *component = v->value;
-            for (size_t ix = 0; ix < num; ++ix) {
-                size_t index = indices[ix];
-                switch (datum_kind(v->value)) {
-                case TK_PRIMITIVE:
-                case TK_VARIANT:
-                    return "Attempted pop of component of non-compound datum";
-                case TK_AGGREGATE:
-                    if (index >= v->value->aggregate.num_components) {
-                        return "Attempted pop of out-of-range component index";
-                    }
-                    component = component->aggregate.components + index;
-                    break;
-                default:
-                    UNREACHABLE();
-                }
-            }
-            assert(component);
-            datum_copy(component, d);
-            datum_free(d);
-            v->value = d;
-            return NULL;
-        }
-        s = s->enclosing;
-    }
-    return "Cannot assign undeclared variable";
+    Datum *error = datum_allocate(ERROR_ID);
+    error->error.exception = msg;
+    return error;
 }
 
-char const *scope_pop_variable_component(Scope *scope, StringView name, size_t index, DatumStack *stack)
+Datum *_pointer_assign(ExecutionContext *ctx, VariablePointer pointer, Datum *d, size_t ptr_ix)
 {
-    Scope *s = scope;
-    while (s) {
-        VarList *v = scope_variable(s, name);
-        if (v) {
-            Datum *d = datum_stack_pop(stack);
-            if (d->type == ERROR_ID) {
-                return d->error.exception;
-            }
-            Datum *component;
-            switch (datum_kind(v->value)) {
-            case TK_PRIMITIVE:
-            case TK_VARIANT:
-                return "Attempted pop of component of non-compound datum";
-            case TK_AGGREGATE:
-                if (index >= v->value->aggregate.num_components) {
-                    return "Attempted pop of out-of-range component index";
-                }
-                component = v->value->aggregate.components + index;
-                break;
-            default:
-                UNREACHABLE();
-            }
-            assert(component);
-            datum_copy(component, d);
-            datum_free(d);
-            return NULL;
+    if (ptr_ix >= pointer.datum_ptr.size) {
+        switch (datum_kind(d)) {
+        case TK_PRIMITIVE:
+        case TK_ENUM: {
+            return datum_clone_into(d, datum_stack_pop(&ctx->stack));
         }
-        s = s->enclosing;
+        case TK_AGGREGATE: {
+            datum_free_contents(d);
+            datum_initialize(d);
+            for (int ix = (int) d->aggregate.num_components - 1; ix >= 0; --ix) {
+                Datum *component = datum_stack_pop(&ctx->stack);
+                datum_copy(d->aggregate.components + ix, component);
+                datum_free(component);
+            }
+            return d;
+        }
+        case TK_VARIANT:
+            datum_free_contents(d);
+            d->variant.payload = datum_stack_pop(&ctx->stack);
+            d->variant.tag = datum_stack_pop(&ctx->stack);
+            // TODO: Check that the payload is valid for the tag
+            return d;
+        default:
+            UNREACHABLE();
+        }
     }
-    return "Cannot assign undeclared variable";
+
+    size_t index = pointer.datum_ptr.components[ptr_ix];
+    switch (datum_kind(d)) {
+    case TK_PRIMITIVE:
+    case TK_ENUM: {
+        return datum_error("Attempted piecewise assignment of non-compound datum");
+    }
+    case TK_AGGREGATE: {
+        if (index >= d->aggregate.num_components) {
+            return datum_error("Attempted dereference of out-of-range component index");
+        }
+        return _pointer_assign(ctx, pointer, d->aggregate.components + index, ptr_ix + 1);
+    }
+    case TK_VARIANT: {
+        assert(ptr_ix == pointer.datum_ptr.size - 1);
+        datum_free_contents(d);
+        ExpressionType *variant_type = type_registry_get_type_by_id(d->type);
+        ExpressionType *enum_type = type_registry_get_type_by_id(variant_type->variant.enumeration);
+        if (index >= enum_type->enumeration.size) {
+            return datum_error("Attempted dereference of out-of-range enumeration index");
+        }
+        Datum *tag = datum_allocate(enum_type->type_id);
+        tag->integer = integer_create(BuiltinType_integer_type(typeid_builtin_type(enum_type->type_id)), index);
+        Datum *payload = datum_stack_pop(&ctx->stack);
+        assert(typeid_canonical_type_id(variant_type->variant.elements[index].type_id) == typeid_canonical_type_id(payload->type));
+        d->variant.payload = payload;
+        return d;
+    }
+    default:
+        UNREACHABLE();
+    }
 }
 
-char const *scope_push_variable(Scope *scope, StringView name, size_t num, size_t *indices, DatumStack *stack)
+Datum *pointer_assign(ExecutionContext *ctx, VariablePointer pointer)
 {
-    Scope *s = scope;
-    while (s) {
-        VarList *v = scope_variable(s, name);
-        if (v) {
-            Datum *component = v->value;
-            for (int ix = 0; ix < num; ++ix) {
-                size_t index = indices[ix];
-                switch (datum_kind(component)) {
-                case TK_PRIMITIVE:
-                case TK_VARIANT:
-                    return "Attempted push of component of non-compound datum";
-                case TK_AGGREGATE:
-                    if (index >= v->value->aggregate.num_components) {
-                        return "Attempted push of out-of-range component index";
-                    }
-                    component = v->value->aggregate.components + index;
-                    break;
-                default:
-                    UNREACHABLE();
-                }
-            }
-            assert(component);
-            Datum *copy = datum_allocate(component->type);
-            datum_copy(copy, component);
-            datum_stack_push(stack, copy);
+    return _pointer_assign(ctx, pointer, pointer.datum_ptr.pointer, 0);
+}
+
+char const *_pointer_dereference(ExecutionContext *ctx, VariablePointer pointer, Datum *d, size_t ptr_ix)
+{
+    if (ptr_ix >= pointer.datum_ptr.size) {
+        switch (typeid_kind(d->type)) {
+        case TK_PRIMITIVE:
+        case TK_ENUM: {
+            Datum *copy = datum_allocate(d->type);
+            datum_copy(copy, d);
+            datum_stack_push(&ctx->stack, copy);
             return NULL;
         }
-        s = s->enclosing;
+        case TK_AGGREGATE: {
+            for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+                Datum *copy = datum_allocate(d->aggregate.components[ix].type);
+                datum_copy(copy, d->aggregate.components + ix);
+                datum_stack_push(&ctx->stack, copy);
+            }
+            return NULL;
+        }
+        case TK_VARIANT: {
+            Datum *copy = datum_allocate(d->variant.tag->type);
+            datum_copy(copy, d->variant.tag);
+            datum_stack_push(&ctx->stack, copy);
+            copy = datum_allocate(d->variant.payload->type);
+            datum_copy(copy, d->variant.payload);
+            datum_stack_push(&ctx->stack, copy);
+            return NULL;
+        }
+        default:
+            UNREACHABLE();
+        }
     }
-    return "Cannot get value of component of undeclared variable";
+
+    size_t index = pointer.datum_ptr.components[ptr_ix];
+    switch (datum_kind(d)) {
+    case TK_PRIMITIVE:
+    case TK_ENUM: {
+        return "Attempted dereference of non-compound datum";
+    }
+    case TK_AGGREGATE: {
+        if (index >= d->aggregate.num_components) {
+            return "Attempted dereference of out-of-range component index";
+        }
+        d = d->aggregate.components + index;
+        return _pointer_dereference(ctx, pointer, d, ptr_ix + 1);
+    }
+    case TK_VARIANT: {
+        if (index == (size_t) -1) {
+            assert(ptr_ix == pointer.datum_ptr.size - 1);
+            Datum *copy = datum_allocate(d->variant.tag->type);
+            datum_copy(copy, d->variant.tag);
+            datum_stack_push(&ctx->stack, copy);
+            return NULL;
+        }
+        ExpressionType *enum_type = type_registry_get_type_by_id(d->variant.tag->type);
+        if (index >= enum_type->enumeration.size) {
+            return "Attempted dereference of out-of-range enumeration index";
+        }
+        ExpressionType *variant_type = type_registry_get_type_by_id(d->type);
+        assert(variant_type->variant.elements[index].type_id == d->variant.payload->type);
+        return _pointer_dereference(ctx, pointer, d->variant.payload, ptr_ix + 1);
+    }
+    default:
+        UNREACHABLE();
+    }
+}
+
+char const *pointer_dereference(ExecutionContext *ctx, VariablePointer pointer)
+{
+    return _pointer_dereference(ctx, pointer, pointer.datum_ptr.pointer, 0);
 }
 
 void scope_dump_variables(Scope *scope)
@@ -350,11 +385,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_free(cond);
     } break;
     case IR_DECL_VAR: {
-        char const *err = scope_declare_variable(ctx->scope, op->var_decl.name, op->var_decl.type.type_id);
-        if (err) {
-            next.type = NIT_EXCEPTION;
-            next.exception = err;
+        VarList *end;
+        for (end = ctx->scope->var_list; end && end->next; end = end->next) {
+            if (sv_eq(end->name, op->sv)) {
+                next.type = NIT_EXCEPTION;
+                next.exception = "Variable was previously declared";
+            }
         }
+        scope_declare_variable(ctx->scope, op->var_decl.name, op->var_decl.type.type_id);
     } break;
     case IR_DEFINE_ALIAS: {
         Datum *alias_of = datum_stack_pop(&ctx->stack);
@@ -493,11 +531,13 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         datum_free(d1);
         datum_free(d2);
     } break;
-    case IR_POP_VAR: {
-        char const *err = scope_pop_variable(ctx->scope, op->sv, op->var_component.size, op->var_component.elements, &ctx->stack);
-        if (err) {
+    case IR_POP_VALUE: {
+        Datum *d = datum_stack_pop(&ctx->stack);
+        assert(d->type == POINTER_ID);
+        Datum *assigned = pointer_assign(ctx, d->pointer);
+        if (assigned->type == ERROR_ID) {
             next.type = NIT_EXCEPTION;
-            next.exception = err;
+            next.exception = assigned->error.exception;
             return next;
         }
     } break;
@@ -520,27 +560,40 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
         d->string = op->sv;
         datum_stack_push(&ctx->stack, d);
     } break;
-    case IR_PUSH_VAR: {
-        char const *err = scope_push_variable(ctx->scope, op->sv, op->var_component.size, op->var_component.elements, &ctx->stack);
-        if (err) {
+    case IR_PUSH_VAR_ADDRESS: {
+        VarList *var = scope_variable(ctx->scope, op->sv);
+        if (var == NULL) {
             next.type = NIT_EXCEPTION;
-            next.exception = err;
+            next.exception = "Unknown variable";
             return next;
         }
+        Datum *d = datum_allocate(POINTER_ID);
+        d->pointer.datum_ptr.pointer = var->value;
+        datum_stack_push(&ctx->stack, d);
     } break;
-    case IR_PUSH_VAR_ADDRESS:
-        next.type = NIT_EXCEPTION;
-        next.exception = "PUSH_VAR_ADDRESS not supported in execution mode";
-        return next;
-    case IR_DEREFERENCE:
-        next.type = NIT_EXCEPTION;
-        next.exception = "DEREFERENCE not supported in execution mode";
-        return next;
+    case IR_PUSH_VALUE: {
+        Datum *d = datum_stack_pop(&ctx->stack);
+        assert(d->type == POINTER_ID);
+        char const *msg = pointer_dereference(ctx, d->pointer);
+        if (msg) {
+            next.type = NIT_EXCEPTION;
+            next.exception = msg;
+            return next;
+        }
+    }
     case IR_RETURN: {
         NextInstructionPointer nip = { 0 };
         nip.type = NIT_RETURN;
         return nip;
     }
+    case IR_SUBSCRIPT: {
+        Datum *d = datum_stack_pop(&ctx->stack);
+        assert(d->type == POINTER_ID);
+        for (size_t ix = 0; ix < op->var_component.size; ++ix) {
+            DIA_APPEND_ELEMENT(size_t, components, (&d->pointer.datum_ptr), op->var_component.elements[ix]);
+        }
+        datum_stack_push(&ctx->stack, d);
+    } break;
     case IR_UNARY_OPERATOR: {
         Datum *d = datum_stack_pop(&ctx->stack);
         datum_stack_push(&ctx->stack, datum_apply(d, op->binary_operator.op, NULL));
@@ -789,20 +842,20 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
     ctx->function = function;
 
     for (size_t param_ix = 0; param_ix < function->num_parameters; ++param_ix) {
-        IRVarDecl  *var_decl = function->parameters + param_ix;
-        char const *err = scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
-        if (!err) {
-            err = scope_pop_variable(ctx->scope, var_decl->name, 0, NULL, &ctx->stack);
+        IRVarDecl *var_decl = function->parameters + param_ix;
+        VarList   *end;
+        for (end = ctx->scope->var_list; end && end->next; end = end->next) {
+            if (sv_eq(end->name, var_decl->name)) {
+                FunctionReturn ret = { 0 };
+                ret.type = FRT_EXCEPTION;
+                ret.exception = datum_allocate(BIT_ERROR);
+                ret.exception->error.exception = "Duplicate parameter name?";
+                ret.exception->error.operation = NULL;
+                ctx->scope = current;
+                return ret;
+            }
         }
-        if (err) {
-            FunctionReturn ret = { 0 };
-            ret.type = FRT_EXCEPTION;
-            ret.exception = datum_allocate(BIT_ERROR);
-            ret.exception->error.exception = err;
-            ret.exception->error.operation = NULL;
-            ctx->scope = current;
-            return ret;
-        }
+        scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
     }
 
     bool step_over = ctx->execution_mode == EM_STEP_OVER;

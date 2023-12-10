@@ -78,19 +78,10 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, "lbl_%zu", op->label);
         break;
     case IR_CAST:
-    case IR_DEREFERENCE:
     case IR_MATCH:
         sb_printf(&sb, SV_SPEC, SV_ARG(typeid_name(op->type)));
         break;
     case IR_END_MATCH:
-        break;
-    case IR_POP_VAR:
-    case IR_PUSH_VAR:
-        sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
-        for (size_t ix = 0; ix < op->var_component.size; ++ix) {
-            sb_append_cstr(&sb, ".");
-            sb_printf(&sb, "[%zu]", op->var_component.elements[ix]);
-        }
         break;
     case IR_PUSH_VAR_ADDRESS:
     case IR_PUSH_STRING_CONSTANT:
@@ -111,6 +102,13 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
             sb_printf(&sb, " [%.*s]", SV_ARG(sv_render_hex_integer(op->integer)));
         }
         sb_printf(&sb, " : %s", IntegerType_name(op->integer.type));
+        break;
+    case IR_SUBSCRIPT:
+        sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
+        for (size_t ix = 0; ix < op->var_component.size; ++ix) {
+            sb_append_cstr(&sb, ".");
+            sb_printf(&sb, "[%zu]", op->var_component.elements[ix]);
+        }
         break;
     case IR_NEW_DATUM:
         sb_printf(&sb, SV_SPEC " [0x%08" PRIx64 "]", SV_ARG(typeid_name(op->integer.u64)), op->integer.u64);
