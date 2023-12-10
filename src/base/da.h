@@ -7,30 +7,34 @@
 #ifndef __DA_H__
 #define __DA_H__
 
-#define DIA(T)   \
-    size_t size; \
-    size_t cap;  \
-    T     *elements
+#define DIA_ELEMENTS(T, E) \
+    size_t size;           \
+    size_t cap;            \
+    T     *E
 
-#define DIA_APPEND(T, obj, elem)                                               \
-    do {                                                                       \
-        if ((obj)->size == obj->cap) {                                         \
-            if ((obj)->cap == 0) {                                             \
-                (obj)->elements = array_allocate(sizeof(T), 4);                \
-                (obj)->cap = 4;                                                \
-            } else {                                                           \
-                size_t new_cap = (obj)->cap;                                   \
-                do {                                                           \
-                    new_cap *= 2;                                              \
-                } while (new_cap < (obj)->size);                               \
-                T *new_elements = array_allocate(sizeof(T), new_cap);          \
-                memcpy(new_elements, (obj)->elements, (obj)->cap * sizeof(T)); \
-                (obj)->elements = new_elements;                                \
-                (obj)->cap = new_cap;                                          \
-            }                                                                  \
-        }                                                                      \
-        (obj)->elements[(obj)->size++] = (elem);                               \
+#define DIA(T) DIA_ELEMENTS(T, elements)
+
+#define DIA_APPEND_ELEMENT(T, E, obj, elem)                             \
+    do {                                                                \
+        if ((obj)->size == obj->cap) {                                  \
+            if ((obj)->cap == 0) {                                      \
+                (obj)->E = array_allocate(sizeof(T), 4);                \
+                (obj)->cap = 4;                                         \
+            } else {                                                    \
+                size_t new_cap = (obj)->cap;                            \
+                do {                                                    \
+                    new_cap *= 2;                                       \
+                } while (new_cap < (obj)->size);                        \
+                T *new_elements = array_allocate(sizeof(T), new_cap);   \
+                memcpy(new_elements, (obj)->E, (obj)->cap * sizeof(T)); \
+                (obj)->E = new_elements;                                \
+                (obj)->cap = new_cap;                                   \
+            }                                                           \
+        }                                                               \
+        (obj)->E[(obj)->size++] = (elem);                               \
     } while (0);
+
+#define DIA_APPEND(T, obj, elem) DIA_APPEND_ELEMENT(T, elements, obj, elem)
 
 #define DA_STRUCT_ELEMENTS(T, S, E)                  \
     typedef struct _da_##T {                         \
