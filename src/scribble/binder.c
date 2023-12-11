@@ -274,9 +274,9 @@ INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
     { .op = OP_MULTIPLY, .lhs = BIT_STRING, .rhs = BIT_I32, .result = BIT_STRING },
     COMPARISON_OPS(BIT_STRING)
 
-    { .op = OP_ADD, .lhs = BIT_POINTER, .rhs = BIT_U64, .result = BIT_POINTER },
-    { .op = OP_SUBTRACT, .lhs = BIT_POINTER, .rhs = BIT_U64, .result = BIT_POINTER },
-    COMPARISON_OPS(BIT_POINTER)
+    { .op = OP_ADD, .lhs = BIT_VAR_POINTER, .rhs = BIT_U64, .result = BIT_VAR_POINTER },
+    { .op = OP_SUBTRACT, .lhs = BIT_VAR_POINTER, .rhs = BIT_U64, .result = BIT_VAR_POINTER },
+    COMPARISON_OPS(BIT_VAR_POINTER)
 
     { .op = OP_LOGICAL_AND, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
     { .op = OP_LOGICAL_OR, .lhs = BIT_BOOL, .rhs = BIT_BOOL, .result = BIT_BOOL },
@@ -359,7 +359,7 @@ bool resolve_unary_expression_type(Operator op, BoundNode *operand, TypeSpec *re
         return true;
     }
     if (op == OP_DEREFERENCE) {
-        if (typeid_builtin_type(operand->typespec.type_id) != BIT_POINTER) {
+        if (typeid_builtin_type(operand->typespec.type_id) != BIT_VAR_POINTER) {
             return false;
         }
         ret->type_id = typeid_pointer_references(operand->typespec.type_id);
@@ -872,16 +872,16 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
     }
     if (fnc->function.function_impl->type == BNT_MACRO) {
         Datum **args = allocate_array(Datum *, 3);
-        args[0] = datum_allocate(POINTER_ID);
-        args[0]->pointer.ptr = parent;
-        args[1] = datum_allocate(POINTER_ID);
-        args[1]->pointer.ptr = stmt;
-        args[2] = datum_allocate(POINTER_ID);
-        args[3]->pointer.ptr = ctx;
+        args[0] = datum_allocate(RAW_POINTER_ID);
+        args[0]->raw_pointer = parent;
+        args[1] = datum_allocate(RAW_POINTER_ID);
+        args[1]->raw_pointer = stmt;
+        args[2] = datum_allocate(RAW_POINTER_ID);
+        args[3]->raw_pointer = ctx;
 
-        Datum *processed = datum_allocate(POINTER_ID);
+        Datum *processed = datum_allocate(RAW_POINTER_ID);
         native_call(fnc->function.function_impl->name, 3, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->pointer.ptr;
+        BoundNode *macro_ret = (BoundNode *) processed->raw_pointer;
         if (macro_ret) {
             if (macro_ret->type == BNT_FUNCTION_CALL) {
                 if (macro_ret->typespec.type_id == VOID_ID) {
@@ -905,14 +905,14 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
 
     if (fnc->function.function_impl->type == BNT_MACRO) {
         Datum **args = allocate_array(Datum *, 2);
-        args[0] = datum_allocate(POINTER_ID);
-        args[0]->pointer.ptr = ret;
-        args[1] = datum_allocate(POINTER_ID);
-        args[1]->pointer.ptr = ctx;
+        args[0] = datum_allocate(RAW_POINTER_ID);
+        args[0]->raw_pointer = ret;
+        args[1] = datum_allocate(RAW_POINTER_ID);
+        args[1]->raw_pointer = ctx;
 
-        Datum *processed = datum_allocate(POINTER_ID);
+        Datum *processed = datum_allocate(RAW_POINTER_ID);
         native_call(fnc->function.function_impl->name, 2, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->pointer.ptr;
+        BoundNode *macro_ret = (BoundNode *) processed->raw_pointer;
         if (macro_ret) {
             assert(macro_ret->type == BNT_FUNCTION_CALL);
             macro_ret->call.discard_result = stmt->call.discard_result;
@@ -1687,8 +1687,8 @@ __attribute__((unused)) BoundNode *static_message(BoundNode *node, void *v_ctx)
                 fmt_arg.integer = evaluated->integer;
             } else if (evaluated->type == STRING_ID) {
                 fmt_arg.sv = evaluated->string;
-            } else if (typeid_builtin_type(evaluated->type) == BIT_POINTER) {
-                fmt_arg.pointer = evaluated->pointer.ptr;
+            } else if (typeid_builtin_type(evaluated->type) == BIT_RAW_POINTER) {
+                fmt_arg.pointer = evaluated->raw_pointer;
             } else {
                 fatal("Unsupported type in static_message");
             }
