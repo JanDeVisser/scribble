@@ -148,6 +148,17 @@ __attribute__((unused)) void generate_CAST(BoundNode *node, IRObject *target)
     ir_function_add_operation((IRFunction *) target, op);
 }
 
+__attribute__((unused)) void generate_COMPOUND(BoundNode *node, IRObject *target)
+{
+    for (BoundNode *expr = node->compound_expr.expressions; expr; expr = expr->next) {
+        generate_node(expr, target);
+    }
+}
+
+__attribute__((unused)) void generate_CONST(BoundNode *, IRObject *)
+{
+}
+
 __attribute__((unused)) void generate_CONTINUE(BoundNode *node, IRObject *target)
 {
     assert(node->block.statements->intermediate);
@@ -651,17 +662,6 @@ __attribute__((unused)) void generate_VARIABLE_DECL(BoundNode *node, IRObject *t
     op.var_decl.name = node->name;
     op.var_decl.type = node->typespec;
     ir_function_add_operation(fnc, op);
-    if (node->variable_decl.init_expr) {
-        for (BoundNode *expr = node->variable_decl.init_expr; expr; expr = expr->next) {
-            generate_node(expr, target);
-        }
-        ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
-        op.sv = node->name;
-        ir_function_add_operation((IRFunction *) target, op);
-        ir_operation_set(&op, IR_POP_VALUE);
-        op.sv = node->name;
-        ir_function_add_operation(fnc, op);
-    }
 }
 
 __attribute__((unused)) void generate_VARIANT(BoundNode *node, IRObject *target)

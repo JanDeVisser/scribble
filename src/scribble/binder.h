@@ -11,44 +11,46 @@
 #ifndef __BINDER_H__
 #define __BINDER_H__
 
-#define BOUNDNODETYPES(S)   \
-    S(ASSIGNMENT)           \
-    S(BINARYEXPRESSION)     \
-    S(BLOCK)                \
-    S(BOOL)                 \
-    S(BREAK)                \
-    S(CAST)                 \
-    S(CONTINUE)             \
-    S(DECIMAL)              \
-    S(ENUMERATION)          \
-    S(ENUM_VALUE)           \
-    S(FOR)                  \
-    S(FUNCTION)             \
-    S(FUNCTION_CALL)        \
-    S(FUNCTION_IMPL)        \
-    S(NAME)                 \
-    S(IF)                   \
-    S(IMPORT)               \
-    S(INTEGER)              \
-    S(LOOP)                 \
-    S(MACRO)                \
-    S(MODULE)               \
-    S(NATIVE_FUNCTION)      \
-    S(PARAMETER)            \
-    S(PROGRAM)              \
-    S(RETURN)               \
-    S(STRING)               \
-    S(STRUCT)               \
-    S(TERNARYEXPRESSION)    \
-    S(TYPE)                 \
-    S(TYPE_COMPONENT)       \
-    S(UNARYEXPRESSION)      \
-    S(UNBOUND_NODE)         \
-    S(UNBOUND_TYPE)         \
-    S(VARIABLE)             \
-    S(VARIABLE_DECL)        \
-    S(VARIANT)              \
-    S(VARIANT_OPTION)       \
+#define BOUNDNODETYPES(S) \
+    S(ASSIGNMENT)         \
+    S(BINARYEXPRESSION)   \
+    S(BLOCK)              \
+    S(BOOL)               \
+    S(BREAK)              \
+    S(CAST)               \
+    S(COMPOUND)           \
+    S(CONST)              \
+    S(CONTINUE)           \
+    S(DECIMAL)            \
+    S(ENUMERATION)        \
+    S(ENUM_VALUE)         \
+    S(FOR)                \
+    S(FUNCTION)           \
+    S(FUNCTION_CALL)      \
+    S(FUNCTION_IMPL)      \
+    S(NAME)               \
+    S(IF)                 \
+    S(IMPORT)             \
+    S(INTEGER)            \
+    S(LOOP)               \
+    S(MACRO)              \
+    S(MODULE)             \
+    S(NATIVE_FUNCTION)    \
+    S(PARAMETER)          \
+    S(PROGRAM)            \
+    S(RETURN)             \
+    S(STRING)             \
+    S(STRUCT)             \
+    S(TERNARYEXPRESSION)  \
+    S(TYPE)               \
+    S(TYPE_COMPONENT)     \
+    S(UNARYEXPRESSION)    \
+    S(UNBOUND_NODE)       \
+    S(UNBOUND_TYPE)       \
+    S(VARIABLE)           \
+    S(VARIABLE_DECL)      \
+    S(VARIANT)            \
+    S(VARIANT_OPTION)     \
     S(WHILE)
 
 typedef enum bound_node_type {
@@ -94,6 +96,10 @@ typedef struct bound_node {
         struct {
             struct bound_node *components;
         } compound_def;
+        struct {
+            struct bound_node *expressions;
+        } compound_expr;
+        struct bound_node *const_expr;
         struct bound_node *controlled_statement;
         double             decimal_value;
         struct {
@@ -147,8 +153,7 @@ typedef struct bound_node {
             struct bound_node *subscript;
         } variable;
         struct {
-            struct bound_node *init_expr;
-            bool               is_const;
+            bool is_const;
         } variable_decl;
         struct {
             TypeSpec           underlying_type;

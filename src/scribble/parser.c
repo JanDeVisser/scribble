@@ -27,11 +27,10 @@ static void        parser_context_add_verror(ParserContext *ctx, Token token, ch
 static void        parser_context_add_error(ParserContext *ctx, Token token, char const *msg, ...);
 static void        parser_context_add_vnote(ParserContext *ctx, Token token, char const *msg, va_list args);
 static void        parser_context_add_note(ParserContext *ctx, Token token, char const *msg, ...);
-static SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
 static SyntaxNode *parse_expression(ParserContext *ctx);
 static SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_precedence);
 static SyntaxNode *parse_primary_expression(ParserContext *ctx);
-static bool        parse_arguments(ParserContext *ctx, SyntaxNode **dst, char end);
+static bool        parse_expression_list(ParserContext *ctx, SyntaxNode **dst, char end);
 static SyntaxNode *parse_statement(ParserContext *ctx);
 static SyntaxNode *parse_type(ParserContext *ctx);
 static SyntaxNode *parse_import(ParserContext *ctx);
@@ -276,7 +275,7 @@ bool parser_context_accept_keyword(ParserContext *ctx, KeywordCode keyword)
         }                                                 \
     } while (0)
 
-bool parse_arguments(ParserContext *ctx, SyntaxNode **dst, char end)
+bool parse_expression_list(ParserContext *ctx, SyntaxNode **dst, char end)
 {
     ACCEPT_SYMBOL_AND(ctx, end, true);
     while (true) {
@@ -437,7 +436,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         var->type = SNT_FUNCTION;
         call->call.function = var;
         call->call.discard_result = false;
-        if (!parse_arguments(ctx, &call->call.arguments, ')')) {
+        if (!parse_expression_list(ctx, &call->call.arguments, ')')) {
             return NULL;
         }
         return call;
@@ -497,6 +496,14 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             }
             return ret;
         }
+        case '{': {
+            lexer_lex(ctx->lexer);
+            SyntaxNode *ret = syntax_node_make(SNT_COMPOUND, token.text, token);
+            if (!parse_expression_list(ctx, &ret->compound_expr.expressions, '}')) {
+                return NULL;
+            }
+            return ret;
+        }
         default: {
             OperatorMapping op = operator_for_token(token, false);
             if (op.operator!= OP_INVALID) {
@@ -530,15 +537,9 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
     }
     ret->variable_decl.var_type = type;
     if (parser_context_accept_symbol(ctx, '=')) {
-        if (parser_context_accept(ctx, TK_SYMBOL, '{')) {
-            if (!parse_arguments(ctx, &ret->variable_decl.init_expr, '}')) {
-                return NULL;
-            }
-        } else {
-            ret->variable_decl.init_expr = parse_expression(ctx);
-            if (ret->variable_decl.init_expr == NULL) {
-                return NULL;
-            }
+        ret->variable_decl.init_expr = parse_expression(ctx);
+        if (ret->variable_decl.init_expr == NULL) {
+            return NULL;
         }
     } else if (is_const) {
         parser_context_add_error(ctx, ident, "'const' declaration without initializer expression");
@@ -663,6 +664,7 @@ SyntaxNode *parse_block(ParserContext *ctx)
 SyntaxNode *parse_identifier(ParserContext *ctx)
 {
     Token        token = lexer_lex(ctx->lexer);
+    StringView   name = token.text;
     SyntaxNode  *var = syntax_node_make(SNT_VARIABLE, token.text, token);
     SyntaxNode **name_part = &var->variable.subscript;
     SyntaxNode  *ret = NULL;
@@ -676,21 +678,15 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
         var->type = SNT_FUNCTION;
         ret->call.function = var;
         ret->call.discard_result = true;
-        if (!parse_arguments(ctx, &ret->call.arguments, ')')) {
+        if (!parse_expression_list(ctx, &ret->call.arguments, ')')) {
             return NULL;
         }
     } else if (parser_context_accept_symbol(ctx, '=')) {
         ret = syntax_node_make(SNT_ASSIGNMENT, var->name, var->token);
         ret->assignment.variable = var;
-        if (parser_context_accept_symbol(ctx, '{')) {
-            if (!parse_arguments(ctx, &ret->assignment.expression, '}')) {
-                return NULL;
-            }
-        } else {
-            ret->assignment.expression = parse_expression(ctx);
-            if (ret->assignment.expression == NULL) {
-                return NULL;
-            }
+        ret->assignment.expression = parse_expression(ctx);
+        if (ret->assignment.expression == NULL) {
+            return NULL;
         }
     } else if (parser_context_accept_symbol(ctx, ':')) {
         ret = syntax_node_make(SNT_LABEL, var->name, var->token);
@@ -766,7 +762,7 @@ bool parse_type_descr(ParserContext *ctx, Token type_name, TypeDescr *target)
         while (true) {
             Token      token = TRY_OR_FALSE(Token, parser_context_expect_identifier(ctx));
             TypeDescr *component = allocate_new(TypeDescr);
-            DIA_APPEND(TypeDescr *, target, component)
+            DIA_APPEND(TypeDescr *, target, component);
             if (!parse_type_descr(ctx, token, component)) {
                 return false;
             }

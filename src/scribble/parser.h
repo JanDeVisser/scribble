@@ -26,6 +26,7 @@ typedef struct operator_mapping {
     S(BOOL)                \
     S(BREAK)               \
     S(CAST)                \
+    S(COMPOUND)            \
     S(CONTINUE)            \
     S(DECIMAL)             \
     S(ENUMERATION)         \
@@ -77,6 +78,7 @@ typedef struct syntax_node {
     struct syntax_node *next;
     size_t              index;
     Token               token;
+    void               *data;
 
     union {
         struct {
@@ -104,6 +106,9 @@ typedef struct syntax_node {
             struct syntax_node *expr;
             struct syntax_node *cast_to;
         } cast_expr;
+        struct {
+            struct syntax_node *expressions;
+        } compound_expr;
         struct {
             struct syntax_node *statements;
         } function_impl;
@@ -206,6 +211,7 @@ typedef struct parser_context {
 
 extern size_t        next_index();
 extern char const   *SyntaxNodeType_name(SyntaxNodeType type);
+extern SyntaxNode   *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
 extern ParserContext parse(char const *dir_or_file);
 
 #define SN_LOC_ARG(node) LOC_ARG(node->token.loc)

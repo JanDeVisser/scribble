@@ -332,11 +332,6 @@ void graph_node_emit(GraphNode *node, FILE *f)
     case BNT_UNBOUND_NODE:
         graph_node_forward(node, abstract(bn->unbound_node), "Unbound", f);
         break;
-    case BNT_VARIABLE_DECL: {
-        if (bn->variable_decl.init_expr) {
-            graph_node_forward(node, abstract(bn->variable_decl.init_expr), "init", f);
-        }
-    } break;
     case BNT_WHILE:
         graph_node_forward(node, abstract(bn->while_statement.condition), "condition", f);
         graph_node_forward(node, abstract(bn->while_statement.statement), "statement", f);
