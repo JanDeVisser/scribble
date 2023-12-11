@@ -647,7 +647,7 @@ SyntaxNode *parse_block(ParserContext *ctx)
     SyntaxNode  *ret = syntax_node_make(SNT_BLOCK, sv_from("block"), token);
     SyntaxNode **dst = &ret->block.statements;
     while (true) {
-        ACCEPT_SYMBOL_OR(ctx, '}', ret);
+        ACCEPT_SYMBOL_AND(ctx, '}', ret);
         if (parser_context_accept_and_discard(ctx, TK_END_OF_FILE, TC_NONE)) {
             parser_context_add_error(ctx, token, "Expected '}' to close block");
             return NULL;
