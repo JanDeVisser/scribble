@@ -1,4 +1,4 @@
-func main() {
+func main() : i32 {
     var ret = 0;
     const a = (2);
 
@@ -6,14 +6,19 @@ func main() {
         ret = 2;
     }
 
-    if (a == 3) {
+    if a == 3 {
         ret = ret + 10;
     }
 
     if a > 1 {
-        ret = ret + 40;
+        ret = ret + 50;
     } else {
         ret = ret + 20;
+    }
+    if ret < 40 {
+       ret = 69;
+    } else {
+       ret = 42;
     }
     return ret;
 }
