@@ -197,8 +197,8 @@ void type_registry_init()
     assert(typeid_has_kind(ARRAY_ID, TK_AGGREGATE));
 
     MUST(TypeID,
-        type_set_template_parameters(POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
-    PCHAR_ID = MUST(TypeID, type_specialize_template(POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .arg_type = TPT_TYPE, .type = U8_ID } }));
+        type_set_template_parameters(VAR_POINTER_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
+    PCHAR_ID = MUST(TypeID, type_specialize_template(VAR_POINTER_ID, 1, (TemplateArgument[]) { { .name = sv_from("T"), .arg_type = TPT_TYPE, .type = U8_ID } }));
     MUST(TypeID, type_registry_alias(sv_from("pchar"), PCHAR_ID));
     MUST(TypeID,
         type_set_template_parameters(RANGE_ID, 1, (TemplateParameter[]) { { sv_from("T"), TPT_TYPE } }));
@@ -221,7 +221,7 @@ void type_registry_init()
                     .kind = CK_PARAMETERIZED_TYPE,
                     .name = sv_from("ptr"),
                     .parameterized_type = {
-                        .template_type = POINTER_ID,
+                        .template_type = VAR_POINTER_ID,
                         .parameter = sv_from("T"),
                         .argument = sv_from("T"),
                     },
@@ -894,7 +894,7 @@ ErrorOrTypeID type_set_components(type_id aggregate_id, size_t num, TypeComponen
 type_id typeid_pointer_to(type_id type)
 {
     return MUST(TypeID,
-        type_specialize_template(POINTER_ID, 1,
+        type_specialize_template(VAR_POINTER_ID, 1,
             (TemplateArgument[]) {
                 {
                     .name = sv_from("T"),
@@ -906,7 +906,7 @@ type_id typeid_pointer_to(type_id type)
 
 type_id typeid_pointer_references(type_id type)
 {
-    assert(typeid_builtin_type(type) == BIT_POINTER);
+    assert(typeid_builtin_type(type) == BIT_VAR_POINTER);
     ExpressionType   *et = type_registry_get_type_by_id(type);
     TemplateArgument *template_arg = type_get_argument(et, sv_from("T"));
     return template_arg->type;

@@ -15,22 +15,18 @@ typedef struct error_info {
     void       *operation;
 } ErrorInfo;
 
-typedef struct variable_pointer {
-    union {
-        struct {
-            struct datum *pointer;
-            DIA_ELEMENTS(size_t, components);
-        } datum_ptr;
-        void *ptr;
-    };
-} VariablePointer;
+typedef struct datum_pointer {
+    struct datum *pointer;
+    DIA_ELEMENTS(size_t, components);
+} DatumPointer;
 
-#define DATUM_NONINTEGERPRIMITIVES(S)    \
-    S(VOID, void_value, int)             \
-    S(ERROR, error, ErrorInfo)           \
-    S(POINTER, pointer, VariablePointer) \
-    S(BOOL, bool_value, bool)            \
-    S(FLOAT, float_value, double)        \
+#define DATUM_NONINTEGERPRIMITIVES(S)           \
+    S(VOID, void_value, int)                    \
+    S(ERROR, error, ErrorInfo)                  \
+    S(VAR_POINTER, datum_pointer, DatumPointer) \
+    S(RAW_POINTER, raw_pointer, void *)         \
+    S(BOOL, bool_value, bool)                   \
+    S(FLOAT, float_value, double)               \
     S(STRING, string, StringView)
 
 typedef struct datum {

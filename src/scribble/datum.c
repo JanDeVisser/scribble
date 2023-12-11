@@ -175,8 +175,10 @@ unsigned long datum_unsigned_integer_value(Datum *d)
         return MUST_OPTIONAL(UInt64, integer_unsigned_value(d->integer));
     case BIT_BOOL:
         return (unsigned long) d->bool_value;
-    case BIT_POINTER:
-        return (unsigned long) d->pointer.ptr;
+    case BIT_VAR_POINTER:
+        return (unsigned long) d->datum_pointer.pointer;
+    case BIT_RAW_POINTER:
+        return (unsigned long) d->raw_pointer;
     default:
         fatal("datum_unsigned_integer_value(): Cannot get get integer value of '%.*s'", SV_ARG(typeid_name(d->type)));
         UNREACHABLE();
@@ -191,8 +193,10 @@ long datum_signed_integer_value(Datum *d)
         return MUST_OPTIONAL(Int64, integer_signed_value(d->integer));
     case BIT_BOOL:
         return (long) d->bool_value;
-    case BIT_POINTER:
-        return (long) d->pointer.ptr;
+    case BIT_VAR_POINTER:
+        return (long) d->datum_pointer.pointer;
+    case BIT_RAW_POINTER:
+        return (long) d->raw_pointer;
     default:
         UNREACHABLE();
     }
@@ -232,9 +236,9 @@ Datum *datum_copy(Datum *dest, Datum *src)
             UNREACHABLE();
         }
     }
-    if (src->type == POINTER_ID && src->pointer.datum_ptr.size > 0) {
-        dest->pointer.datum_ptr.components = allocate_array(size_t, dest->pointer.datum_ptr.cap);
-        memcpy(dest->pointer.datum_ptr.components, src->pointer.datum_ptr.components, src->pointer.datum_ptr.size * sizeof(size_t));
+    if (src->type == VAR_POINTER_ID && src->datum_pointer.size > 0) {
+        dest->datum_pointer.components = allocate_array(size_t, dest->datum_pointer.cap);
+        memcpy(dest->datum_pointer.components, src->datum_pointer.components, src->datum_pointer.size * sizeof(size_t));
     }
     return dest;
 }
@@ -394,19 +398,22 @@ Datum *datum_EQUALS(Datum *d1, Datum *d2)
     case BIT_BOOL:
         ret->bool_value = d1->bool_value == d2->bool_value;
         break;
-    case BIT_POINTER:
-        ret->bool_value = d1->pointer.datum_ptr.pointer == d2->pointer.datum_ptr.pointer;
+    case BIT_VAR_POINTER:
+        ret->bool_value = d1->datum_pointer.pointer == d2->datum_pointer.pointer;
         if (ret->bool_value) {
-            ret->bool_value = d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size;
+            ret->bool_value = d1->datum_pointer.size == d2->datum_pointer.size;
             if (ret->bool_value) {
-                for (size_t ix = 0; ix < d1->pointer.datum_ptr.size; ++ix) {
-                    ret->bool_value = d1->pointer.datum_ptr.components[ix] == d2->pointer.datum_ptr.components[ix];
+                for (size_t ix = 0; ix < d1->datum_pointer.size; ++ix) {
+                    ret->bool_value = d1->datum_pointer.components[ix] == d2->datum_pointer.components[ix];
                     if (!ret->bool_value) {
                         break;
                     }
                 }
             }
         }
+        break;
+    case BIT_RAW_POINTER:
+        ret->bool_value = d1->raw_pointer == d2->raw_pointer;
         break;
     default:
         fatal("Cannot determine equality of data of type '%s' yet", BuiltinType_name(d1->type));
@@ -436,22 +443,25 @@ Datum *datum_LESS(Datum *d1, Datum *d2)
     case BIT_BOOL:
         ret->bool_value = d1->bool_value < d2->bool_value;
         break;
-    case BIT_POINTER:
-        if (d1->pointer.datum_ptr.pointer == d2->pointer.datum_ptr.pointer) {
-            if (d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size) {
+    case BIT_VAR_POINTER:
+        if (d1->datum_pointer.pointer == d2->datum_pointer.pointer) {
+            if (d1->datum_pointer.size == d2->datum_pointer.size) {
                 ret->bool_value = false;
-                for (size_t ix = 0; ix < d1->pointer.datum_ptr.size; ++ix) {
-                    if (d1->pointer.datum_ptr.components[ix] != d2->pointer.datum_ptr.components[ix]) {
-                        ret->bool_value = d1->pointer.datum_ptr.components[ix] < d2->pointer.datum_ptr.components[ix];
+                for (size_t ix = 0; ix < d1->datum_pointer.size; ++ix) {
+                    if (d1->datum_pointer.components[ix] != d2->datum_pointer.components[ix]) {
+                        ret->bool_value = d1->datum_pointer.components[ix] < d2->datum_pointer.components[ix];
                         break;
                     }
                 }
             } else {
-                ret->bool_value = d1->pointer.datum_ptr.size == d2->pointer.datum_ptr.size;
+                ret->bool_value = d1->datum_pointer.size == d2->datum_pointer.size;
             }
         } else {
-            ret->bool_value = d1->pointer.datum_ptr.pointer < d2->pointer.datum_ptr.pointer;
+            ret->bool_value = d1->datum_pointer.pointer < d2->datum_pointer.pointer;
         }
+        break;
+    case BIT_RAW_POINTER:
+        ret->bool_value = d1->raw_pointer < d2->raw_pointer;
         break;
     default:
         fatal("Cannot determine ordering of data of type '%s' yet", BuiltinType_name(d1->type));
@@ -668,7 +678,9 @@ Datum *datum_DEREFERENCE(Datum *d1, Datum *d2)
 
 Datum *datum_ADDRESS_OF(Datum *d1, Datum *d2)
 {
-    return NULL;
+    Datum *ret = datum_allocate(VAR_POINTER_ID);
+    ret->datum_pointer.pointer = NULL;
+    return ret;
 }
 
 Datum *datum_UNARY_MEMBER_ACCESS(Datum *d1, Datum *d2)
@@ -729,8 +741,14 @@ StringView datum_sprint(Datum *d)
         case BIT_FLOAT:
             sb_printf(&sb, "%f", d->float_value);
             break;
-        case BIT_POINTER:
-            sb_printf(&sb, "%p", d->pointer);
+        case BIT_VAR_POINTER:
+            sb_printf(&sb, "%p", d->datum_pointer.pointer);
+            for (size_t ix = 0; ix < d->datum_pointer.size; ++ix) {
+                sb_printf(&sb, "[%zu]", d->datum_pointer.components[ix]);
+            }
+            break;
+        case BIT_RAW_POINTER:
+            sb_printf(&sb, "%p", d->raw_pointer);
             break;
         case BIT_BOOL:
             sb_printf(&sb, "%s", (d->bool_value) ? "true" : "false");

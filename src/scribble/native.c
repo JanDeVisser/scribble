@@ -160,7 +160,7 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
         // The NGRN is incremented by one. The argument has now been allocated.
         if ((type_kind(et) == TK_PRIMITIVE) && (ngrn < 8)) {
             BuiltinType builtin_type = typeid_builtin_type(et->type_id);
-            if (BuiltinType_is_integer(builtin_type) || builtin_type == BIT_POINTER) {
+            if (BuiltinType_is_integer(builtin_type) || builtin_type == BIT_RAW_POINTER) {
                 t.x[ngrn] = datum_unsigned_integer_value(values[ix]);
                 ++ngrn;
                 continue;
@@ -220,8 +220,8 @@ void native_call(StringView name, size_t argc, Datum **values, Datum *ret)
     case BIT_BOOL:
         ret->bool_value = (bool) t.int_return_value;
         break;
-    case BIT_POINTER:
-        ret->pointer.ptr = (void *) t.int_return_value;
+    case BIT_RAW_POINTER:
+        ret->raw_pointer = (void *) t.int_return_value;
         break;
     case BIT_FLOAT:
         ret->float_value = t.double_return_value;

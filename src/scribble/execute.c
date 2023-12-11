@@ -40,8 +40,8 @@ void                   call_stack_push(CallStack *stack, IRFunction *function, s
 void                   call_stack_dump(CallStack *stack);
 VarList               *scope_variable(Scope *scope, StringView name);
 VarList               *scope_declare_variable(Scope *scope, StringView name, type_id type);
-Datum                 *pointer_assign(ExecutionContext *ctx, VariablePointer pointer);
-char const            *pointer_dereference(ExecutionContext *ctx, VariablePointer pointer);
+Datum                 *pointer_assign(ExecutionContext *ctx, DatumPointer pointer);
+char const            *pointer_dereference(ExecutionContext *ctx, DatumPointer pointer);
 void                   scope_dump_variables(Scope *scope);
 NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op);
 
@@ -167,9 +167,9 @@ Datum *datum_error(char const *msg)
     return error;
 }
 
-Datum *_pointer_assign(ExecutionContext *ctx, VariablePointer pointer, Datum *d, size_t ptr_ix)
+Datum *_pointer_assign(ExecutionContext *ctx, DatumPointer pointer, Datum *d, size_t ptr_ix)
 {
-    if (ptr_ix >= pointer.datum_ptr.size) {
+    if (ptr_ix >= pointer.size) {
         switch (datum_kind(d)) {
         case TK_PRIMITIVE:
         case TK_ENUM: {
@@ -196,7 +196,7 @@ Datum *_pointer_assign(ExecutionContext *ctx, VariablePointer pointer, Datum *d,
         }
     }
 
-    size_t index = pointer.datum_ptr.components[ptr_ix];
+    size_t index = pointer.components[ptr_ix];
     switch (datum_kind(d)) {
     case TK_PRIMITIVE:
     case TK_ENUM: {
@@ -209,7 +209,7 @@ Datum *_pointer_assign(ExecutionContext *ctx, VariablePointer pointer, Datum *d,
         return _pointer_assign(ctx, pointer, d->aggregate.components + index, ptr_ix + 1);
     }
     case TK_VARIANT: {
-        assert(ptr_ix == pointer.datum_ptr.size - 1);
+        assert(ptr_ix == pointer.size - 1);
         datum_free_contents(d);
         ExpressionType *variant_type = type_registry_get_type_by_id(d->type);
         ExpressionType *enum_type = type_registry_get_type_by_id(variant_type->variant.enumeration);
@@ -228,14 +228,14 @@ Datum *_pointer_assign(ExecutionContext *ctx, VariablePointer pointer, Datum *d,
     }
 }
 
-Datum *pointer_assign(ExecutionContext *ctx, VariablePointer pointer)
+Datum *pointer_assign(ExecutionContext *ctx, DatumPointer pointer)
 {
-    return _pointer_assign(ctx, pointer, pointer.datum_ptr.pointer, 0);
+    return _pointer_assign(ctx, pointer, pointer.pointer, 0);
 }
 
-char const *_pointer_dereference(ExecutionContext *ctx, VariablePointer pointer, Datum *d, size_t ptr_ix)
+char const *_pointer_dereference(ExecutionContext *ctx, DatumPointer pointer, Datum *d, size_t ptr_ix)
 {
-    if (ptr_ix >= pointer.datum_ptr.size) {
+    if (ptr_ix >= pointer.size) {
         switch (typeid_kind(d->type)) {
         case TK_PRIMITIVE:
         case TK_ENUM: {
@@ -266,7 +266,7 @@ char const *_pointer_dereference(ExecutionContext *ctx, VariablePointer pointer,
         }
     }
 
-    size_t index = pointer.datum_ptr.components[ptr_ix];
+    size_t index = pointer.components[ptr_ix];
     switch (datum_kind(d)) {
     case TK_PRIMITIVE:
     case TK_ENUM: {
@@ -281,7 +281,7 @@ char const *_pointer_dereference(ExecutionContext *ctx, VariablePointer pointer,
     }
     case TK_VARIANT: {
         if (index == (size_t) -1) {
-            assert(ptr_ix == pointer.datum_ptr.size - 1);
+            assert(ptr_ix == pointer.size - 1);
             Datum *copy = datum_allocate(d->variant.tag->type);
             datum_copy(copy, d->variant.tag);
             datum_stack_push(&ctx->stack, copy);
@@ -300,9 +300,9 @@ char const *_pointer_dereference(ExecutionContext *ctx, VariablePointer pointer,
     }
 }
 
-char const *pointer_dereference(ExecutionContext *ctx, VariablePointer pointer)
+char const *pointer_dereference(ExecutionContext *ctx, DatumPointer pointer)
 {
-    return _pointer_dereference(ctx, pointer, pointer.datum_ptr.pointer, 0);
+    return _pointer_dereference(ctx, pointer, pointer.pointer, 0);
 }
 
 void scope_dump_variables(Scope *scope)
@@ -533,8 +533,8 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     } break;
     case IR_POP_VALUE: {
         Datum *d = datum_stack_pop(&ctx->stack);
-        assert(d->type == POINTER_ID);
-        Datum *assigned = pointer_assign(ctx, d->pointer);
+        assert(d->type == VAR_POINTER_ID);
+        Datum *assigned = pointer_assign(ctx, d->datum_pointer);
         if (assigned->type == ERROR_ID) {
             next.type = NIT_EXCEPTION;
             next.exception = assigned->error.exception;
@@ -567,14 +567,14 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
             next.exception = "Unknown variable";
             return next;
         }
-        Datum *d = datum_allocate(POINTER_ID);
-        d->pointer.datum_ptr.pointer = var->value;
+        Datum *d = datum_allocate(VAR_POINTER_ID);
+        d->datum_pointer.pointer = var->value;
         datum_stack_push(&ctx->stack, d);
     } break;
     case IR_PUSH_VALUE: {
         Datum *d = datum_stack_pop(&ctx->stack);
-        assert(d->type == POINTER_ID);
-        char const *msg = pointer_dereference(ctx, d->pointer);
+        assert(d->type == VAR_POINTER_ID);
+        char const *msg = pointer_dereference(ctx, d->datum_pointer);
         if (msg) {
             next.type = NIT_EXCEPTION;
             next.exception = msg;
@@ -588,9 +588,9 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     }
     case IR_SUBSCRIPT: {
         Datum *d = datum_stack_pop(&ctx->stack);
-        assert(d->type == POINTER_ID);
+        assert(d->type == VAR_POINTER_ID);
         for (size_t ix = 0; ix < op->var_component.size; ++ix) {
-            DIA_APPEND_ELEMENT(size_t, components, (&d->pointer.datum_ptr), op->var_component.elements[ix]);
+            DIA_APPEND_ELEMENT(size_t, components, (&d->datum_pointer), op->var_component.elements[ix]);
         }
         datum_stack_push(&ctx->stack, d);
     } break;
