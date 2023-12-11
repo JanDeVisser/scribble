@@ -696,11 +696,13 @@ BoundNode *datum_to_node(Datum *d, BoundNode *parent)
         case BIT_BOOL:
             ret = bound_node_make(BNT_BOOL, parent);
             ret->name = datum_sprint(d);
+            ret->integer = integer_create(U8, d->bool_value & 0x01);
             ret->typespec = (TypeSpec) { .type_id = BOOL_ID, .optional = false };
             return ret;
         case BIT_FLOAT:
             ret = bound_node_make(BNT_DECIMAL, parent);
             ret->name = datum_sprint(d);
+            ret->decimal_value = d->float_value;
             ret->typespec = (TypeSpec) { .type_id = FLOAT_ID, .optional = false };
             return ret;
         default:
