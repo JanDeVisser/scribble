@@ -19,9 +19,16 @@
 typedef struct bind_context {
     struct bind_context *parent;
     int                  unbound;
+    SyntaxNode          *program;
     bool                 main;
+    int                  errors;
+    int                  warnings;
 } BindContext;
 
+static void       vwarning(BindContext *ctx, Location loc, char const *fmt, va_list args);
+static void       warning(BindContext *ctx, Location loc, char const *fmt, ...);
+static BoundNode *verror(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char const *fmt, va_list args);
+static BoundNode *error(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char const *fmt, ...);
 static BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent);
 static BoundNode *bound_node_make_unbound(BoundNode *parent, SyntaxNode *node, BindContext *ctx);
 static BoundNode *bound_node_find_here(BoundNode *node, BoundNodeType type, SyntaxNode *variable);
@@ -61,6 +68,8 @@ BindContext *context_make_subcontext(BindContext *ctx)
 
 void context_function_is_main(BindContext *ctx, BoundNode *function)
 {
+    // FIXME error messages should refer to the function's definition, but we
+    // lost that location information.
     if (ctx->parent) {
         context_function_is_main(ctx->parent, function);
         return;
@@ -72,21 +81,25 @@ void context_function_is_main(BindContext *ctx, BoundNode *function)
         return;
     }
     if (typeid_canonical_type_id(function->typespec.type_id) != I32_ID) {
-        fatal("main function must return an integer");
+        error(NULL, ctx->program, ctx, "main() function must return an integer");
+        return;
     }
     if (function->function.parameter) {
         if (!function->function.parameter->next) {
-            fatal("main function can have at most one parameter");
+            error(NULL, ctx->program, ctx, "main() function can have at most one parameter");
+            return;
         }
         type_id         param_type = typeid_canonical_type_id(function->function.parameter->typespec.type_id);
         ExpressionType *et = type_registry_get_type_by_id(param_type);
         assert(et);
         if (et->type_id != ARRAY_ID || et->num_arguments != 1 || et->template_arguments[0].arg_type != TPT_TYPE || et->template_arguments[0].type != STRING_ID) {
-            fatal("main function parameter must be an string array");
+            error(NULL, ctx->program, ctx, "main() function parameter must be an string array");
+            return;
         }
     }
     if (ctx->main) {
-        fatal("Multiple main functions defined");
+        error(NULL, ctx->program, NULL, "Multiple main functions defined");
+        return;
     }
     ctx->main = true;
 }
@@ -96,6 +109,49 @@ void context_increment_unbound(BindContext *ctx)
     ++ctx->unbound;
     if (ctx->parent)
         context_increment_unbound(ctx->parent);
+}
+
+void vwarning(BindContext *ctx, Location loc, char const *fmt, va_list args)
+{
+    ++ctx->warnings;
+    if (ctx->parent) {
+        vwarning(ctx->parent, loc, fmt, args);
+        return;
+    }
+    fprintf(stderr, LOC_SPEC, LOC_ARG(loc));
+    fprintf(stderr, "Warning: ");
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr, "\n");
+}
+
+void warning(BindContext *ctx, Location loc, char const *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vwarning(ctx, loc, fmt, args);
+    va_end(args);
+}
+
+BoundNode *verror(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char const *fmt, va_list args)
+{
+    ++ctx->errors;
+    if (ctx->parent) {
+        return verror(parent, stmt, ctx, fmt, args);
+    }
+    fprintf(stderr, LOC_SPEC, SN_LOC_ARG(stmt));
+    fprintf(stderr, "Error: ");
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr, "\n");
+    return bound_node_make_unbound(parent, stmt, ctx);
+}
+
+BoundNode *error(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char const *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    BoundNode *ret = verror(parent, stmt, ctx, fmt, args);
+    va_end(args);
+    return ret;
 }
 
 BoundNode *bound_node_make(BoundNodeType type, BoundNode *parent)
@@ -501,12 +557,12 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
         case TK_AGGREGATE: {
             TypeComponent *comp = type_get_component(et, name_stmt->name);
             if (comp == NULL) {
-                fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
-                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
+                    SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = type_registry_get_type_by_id(comp->type_id);
             if (!type_is_concrete(et)) {
-                fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+                return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
             }
         } break;
         case TK_VARIANT: {
@@ -521,25 +577,24 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
                 }
             }
             if (payload == NULL) {
-                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
-                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                    SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             if (name_stmt->variable.subscript != NULL) {
-                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' cannot (yet) be subscripted",
-                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' cannot (yet) be subscripted",
+                    SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = payload;
         } break;
         default:
-            fatal(LOC_SPEC "'" SV_SPEC "' is not a compound type", SN_LOC_ARG(name_stmt), SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "'" SV_SPEC "' is not a compound type", SV_ARG(et->name));
         }
         if (type_kind(et) == TK_VARIANT && name_stmt->variable.subscript == NULL) {
-            fatal(LOC_SPEC "Must specify payload for variant '%.*s'",
-                SN_LOC_ARG(name_stmt),
+            return error(parent, name_stmt, ctx, "Must specify payload for variant '%.*s'",
                 SV_ARG(et->name));
         }
         if (!type_is_concrete(et)) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
         }
         *name_part = bound_node_make(BNT_VARIABLE, parent);
         (*name_part)->name = name_stmt->name;
@@ -553,7 +608,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
 
     ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);
     if (ret->assignment.expression->type == BNT_UNBOUND_NODE) {
-        return ret;
+        return bound_node_make_unbound(parent, stmt, ctx);
     }
     if (!typespec_assignment_compatible(ret->typespec, ret->assignment.expression->typespec)) {
         fatal("Cannot assign value of expression of type '" SV_SPEC "' to variable of type '" SV_SPEC "'",
@@ -571,7 +626,7 @@ BoundNode *short_circuit_logical_operators(BoundNode *parent, SyntaxNode *stmt, 
         return bound_node_make_unbound(parent, stmt, NULL);
     }
     if (typeid_canonical_type_id(lhs->typespec.type_id) != BOOL_ID || typeid_canonical_type_id(rhs->typespec.type_id) != BOOL_ID) {
-        fatal(LOC_SPEC "Both operands of a logical operator must be of type 'bool'", SN_LOC_ARG(stmt));
+        return error(parent, stmt, ctx, "Both operands of a logical operator must be of type 'bool'");
     }
     ret->typespec = (TypeSpec) { BOOL_ID, false };
     ret->ternary_expr.condition = lhs;
@@ -665,7 +720,7 @@ __attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, Synt
             if (!coerced || !resolve_binary_expression_type(stmt->binary_expr.operator, coerced->typespec, rhs->typespec, &type)) {
                 ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
                 ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
-                fatal("Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
+                return error(parent, stmt, ctx, "Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
                     Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
             }
             lhs = coerced;
@@ -697,7 +752,7 @@ __attribute__((unused)) BoundNode *bind_BOOL(BoundNode *parent, SyntaxNode *stmt
     return ret;
 }
 
-__attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *)
+__attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *controllable = parent;
     while (controllable) {
@@ -707,7 +762,7 @@ __attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stm
         controllable = controllable->parent;
     }
     if (!controllable) {
-        fatal(LOC_SPEC "No 'while' or 'loop' block found with label '" SV_SPEC "'", LOC_ARG(stmt->token.loc), SV_ARG(stmt->name));
+        return error(parent, stmt, ctx, "No 'while' or 'loop' block found with label '" SV_SPEC "'", SV_ARG(stmt->name));
     }
     BoundNode *ret = bound_node_make((stmt->type == SNT_BREAK) ? BNT_BREAK : BNT_CONTINUE, parent);
     ret->controlled_statement = controllable;
@@ -759,7 +814,7 @@ __attribute__((unused)) BoundNode *bind_ENUMERATION(BoundNode *parent, SyntaxNod
     }
     BuiltinType bit = typeid_builtin_type(ret->enumeration.underlying_type.type_id);
     if (!BuiltinType_is_integer(bit)) {
-        fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
+        return error(parent, stmt, ctx, "Underlying type of enumeration must be an integer type");
     }
     Integer cur_value = integer_create(BuiltinType_integer_type(bit), 0);
 
@@ -797,10 +852,10 @@ __attribute__((unused)) BoundNode *bind_ENUM_VALUE(BoundNode *parent, SyntaxNode
             }
         }
         if (ret->enum_value.underlying_value == NULL) {
-            fatal("Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
+            return error(parent, stmt, ctx, "Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
         }
         if (!typespec_assignment_compatible(parent->enumeration.underlying_type, ret->enum_value.underlying_value->typespec)) {
-            fatal("Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
+            return error(parent, stmt, ctx, "Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
                 SV_ARG(parent->name), SV_ARG(ret->name),
                 SV_ARG(typespec_name(parent->enumeration.underlying_type)),
                 SV_ARG(typespec_name(ret->enum_value.underlying_value->typespec)));
@@ -817,14 +872,13 @@ __attribute__((unused)) BoundNode *bind_FOR(BoundNode *parent, SyntaxNode *stmt,
     type_id         range_type_id = ret->for_statement.range->typespec.type_id;
     ExpressionType *range_type = type_registry_get_type_by_id(range_type_id);
     if (range_type->specialization_of != RANGE_ID) {
-        fatal(LOC_SPEC "Range expression must have `range' type", SN_LOC_ARG(stmt->for_statement.range));
+        return error(parent, stmt, ctx, "Range expression must have `range' type");
     }
     ret->typespec.type_id = range_type->template_arguments[0].type;
 
     ret->for_statement.variable = bound_node_make(BNT_VARIABLE_DECL, ret);
     ret->for_statement.variable->name = stmt->for_statement.variable;
     ret->for_statement.variable->typespec.type_id = ret->typespec.type_id;
-    ret->for_statement.variable->variable_decl.init_expr = NULL;
 
     ret->for_statement.statement = bind_node(ret, stmt->for_statement.statement, ctx);
     return ret;
@@ -843,7 +897,7 @@ __attribute__((unused)) BoundNode *bind_FUNCTION(BoundNode *parent, SyntaxNode *
     if (return_type.type_id != VOID_ID && error_type.type_id != VOID_ID) {
         ErrorOrTypeID variant_id_maybe = type_registry_get_variant(RESULT_ID, error_type.type_id, return_type.type_id);
         if (ErrorOrTypeID_is_error(variant_id_maybe)) {
-            fatal(LOC_SPEC "Could not create variant return type", SN_LOC_ARG(stmt));
+            return error(parent, stmt, ctx, "Could not create variant return type");
         }
         return_type.type_id = variant_id_maybe.value;
     }
@@ -885,7 +939,7 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
         if (macro_ret) {
             if (macro_ret->type == BNT_FUNCTION_CALL) {
                 if (macro_ret->typespec.type_id == VOID_ID) {
-                    fatal("Macro '%.*s' returned void function call to '%.*s'",
+                    return error(parent, stmt, ctx, "Macro '%.*s' returned void function call to '%.*s'",
                         SV_ARG(fnc->function.function_impl->name),
                         SV_ARG(macro_ret->name));
                 }
@@ -947,7 +1001,7 @@ __attribute__((unused)) BoundNode *bind_IMPORT(BoundNode *, SyntaxNode *stmt, Bi
     return ret;
 }
 
-__attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *)
+__attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
     BoundNode *ret = bound_node_make(BNT_INTEGER, parent);
 
@@ -955,7 +1009,7 @@ __attribute__((unused)) BoundNode *bind_INTEGER(BoundNode *parent, SyntaxNode *s
     ret->typespec = (TypeSpec) { type_registry_id_of_integer_type(stmt->integer.type), false };
     IntegerParseResult parse_result = sv_parse_integer(ret->name, stmt->integer.type);
     if (!parse_result.success) {
-        fatal("Cannot hold value '%.*s' in integer of type '%.*s'", SV_ARG(ret->name), SV_ARG(typeid_name(ret->typespec.type_id)));
+        return error(parent, stmt, ctx, "Cannot hold value '%.*s' in integer of type '%.*s'", SV_ARG(ret->name), SV_ARG(typeid_name(ret->typespec.type_id)));
     }
     ret->integer = parse_result.integer;
     return ret;
@@ -1086,7 +1140,7 @@ void program_collect_types(BoundNode *program)
             }
         } break;
         default:
-            fatal("Type %.*s has undefined kind %d", SV_ARG(et->name), type_kind(et));
+            UNREACHABLE();
         }
         type_node->prev = *last_type;
         if (*last_type) {
@@ -1145,7 +1199,7 @@ __attribute__((unused)) BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *st
     }
     ErrorOrTypeID struct_id_maybe = type_registry_make_aggregate(stmt->name, num, type_components);
     if (ErrorOrTypeID_is_error(struct_id_maybe)) {
-        fatal(LOC_SPEC "Could not create aggregate type: %s", LOC_ARG(stmt->token.loc), Error_to_string(struct_id_maybe.error));
+        return error(parent, stmt, ctx, "Could not create aggregate type: %s", Error_to_string(struct_id_maybe.error));
     }
     return NULL;
 }
@@ -1160,10 +1214,10 @@ __attribute__((unused)) BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, Syn
         return bound_node_make_unbound(parent, stmt, NULL);
     }
     if (typeid_canonical_type_id(condition->typespec.type_id) != BOOL_ID) {
-        fatal(LOC_SPEC "Ternary expression condition must be of type 'bool'", SN_LOC_ARG(stmt));
+        return error(parent, stmt, ctx, "Ternary expression condition must be of type 'bool'");
     }
     if (typeid_canonical_type_id(if_true->typespec.type_id) != typeid_canonical_type_id(if_false->typespec.type_id)) {
-        fatal(LOC_SPEC "Ternary expression `true` and `false` values must be of the same type", SN_LOC_ARG(stmt));
+        return error(parent, stmt, ctx, "Ternary expression `true` and `false` values must be of the same type");
     }
     ret->typespec = (TypeSpec) { .type_id = typeid_canonical_type_id(if_true->typespec.type_id), .optional = false };
     ret->name = sv_from("?:");
@@ -1200,7 +1254,7 @@ __attribute__((unused)) BoundNode *bind_UNARYEXPRESSION(BoundNode *parent, Synta
     }
     TypeSpec type;
     if (!resolve_unary_expression_type(stmt->unary_expr.operator, operand, &type)) {
-        fatal("Could not resolve return type of operator '%s' with operand type '%.*s'",
+        return error(parent, stmt, ctx, "Could not resolve return type of operator '%s' with operand type '%.*s'",
             Operator_name(stmt->unary_expr.operator), SV_ARG(typeid_name(operand->typespec.type_id)));
     }
     ret->typespec = type;
@@ -1244,7 +1298,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         et = type_registry_get_type_by_id(decl->typespec.type_id);
         assert(et != NULL);
         if (!type_is_concrete(et)) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(stmt->token.loc), SV_ARG(et->name));
+            return error(parent, stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
         }
     }
     if (!et) {
@@ -1253,7 +1307,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
             if (type_kind(et) == TK_ENUM && stmt->variable.subscript != NULL) {
                 SyntaxNode *value_name = stmt->variable.subscript;
                 if (value_name->next != NULL) {
-                    fatal(LOC_SPEC "Enumeration value '" SV_SPEC "' has too many name parts", LOC_ARG(stmt->token.loc), SV_ARG(value_name->name));
+                    return error(parent, stmt, ctx, "Enumeration value '" SV_SPEC "' has too many name parts", SV_ARG(value_name->name));
                 }
                 for (size_t ix = 0; ix < et->enumeration.size; ++ix) {
                     EnumValue enum_value = et->enumeration.elements[ix];
@@ -1286,7 +1340,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         case TK_AGGREGATE: {
             TypeComponent *comp = type_get_component(et, name_stmt->name);
             if (comp == NULL) {
-                fatal(LOC_SPEC "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, stmt, ctx, "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = type_registry_get_type_by_id(comp->type_id);
         } break;
@@ -1302,16 +1356,16 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
                 }
             }
             if (payload == NULL) {
-                fatal(LOC_SPEC "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
-                    SN_LOC_ARG(name_stmt), SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                    SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = payload;
         } break;
         default:
-            fatal(LOC_SPEC "'" SV_SPEC "' is not a compound type", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "'" SV_SPEC "' is not a compound type", SV_ARG(et->name));
         }
         if (!type_is_concrete(et)) {
-            fatal(LOC_SPEC "Type '" SV_SPEC "' must be specialized", LOC_ARG(name_stmt->token.loc), SV_ARG(et->name));
+            return error(parent, stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
         }
         *name_part = bound_node_make(BNT_VARIABLE, parent);
         (*name_part)->name = name_stmt->name;
@@ -1404,7 +1458,7 @@ __attribute__((unused)) BoundNode *bind_VARIANT(BoundNode *parent, SyntaxNode *s
     if (typeid_kind(ret->variant_def.underlying_type.type_id) == TK_PRIMITIVE) {
         BuiltinType bit = typeid_builtin_type(ret->enumeration.underlying_type.type_id);
         if (!BuiltinType_is_integer(bit)) {
-            fatal(LOC_SPEC "Underlying type of enumeration must be an integer type", SN_LOC_ARG(stmt));
+            return error(parent, stmt, ctx, "Underlying type of enumeration must be an integer type");
         }
         Integer cur_value = integer_create(BuiltinType_integer_type(bit), 0);
 
@@ -1429,7 +1483,7 @@ __attribute__((unused)) BoundNode *bind_VARIANT(BoundNode *parent, SyntaxNode *s
     } else {
         enum_id = ret->variant_def.underlying_type.type_id;
         if (typeid_kind(enum_id) != TK_ENUM) {
-            fatal(LOC_SPEC "Underlying type of variant must be an enumeration type", SN_LOC_ARG(stmt));
+            return error(parent, stmt, ctx, "Underlying type of variant must be an enumeration type");
         }
     }
 
@@ -1444,7 +1498,7 @@ __attribute__((unused)) BoundNode *bind_VARIANT(BoundNode *parent, SyntaxNode *s
         for (size_t ix = 0; ix < components.size; ++ix) {
             if (sv_eq(components.elements[ix].name, option->name)) {
                 if (components.elements[ix].type_id != VOID_ID) {
-                    fatal(LOC_SPEC "Duplicate enumeration value in variant definition", SN_LOC_ARG(stmt));
+                    return error(parent, stmt, ctx, "Duplicate enumeration value in variant definition");
                 }
                 components.elements[ix].type_id = option->variant_option.payload_type.type_id;
                 break;
@@ -1463,7 +1517,7 @@ __attribute__((unused)) BoundNode *bind_VARIANT_OPTION(BoundNode *parent, Syntax
     ret->variant_option.underlying_value = NULL;
     if (stmt->variant_option.underlying_value) {
         if (typeid_kind(ret->variant_def.underlying_type.type_id) == TK_ENUM) {
-            fatal(LOC_SPEC "Cannot specify underlying value for variant option of enumeration type", SN_LOC_ARG(stmt));
+            return error(parent, stmt, ctx, "Cannot specify underlying value for variant option of enumeration type");
         }
         BoundNode *underlying = bind_node(ret, stmt->enum_value.underlying_value, ctx);
         Datum     *evaluated = node_to_datum(underlying);
@@ -1474,10 +1528,10 @@ __attribute__((unused)) BoundNode *bind_VARIANT_OPTION(BoundNode *parent, Syntax
             }
         }
         if (ret->variant_option.underlying_value == NULL) {
-            fatal("Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
+            return error(parent, stmt, ctx, "Non-const underlying value for enum value '%.*s.%.*s'", SV_ARG(parent->name), SV_ARG(ret->name));
         }
         if (!typespec_assignment_compatible(parent->variant_def.underlying_type, ret->variant_option.underlying_value->typespec)) {
-            fatal("Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
+            return error(parent, stmt, ctx, "Incompatible underlying value type for enum value '%.*s.%.*s': %.*s <-> %.*s",
                 SV_ARG(parent->name), SV_ARG(ret->name),
                 SV_ARG(typespec_name(parent->variant_def.underlying_type)),
                 SV_ARG(typespec_name(ret->variant_option.underlying_value->typespec)));
@@ -1633,9 +1687,15 @@ static BindingObserver s_observer = NULL;
 BoundNode *bind(SyntaxNode *program)
 {
     BindContext *ctx = allocate(sizeof(BindContext));
-    BoundNode   *ret = bind_node(NULL, program, ctx);
-    int          current_unbound = INT32_MAX;
-    int          iter = 1;
+    ctx->program = program;
+    BoundNode *ret = bind_node(NULL, program, ctx);
+    int        total_warnings = ctx->warnings;
+    fprintf(stderr, "Iteration 1: %d warnings", ctx->warnings);
+    if (ctx->errors) {
+        fatal("Iteration 1: %d errors. Exiting...", ctx->errors);
+    }
+    int current_unbound = INT32_MAX;
+    int iter = 1;
     if (s_observer) {
         s_observer(iter, ret);
     }
@@ -1643,11 +1703,21 @@ BoundNode *bind(SyntaxNode *program)
         fprintf(stderr, "Iteration %d: %d unbound nodes\n", iter++, ctx->unbound);
         current_unbound = ctx->unbound;
         ctx->unbound = 0;
+        ctx->errors = 0;
+        ctx->warnings = 0;
         rebind_node(ret, ctx);
+        if (ctx->warnings) {
+            fprintf(stderr, "Iteration %d: %d warnings\n", iter, ctx->warnings);
+        }
+        total_warnings += ctx->warnings;
+        if (ctx->errors) {
+            fatal("Iteration %d: %d errors. Exiting...", iter, ctx->errors);
+        }
         if (s_observer) {
             s_observer(iter, ret);
         }
     }
+    fprintf(stderr, "Iteration %d: %d Total warnings\n", iter, total_warnings);
     if (ctx->unbound > 0) {
         fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
     }
