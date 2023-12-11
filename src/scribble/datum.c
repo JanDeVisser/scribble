@@ -9,11 +9,11 @@
 #include <datum.h>
 
 #undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c) static Datum *datum_##op(Datum *, Datum *);
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c) __attribute__((unused)) static Datum *datum_##op(Datum *, Datum *);
 BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
-#define ENUM_UNARY_OPERATOR(op, k, c) static Datum *datum_##op(Datum *, Datum *);
+#define ENUM_UNARY_OPERATOR(op, k, c) __attribute__((unused)) static Datum *datum_##op(Datum *, Datum *);
 UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
 #undef ENUM_UNARY_OPERATOR
 
@@ -243,17 +243,17 @@ Datum *datum_copy(Datum *dest, Datum *src)
     return dest;
 }
 
-Datum *datum_INVALID(Datum *, Datum *)
+__attribute__((unused)) Datum *datum_INVALID(Datum *, Datum *)
 {
     UNREACHABLE();
 }
 
-Datum *datum_MEMBER_ACCESS(Datum *, Datum *)
+__attribute__((unused)) Datum *datum_MEMBER_ACCESS(Datum *, Datum *)
 {
     NYI("datum_MEMBER_ACCESS");
 }
 
-Datum *datum_RANGE(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_RANGE(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_integer(d1));
@@ -268,7 +268,7 @@ Datum *datum_RANGE(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
 {
     size_t ix = datum_unsigned_integer_value(d2);
     switch (typeid_builtin_type(d1->type)) {
@@ -279,7 +279,7 @@ Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
         Datum *ret = datum_allocate(U8_ID);
         ret->integer.u8 = *(d1->string.ptr + ix);
         return ret;
-    } break;
+    }
     case BIT_ARRAY: {
         if (ix >= d1->aggregate.num_components) {
             fatal("Array index out of bounds");
@@ -294,12 +294,12 @@ Datum *datum_SUBSCRIPT(Datum *d1, Datum *d2)
     }
 }
 
-Datum *datum_CALL(Datum *, Datum *)
+__attribute__((unused)) Datum *datum_CALL(Datum *, Datum *)
 {
     NYI("datum_CALL");
 }
 
-Datum *datum_ADD(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_ADD(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
@@ -317,7 +317,7 @@ Datum *datum_ADD(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
 {
     trace(CAT_EXECUTE, "Subtract %.*s from %.*", SV_ARG(typeid_name(d1->type)), SV_ARG(typeid_name(d2->type)));
     assert(d1->type == d2->type);
@@ -336,7 +336,7 @@ Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_MULTIPLY(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_MULTIPLY(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
@@ -353,7 +353,7 @@ Datum *datum_MULTIPLY(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_DIVIDE(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_DIVIDE(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
@@ -370,7 +370,7 @@ Datum *datum_DIVIDE(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_MODULO(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_MODULO(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(d1->type);
@@ -384,7 +384,7 @@ Datum *datum_MODULO(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_EQUALS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_EQUALS(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
@@ -421,7 +421,7 @@ Datum *datum_EQUALS(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_NOT_EQUALS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_NOT_EQUALS(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_EQUALS(d1, d2);
@@ -429,7 +429,7 @@ Datum *datum_NOT_EQUALS(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_LESS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_LESS(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     Datum *ret = datum_allocate(BOOL_ID);
@@ -469,7 +469,7 @@ Datum *datum_LESS(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_LESS_EQUALS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_LESS_EQUALS(Datum *d1, Datum *d2)
 {
     Datum *ret = datum_EQUALS(d1, d2);
     if (!ret->bool_value) {
@@ -478,21 +478,21 @@ Datum *datum_LESS_EQUALS(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_GREATER(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_GREATER(Datum *d1, Datum *d2)
 {
     Datum *ret = datum_LESS_EQUALS(d1, d2);
     ret->bool_value = !ret->bool_value;
     return ret;
 }
 
-Datum *datum_GREATER_EQUALS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_GREATER_EQUALS(Datum *d1, Datum *d2)
 {
     Datum *ret = datum_LESS(d1, d2);
     ret->bool_value = !ret->bool_value;
     return ret;
 }
 
-Datum *datum_BITWISE_AND(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_BITWISE_AND(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
@@ -510,7 +510,7 @@ Datum *datum_BITWISE_AND(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_BITWISE_OR(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_BITWISE_OR(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
@@ -528,7 +528,7 @@ Datum *datum_BITWISE_OR(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_BITWISE_XOR(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_BITWISE_XOR(Datum *d1, Datum *d2)
 {
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
@@ -546,7 +546,7 @@ Datum *datum_BITWISE_XOR(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_LOGICAL_AND(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_LOGICAL_AND(Datum *d1, Datum *d2)
 {
     assert(d1->type == BOOL_ID && d2->type == BOOL_ID);
     Datum *ret = datum_allocate(BOOL_ID);
@@ -554,7 +554,7 @@ Datum *datum_LOGICAL_AND(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_LOGICAL_OR(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_LOGICAL_OR(Datum *d1, Datum *d2)
 {
     assert(d1->type == BOOL_ID && d2->type == BOOL_ID);
     Datum *ret = datum_allocate(BOOL_ID);
@@ -562,7 +562,7 @@ Datum *datum_LOGICAL_OR(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_BIT_SHIFT_LEFT(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_BIT_SHIFT_LEFT(Datum *d1, Datum *d2)
 {
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
@@ -576,7 +576,7 @@ Datum *datum_BIT_SHIFT_LEFT(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_BIT_SHIFT_RIGHT(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_BIT_SHIFT_RIGHT(Datum *d1, Datum *d2)
 {
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
@@ -590,18 +590,18 @@ Datum *datum_BIT_SHIFT_RIGHT(Datum *d1, Datum *d2)
     return ret;
 }
 
-Datum *datum_INVALID_UNARY(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_INVALID_UNARY(Datum *, Datum *)
 {
     UNREACHABLE();
 }
 
-Datum *datum_IDENTITY(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_IDENTITY(Datum *d, Datum *)
 {
     Datum *ret = datum_allocate(d->type);
     return datum_copy(ret, d);
 }
 
-Datum *datum_NEGATE(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_NEGATE(Datum *d, Datum *)
 {
     assert(datum_is_builtin(d));
     Datum *ret = datum_allocate(d->type);
@@ -615,8 +615,11 @@ Datum *datum_NEGATE(Datum *d, Datum *)
     return ret;
 }
 
-Datum *datum_CARDINALITY(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_CARDINALITY(Datum *d, Datum *)
 {
+    if (typeid_kind(d->type) == TK_VARIANT) {
+        return datum_clone(d->variant.tag);
+    }
     Datum *ret = datum_allocate(U64_ID);
     switch (typeid_builtin_type(d->type)) {
     case BIT_STRING:
@@ -631,17 +634,17 @@ Datum *datum_CARDINALITY(Datum *d, Datum *)
     return ret;
 }
 
-Datum *datum_UNARY_INCREMENT(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_UNARY_INCREMENT(Datum *d, Datum *)
 {
     return NULL;
 }
 
-Datum *datum_UNARY_DECREMENT(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_UNARY_DECREMENT(Datum *d, Datum *)
 {
     return NULL;
 }
 
-Datum *datum_LOGICAL_INVERT(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_LOGICAL_INVERT(Datum *d, Datum *)
 {
     Datum *ret = datum_allocate(BOOL_ID);
     switch (typeid_builtin_type(d->type)) {
@@ -654,7 +657,7 @@ Datum *datum_LOGICAL_INVERT(Datum *d, Datum *)
     return ret;
 }
 
-Datum *datum_BITWISE_INVERT(Datum *d, Datum *)
+__attribute__((unused)) Datum *datum_BITWISE_INVERT(Datum *d, Datum *)
 {
     assert(datum_is_builtin(d));
     Datum *ret = datum_allocate(d->type);
@@ -671,19 +674,19 @@ Datum *datum_BITWISE_INVERT(Datum *d, Datum *)
     return ret;
 }
 
-Datum *datum_DEREFERENCE(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_DEREFERENCE(Datum *, Datum *)
 {
     return NULL;
 }
 
-Datum *datum_ADDRESS_OF(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_ADDRESS_OF(Datum *, Datum *)
 {
     Datum *ret = datum_allocate(VAR_POINTER_ID);
     ret->datum_pointer.pointer = NULL;
     return ret;
 }
 
-Datum *datum_UNARY_MEMBER_ACCESS(Datum *d1, Datum *d2)
+__attribute__((unused)) Datum *datum_UNARY_MEMBER_ACCESS(Datum *, Datum *)
 {
     return NULL;
 }
