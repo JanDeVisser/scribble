@@ -484,9 +484,9 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
             .reg = result_reg,
         };
     }
-    if (typeid_kind(lhs.type) == TK_PRIMITIVE && typeid_builtin_type(lhs.type) == BIT_POINTER && op == OP_ADD) {
+    if (typeid_kind(lhs.type) == TK_PRIMITIVE && typeid_builtin_type(lhs.type) == BIT_VAR_POINTER && op == OP_ADD) {
         size_t elem_sz = 1;
-        if (lhs.type != POINTER_ID) {
+        if (lhs.type != VAR_POINTER_ID) {
             ExpressionType   *et = type_registry_get_type_by_id(lhs.type);
             TemplateArgument *arg = type_get_argument(et, sv_from("T"));
             assert(arg->arg_type == TPT_TYPE);

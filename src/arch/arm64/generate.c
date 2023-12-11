@@ -88,7 +88,7 @@ __attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation 
     ValueLocation expr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     assert(expr.kind == VLK_REGISTER);
 
-    if (typeid_builtin_type(expr.type) == BIT_POINTER && typeid_builtin_type(op->type) == BIT_POINTER) {
+    if (typeid_builtin_type(expr.type) == BIT_VAR_POINTER && typeid_builtin_type(op->type) == BIT_VAR_POINTER) {
         expr.type = op->type;
         arm64function_push_location(function, expr);
         return;
@@ -301,12 +301,12 @@ __attribute__((unused)) void generate_PUSH_STRING_CONSTANT(ARM64Function *functi
     size_t        str_id = assembly_add_string(function->assembly, op->sv);
     arm64function_copy(function,
         (ValueLocation) {
-            .type = POINTER_ID,
+            .type = RAW_POINTER_ID,
             .kind = VLK_REGISTER,
             .reg = regs.start,
         },
         (ValueLocation) {
-            .type = POINTER_ID,
+            .type = RAW_POINTER_ID,
             .kind = VLK_LABEL,
             .static_data = {
                 .symbol = sv_printf("str_%ld", str_id),
