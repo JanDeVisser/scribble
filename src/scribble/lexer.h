@@ -105,19 +105,22 @@ typedef struct {
     S(ASSIGN_SHIFT_RIGHT, >>=, 26) \
     S(BINARY_DECREMENT, -=, 27)    \
     S(BINARY_INCREMENT, +=, 28)    \
-    S(BIT_SHIFT_LEFT, <<, 29)      \
-    S(BIT_SHIFT_RIGHT, >>, 30)     \
-    S(EQUALS, ==, 31)              \
-    S(GREATER_EQUALS, >=, 32)      \
-    S(LESS_EQUALS, <=, 33)         \
-    S(LOGICAL_AND, &&, 34)         \
-    S(LOGICAL_OR, ||, 35)          \
-    S(NOT_EQUALS, !=, 36)          \
-    S(RANGE, .., 37)               \
-    S(FUNC_BINDING, ->, 38)        \
-    S(MACRO_BINDING, = >, 39)      \
-    S(UNARY_DECREMENT, --, 40)     \
-    S(UNARY_INCREMENT, ++, 41)
+    S(ASSIGN_MULTIPLY, *=, 29)     \
+    S(ASSIGN_DIVIDE, /=, 30)       \
+    S(ASSIGN_MODULO, %=, 31)       \
+    S(BIT_SHIFT_LEFT, <<, 32)      \
+    S(BIT_SHIFT_RIGHT, >>, 33)     \
+    S(EQUALS, ==, 34)              \
+    S(GREATER_EQUALS, >=, 35)      \
+    S(LESS_EQUALS, <=, 36)         \
+    S(LOGICAL_AND, &&, 37)         \
+    S(LOGICAL_OR, ||, 38)          \
+    S(NOT_EQUALS, !=, 39)          \
+    S(RANGE, .., 40)               \
+    S(FUNC_BINDING, ->, 41)        \
+    S(MACRO_BINDING, = >, 42)      \
+    S(UNARY_DECREMENT, --, 43)     \
+    S(UNARY_INCREMENT, ++, 44)
 
 typedef enum {
 #undef KEYWORD_ENUM
@@ -142,11 +145,13 @@ ErrorOr(Token, Token)
 #define TOKEN_SPEC "%.*s:%zu:%zu: %s %s [%.*s]:%zu"
 #define TOKEN_ARG(t) (int) t.loc.file.length, t.loc.file.ptr, t.loc.line, t.loc.column, TokenKind_name(t.kind), TokenCode_name(t.code), (int) t.text.length, t.text.ptr, t.text.length
 
-        typedef struct _source {
+    // clang-format off
+typedef struct _source {
     Location        loc;
     StringView      source;
     struct _source *prev;
 } Source;
+// clang-format on
 
 typedef struct {
     bool    skip_whitespace;
