@@ -636,12 +636,16 @@ __attribute__((unused)) Datum *datum_CARDINALITY(Datum *d, Datum *)
 
 __attribute__((unused)) Datum *datum_UNARY_INCREMENT(Datum *d, Datum *)
 {
-    return NULL;
+    Datum *one = datum_make_integer(integer_create(BuiltinType_integer_type(typeid_builtin_type(d->type)), 1));
+    Datum *ret = datum_ADD(d, one);
+    return datum_ASSIGN(d, ret);
 }
 
 __attribute__((unused)) Datum *datum_UNARY_DECREMENT(Datum *d, Datum *)
 {
-    return NULL;
+    Datum *one = datum_make_integer(integer_create(BuiltinType_integer_type(typeid_builtin_type(d->type)), 1));
+    Datum *ret = datum_SUBTRACT(d, one);
+    return datum_ASSIGN(d, ret);
 }
 
 __attribute__((unused)) Datum *datum_LOGICAL_INVERT(Datum *d, Datum *)
@@ -689,6 +693,74 @@ __attribute__((unused)) Datum *datum_ADDRESS_OF(Datum *, Datum *)
 __attribute__((unused)) Datum *datum_UNARY_MEMBER_ACCESS(Datum *, Datum *)
 {
     return NULL;
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN(Datum *d1, Datum *d2)
+{
+    assert(d1->type == d2->type);
+    datum_free_contents(d1);
+    datum_copy(d1, d2);
+    return d1;
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_BITWISE_AND(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_BITWISE_AND(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_BITWISE_OR(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_BITWISE_OR(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_BITWISE_XOR(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_BITWISE_XOR(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_SHIFT_LEFT(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_BIT_SHIFT_LEFT(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_SHIFT_RIGHT(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_BIT_SHIFT_RIGHT(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_BINARY_DECREMENT(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_SUBTRACT(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_BINARY_INCREMENT(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_ADD(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_MULTIPLY(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_MULTIPLY(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_DIVIDE(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_DIVIDE(d1, d2);
+    return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_ASSIGN_MODULO(Datum *d1, Datum *d2)
+{
+    Datum *d = datum_MODULO(d1, d2);
+    return datum_ASSIGN(d1, d);
 }
 
 Datum *datum_apply(Datum *d1, Operator op, Datum *d2)
