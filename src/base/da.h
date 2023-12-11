@@ -32,7 +32,7 @@
             }                                                           \
         }                                                               \
         (obj)->E[(obj)->size++] = (elem);                               \
-    } while (0);
+    } while (0)
 
 #define DIA_APPEND(T, obj, elem) DIA_APPEND_ELEMENT(T, elements, obj, elem)
 

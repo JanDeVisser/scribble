@@ -534,7 +534,7 @@ FormatString fmt_parse(StringView fmt)
         if (!specifier_maybe.has_value) {
             return fs;
         }
-        DIA_APPEND(FormatSpecifier, fs_ptr, specifier_maybe.value)
+        DIA_APPEND(FormatSpecifier, fs_ptr, specifier_maybe.value);
         fmt = sv_lchop(fmt, specifier_maybe.value.start + specifier_maybe.value.length);
     }
 }
