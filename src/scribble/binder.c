@@ -138,7 +138,7 @@ BoundNode *verror(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char co
 {
     ++ctx->errors;
     if (ctx->parent) {
-        return verror(parent, stmt, ctx, fmt, args);
+        return verror(parent, stmt, ctx->parent, fmt, args);
     }
     fprintf(stderr, LOC_SPEC, SN_LOC_ARG(stmt));
     fprintf(stderr, "Error: ");
@@ -463,7 +463,7 @@ ErrorOrTypeID resolve_type(TypeDescr *type_descr)
 {
     ExpressionType *et = type_registry_get_type_by_name(type_descr->name);
     if (et == NULL) {
-        ErrorOrTypeID_error(TypeError, 0, "Unknown type '%.*s'", type_descr->name);
+        ERROR(TypeID, TypeError, 0, "Unknown type '%.*s'", SV_ARG(type_descr->name));
     }
     if (type_descr->size == 0) {
         RETURN(TypeID, typeid_canonical_type_id(et->type_id));
@@ -490,7 +490,7 @@ bool resolve_type_node(SyntaxNode *type_node, TypeSpec *typespec)
     assert(type_node->type == SNT_TYPE);
     ErrorOrTypeID type_id_maybe = resolve_type(&type_node->type_descr);
     if (ErrorOrTypeID_is_error(type_id_maybe)) {
-        fprintf(stderr, "Could not resolve type: %s\n", Error_to_string(type_id_maybe.error));
+        fprintf(stderr, "Could not resolve type '%.*s'\n", SV_ARG(type_node->type_descr.name));
         return false;
     }
     (*typespec).type_id = type_id_maybe.value;
@@ -555,8 +555,10 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
     variable->typespec = ret->typespec;
     variable->variable.type = ret->typespec.type_id;
     ret->assignment.variable = variable;
-    BoundNode **name_part = &ret->assignment.variable->variable.subscript;
-    SyntaxNode *name_stmt;
+    BoundNode     **name_part = &ret->assignment.variable->variable.subscript;
+    SyntaxNode     *name_stmt;
+    ExpressionType *base_type = et;
+    Integer         variant_tag = { 0 };
     for (name_stmt = stmt->assignment.variable->variable.subscript; name_stmt != NULL; name_stmt = name_stmt->variable.subscript) {
         // Theoretically et can only be NULL if this is a variable declaration,
         // in which case there will not be more name components.
@@ -581,6 +583,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
                 EnumValue *v = enumeration->enumeration.elements + ix;
                 if (sv_eq(v->name, name_stmt->name)) {
                     payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
+                    variant_tag = v->value;
                     break;
                 }
             }
@@ -589,7 +592,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             if (name_stmt->variable.subscript != NULL) {
-                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' cannot (yet) be subscripted",
+                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' cannot be subscripted",
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = payload;
@@ -604,6 +607,9 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
         if (!type_is_concrete(et)) {
             return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
         }
+        if (variant_tag.type != 0) {
+            break;
+        }
         *name_part = bound_node_make(BNT_VARIABLE, parent);
         (*name_part)->name = name_stmt->name;
         (*name_part)->variable.type = et->type_id;
@@ -612,6 +618,24 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
     }
     for (BoundNode *component = ret->variable.subscript; component; component = component->variable.subscript) {
         component->typespec = ret->typespec;
+    }
+
+    if (base_type && type_kind(base_type) == TK_VARIANT) {
+        assert(variant_tag.type != 0);
+        BoundNode *compound = bound_node_make(BNT_COMPOUND, ret);
+        ret->assignment.expression = compound;
+        BoundNode *tag_node = bound_node_make(BNT_INTEGER, compound);
+        tag_node->integer = variant_tag;
+        compound->compound_expr.expressions = tag_node;
+        tag_node->next = bind_node(ret, stmt->assignment.expression, ctx);
+        if (!typespec_assignment_compatible(tag_node->next->typespec, (TypeSpec) { .type_id = et->type_id, .optional = false })) {
+            return error(parent, stmt, ctx, "Cannot assign value of expression of type '%.*s' to variant of type '%.*s' with tag '%.*s'",
+                SV_ARG(typespec_name(tag_node->next->typespec)), SV_ARG(typespec_name(ret->typespec)),
+                SV_ARG(stmt->assignment.variable->variable.subscript->name));
+        }
+        ret->typespec = (TypeSpec) { base_type->type_id, false };
+        compound->typespec = ret->typespec;
+        return ret;
     }
 
     ret->assignment.expression = bind_node(ret, stmt->assignment.expression, ctx);

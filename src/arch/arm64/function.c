@@ -359,10 +359,9 @@ void arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr)
     int64_t         base_offset = ptr.pointer.offset;
     switch (typeid_kind(ptr.type)) {
     case TK_PRIMITIVE:
-    case TK_ENUM:
-    case TK_VARIANT: {
+    case TK_ENUM: {
         ValueLocation from_location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
-        assert(from_location.type == ptr.type);
+        assert(ptr.type == 0 || from_location.type == ptr.type);
         arm64function_copy(function, ptr, from_location);
     } break;
     case TK_AGGREGATE:
@@ -376,6 +375,14 @@ void arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr)
             arm64function_store_to_pointer(function, ptr);
         }
         break;
+    case TK_VARIANT: {
+        ptr.pointer.offset = base_offset + (int64_t) typeid_offsetof_payload(et->type_id);
+        ptr.type = (type_id) 0;
+        arm64function_store_to_pointer(function, ptr);
+        ptr.pointer.offset = base_offset;
+        ptr.type = 0;
+        arm64function_store_to_pointer(function, ptr);
+    } break;
     default:
         NYI("store aggregate for component type kind '%s'", TypeKind_name(typeid_kind(ptr.type)));
     }
@@ -697,8 +704,8 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
         if (size_in_double_words <= 2) {
             return (ValueLocation) {
                 .type = type,
-                .kind = VLK_REGISTER_RANGE,
-                .range = arm64function_allocate_register_range(function, size_in_double_words),
+                .kind = VLK_REGISTER,
+                .range = arm64function_allocate_register(function),
             };
         }
         return (ValueLocation) {
@@ -728,7 +735,7 @@ ValueLocation arm64function_component(ARM64Function *function, ValueLocation ref
         assert(index < et->variant.size || index == (size_t) -1);
         if (index == (size_t) -1) {
             offset = 0;
-            type = et->variant.enumeration;
+            type = typeid_canonical_type_id(typeid_underlying_type_id(et->variant.enumeration));
             break;
         }
         TypeComponent *tc = et->variant.elements + index;
@@ -751,27 +758,42 @@ ValueLocation arm64function_component(ARM64Function *function, ValueLocation ref
         break;
     case VLK_REGISTER: {
         // Move value into new register and shift right.
-        size_t sz = typeid_sizeof(type);
+        size_t  sz = typeid_sizeof(type);
+        type_id copy_type = (sz <= 4 && offset < 4) ? U32_ID : U64_ID;
         ret = (ValueLocation) {
-            .type = type,
+            .type = copy_type,
             .kind = VLK_REGISTER,
             .reg = arm64function_allocate_register(function),
         };
+        reference.type = copy_type;
         arm64function_copy(function, ret, reference);
-        arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset);
+        ret.type = type;
+        if (offset > 0) {
+            arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset);
+        }
+        if (sz < 4) {
+            arm64function_add_instruction(function, "and", "%s,%s,#%zu", x_reg(ret.reg), x_reg(ret.reg), (1ul << (sz * 8)) - 1);
+        }
     } break;
     case VLK_REGISTER_RANGE: {
+        size_t sz = typeid_sizeof(type);
         ret = (ValueLocation) {
-            .type = type,
+            .type = U64_ID,
             .kind = VLK_REGISTER,
             .reg = arm64function_allocate_register(function),
         };
         arm64function_copy(function, ret, (ValueLocation) {
-                                              .type = type,
+                                              .type = U64_ID,
                                               .kind = VLK_REGISTER,
                                               .reg = reference.reg + offset / 8,
                                           });
-        arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset % 8);
+        ret.type = type;
+        if (offset % 8) {
+            arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset % 8);
+        }
+        if (sz < 8) {
+            arm64function_add_instruction(function, "and", "%s,%s,#0x%0x", x_reg(ret.reg), x_reg(ret.reg), (1 << (sz * 8)) - 1);
+        }
     } break;
     case VLK_DATA:
     case VLK_LABEL:

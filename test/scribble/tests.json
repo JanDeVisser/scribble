@@ -3,5 +3,7 @@
   "hello",
   "addition",
   "if_1",
-  "if"
+  "if",
+  "struct",
+  "variant"
 ]

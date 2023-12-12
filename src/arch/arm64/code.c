@@ -330,13 +330,11 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     trace(CAT_COMPILE, "copy %.*s to %.*s",
         SV_ARG(value_location_to_string(from_location)),
         SV_ARG(value_location_to_string(to_location)));
-    assert(typeid_underlying_type_id(to_location.type) == typeid_underlying_type_id(from_location.type));
+    assert(to_location.type == 0 || typeid_underlying_type_id(to_location.type) == typeid_underlying_type_id(from_location.type));
     size_t    sz = typeid_sizeof(from_location.type);
     size_t    aligned_sz = align_at(sz, 16);
     OpcodeMap opcode_map = get_opcode_map(from_location.type);
-    code_add_comment(code, "       Copy %.*s to %.*s",
-        SV_ARG(value_location_to_string(from_location)),
-        SV_ARG(value_location_to_string(to_location)));
+    code_add_comment(code, "       Copy %.*s", SV_ARG(value_location_to_string(from_location)));
     switch (to_location.kind) {
     case VLK_DISCARD:
         // Nothing.

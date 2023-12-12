@@ -1,20 +1,4 @@
-struct A {
-    a: int,
-    b: int,
-    c: int,
-};
-
-struct B {
-    d: int,
-    e: int,
-    f: int,
-};
-
-enum E : i32 {
-    A, B,
-};
-
-variant V : E {
+variant V {
     A(int),
     B(int),
 };
@@ -24,5 +8,6 @@ func main() : i32 {
     v.B = 42;
     puti(v.B); endln();
     puti(#v); endln();
+    v.A = 12;
     return v.A;
 }

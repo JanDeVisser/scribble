@@ -107,7 +107,12 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
         for (size_t ix = 0; ix < op->var_component.size; ++ix) {
             sb_append_cstr(&sb, ".");
-            sb_printf(&sb, "[%zu]", op->var_component.elements[ix]);
+            size_t subscript = op->var_component.elements[ix];
+            if (subscript == (size_t) -1) {
+                sb_append_cstr(&sb, "[#]");
+            } else {
+                sb_printf(&sb, "[%zu]", subscript);
+            }
         }
         break;
     case IR_NEW_DATUM:
