@@ -1,0 +1,10 @@
+{
+  "name": "struct",
+  "exit": 0,
+  "stdout": [
+    "69",
+    "42"
+  ],
+  "stderr": [],
+  "args": []
+}

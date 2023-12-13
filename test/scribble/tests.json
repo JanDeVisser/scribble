@@ -7,5 +7,6 @@
   "struct",
   "variant",
   "for",
-  "while"
+  "while",
+  "function"
 ]

@@ -1,0 +1,10 @@
+{
+  "name": "variant",
+  "exit": 12,
+  "stdout": [
+    "42",
+    "1"
+  ],
+  "stderr": [],
+  "args": []
+}
