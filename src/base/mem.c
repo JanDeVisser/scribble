@@ -126,12 +126,17 @@ void arena_release(Arena *arena, AllocatorState state)
     if (state.arena == arena) {
         arena->current = state.index;
         arena->slabs[arena->current].ptr = state.ptr;
+        if (arena->slabs[arena->current].slab == 0) {
+            return;
+        }
         memset(arena->slabs[arena->current].slab + state.ptr, 0, arena->slab_size - state.ptr);
         return;
     }
     arena->current = 0;
     arena->slabs[arena->current].ptr = 0;
-    memset(arena->slabs[arena->current].slab, 0, arena->slab_size);
+    if (arena->slabs[arena->current].slab != 0) {
+        memset(arena->slabs[arena->current].slab, 0, arena->slab_size);
+    }
 }
 
 Allocator *allocator_new_with_size(size_t slabs, size_t slab_size)
