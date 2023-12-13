@@ -200,6 +200,10 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
 
     generate_node(node->for_statement.range, target);
 
+    ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
+    op.sv = sv_from("$range");
+    ir_function_add_operation(fnc, op);
+
     ir_operation_set(&op, IR_POP_VALUE);
     op.sv = sv_from("$range");
     ir_function_add_operation(fnc, op);
@@ -218,12 +222,21 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     DIA_APPEND(size_t, (&op.var_component), 0);
     ir_function_add_operation(fnc, op);
 
-    node->intermediate = allocate_new(Intermediate);
-    node->intermediate->loop.loop = next_label();
-    node->intermediate->loop.done = next_label();
+    ir_operation_set(&op, IR_PUSH_VALUE);
+    op.sv = node->for_statement.variable->name;
+    ir_function_add_operation(fnc, op);
+
+    ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
+    op.sv = node->for_statement.variable->name;
+    ir_function_add_operation(fnc, op);
+
     ir_operation_set(&op, IR_POP_VALUE);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
+
+    node->intermediate = allocate_new(Intermediate);
+    node->intermediate->loop.loop = next_label();
+    node->intermediate->loop.done = next_label();
 
     ir_operation_set(&op, IR_LABEL);
     op.label = node->intermediate->loop.loop;
@@ -239,10 +252,13 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
     op.sv = sv_from("$range");
     ir_function_add_operation(fnc, op);
-    ir_operation_set(&op, IR_SUBSCRIPT);
 
+    ir_operation_set(&op, IR_SUBSCRIPT);
     op.var_component.type = range_of->type_id;
     DIA_APPEND(size_t, (&op.var_component), 1);
+    ir_function_add_operation(fnc, op);
+
+    ir_operation_set(&op, IR_PUSH_VALUE);
     ir_function_add_operation(fnc, op);
 
     ir_operation_set(&op, IR_BINARY_OPERATOR);
@@ -259,6 +275,7 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
     ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
     op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
+
     ir_operation_set(&op, IR_PUSH_VALUE);
     ir_function_add_operation(fnc, op);
 
@@ -270,6 +287,10 @@ __attribute__((unused)) void generate_FOR(BoundNode *node, IRObject *target)
 
     op.binary_operator.op = OP_ADD;
     op.binary_operator.lhs = op.binary_operator.rhs = range_of->type_id;
+    ir_function_add_operation(fnc, op);
+
+    ir_operation_set(&op, IR_PUSH_VAR_ADDRESS);
+    op.sv = node->for_statement.variable->name;
     ir_function_add_operation(fnc, op);
 
     ir_operation_set(&op, IR_POP_VALUE);

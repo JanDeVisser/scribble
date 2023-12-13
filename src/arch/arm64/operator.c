@@ -240,7 +240,7 @@ ValueLocation arm64_apply_array_op(ARM64Function *function, type_id lhs_type, Op
         };
         arm64function_push_location(function, ptr_location);
         arm64function_push_location(function, rhs);
-        ptr_location = arm64operator_apply(function, ptr_type_id, OP_ADD, rhs_type, &ptr_location);
+        ptr_location = MUST_OPTIONAL(ValueLocation, arm64operator_apply(function, ptr_type_id, OP_ADD, rhs_type, &ptr_location));
         assert(ptr_location.kind == VLK_REGISTER);
         type_id       elem_type_id = ptr_type->template_arguments[0].type;
         ValueLocation subscript_ptr = {
@@ -306,44 +306,44 @@ char const *conditional_for_op_by_type(Operator op, type_id type)
     return conditional;
 }
 
-ValueLocation create_range(ARM64Function *function)
-{
-    ValueLocation rhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
-    ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
-    assert(lhs.type == rhs.type);
-    assert(BuiltinType_is_integer(typeid_builtin_type(lhs.type)));
-    type_id range_id = MUST(
-        TypeID,
-        type_specialize_template(
-            RANGE_ID,
-            1,
-            (TemplateArgument[]) {
-                {
-                    .name = sv_from("T"),
-                    .arg_type = TPT_TYPE,
-                    .type = lhs.type,
-                },
-            }));
-    ValueLocation range = arm64function_allocate_space(function, range_id);
-    ValueLocation component_loc = {
-        .kind = VLK_POINTER,
-        .type = lhs.type,
-        .pointer = {
-            .reg = REG_SP,
-            .offset = (int64_t) typeid_offsetof(range_id, 0),
-        }
-    };
-    arm64function_copy(function,
-        component_loc,
-        lhs);
-    component_loc.pointer.offset = (int64_t) typeid_offsetof(range_id, 1);
-    arm64function_copy(function,
-        component_loc,
-        rhs);
-    return range;
-}
+// ValueLocation create_range(ARM64Function *function)
+//{
+//     ValueLocation rhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+//     ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+//     assert(lhs.type == rhs.type);
+//     assert(BuiltinType_is_integer(typeid_builtin_type(lhs.type)));
+//     type_id range_id = MUST(
+//         TypeID,
+//         type_specialize_template(
+//             RANGE_ID,
+//             1,
+//             (TemplateArgument[]) {
+//                 {
+//                     .name = sv_from("T"),
+//                     .arg_type = TPT_TYPE,
+//                     .type = lhs.type,
+//                 },
+//             }));
+//     ValueLocation range = arm64function_location_for_type(function, range_id);
+//     ValueLocation component_loc = {
+//         .kind = VLK_POINTER,
+//         .type = lhs.type,
+//         .pointer = {
+//             .reg = REG_SP,
+//             .offset = (int64_t) typeid_offsetof(range_id, 0),
+//         }
+//     };
+//     arm64function_copy(function,
+//         component_loc,
+//         lhs);
+//     component_loc.pointer.offset = (int64_t) typeid_offsetof(range_id, 1);
+//     arm64function_copy(function,
+//         component_loc,
+//         rhs);
+//     return range;
+// }
 
-ValueLocation arm64operator_apply(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type, ValueLocation *result)
+OptionalValueLocation arm64operator_apply(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type, ValueLocation *result)
 {
     if (rhs_type != VOID_ID) {
         trace(CAT_COMPILE, "Generating code for %.*s %s %.*s",
@@ -357,17 +357,16 @@ ValueLocation arm64operator_apply(ARM64Function *function, type_id lhs_type, Ope
             Operator_name(op), SV_ARG(typeid_name(lhs_type)));
     }
     if (lhs_type == STRING_ID) {
-        return arm64_apply_string_op(function, lhs_type, op, rhs_type, result);
+        RETURN_VALUE(ValueLocation, arm64_apply_string_op(function, lhs_type, op, rhs_type, result));
     }
     if (typeid_specializes(lhs_type) == ARRAY_ID) {
-        return arm64_apply_array_op(function, lhs_type, op, rhs_type, result);
+        RETURN_VALUE(ValueLocation, arm64_apply_array_op(function, lhs_type, op, rhs_type, result));
     }
     if (op == OP_RANGE) {
-        return create_range(function);
+        //        return create_range(function);
+        RETURN_EMPTY(ValueLocation);
     }
-    return (rhs_type != VOID_ID)
-        ? arm64operator_apply_binary(function, lhs_type, op, rhs_type)
-        : arm64operator_apply_unary(function, op, lhs_type);
+    RETURN_VALUE(ValueLocation, ((rhs_type != VOID_ID) ? arm64operator_apply_binary(function, lhs_type, op, rhs_type) : arm64operator_apply_unary(function, op, lhs_type)));
 }
 
 ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_type, Operator op, type_id rhs_type)

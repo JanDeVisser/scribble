@@ -33,6 +33,11 @@
         var##_maybe.value;                                              \
     })
 
+#define RETURN_VALUE(T, exp) \
+    return (Optional##T) { .has_value = true, .value = (exp) }
+#define RETURN_EMPTY(T) \
+    return (Optional##T) { .has_value = false }
+
 OPTIONAL_ALIAS(int, Int)
 OPTIONAL_ALIAS(uint64_t, UInt64)
 OPTIONAL_ALIAS(int64_t, Int64)

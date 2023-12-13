@@ -371,7 +371,7 @@ void arm64function_store_to_pointer(ARM64Function *function, ValueLocation ptr)
                 continue;
             }
             ptr.pointer.offset = base_offset + (int64_t) typeid_offsetof(et->type_id, ix);
-            ptr.type = comp->type_id;
+            ptr.type = 0;
             arm64function_store_to_pointer(function, ptr);
         }
         break;

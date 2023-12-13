@@ -52,8 +52,10 @@ void generate_native(ARM64Function *function)
 
 __attribute__((unused)) void generate_BINARY_OPERATOR(ARM64Function *function, IROperation *op)
 {
-    ValueLocation result = arm64operator_apply(function, op->binary_operator.lhs, op->binary_operator.op, op->binary_operator.rhs, NULL);
-    arm64function_push_location(function, result);
+    OptionalValueLocation result = arm64operator_apply(function, op->binary_operator.lhs, op->binary_operator.op, op->binary_operator.rhs, NULL);
+    if (result.has_value) {
+        arm64function_push_location(function, result.value);
+    }
 }
 
 __attribute__((unused)) void generate_CALL(ARM64Function *calling_function, IROperation *op)
@@ -383,8 +385,10 @@ __attribute__((unused)) void generate_SUBSCRIPT(ARM64Function *function, IROpera
 
 __attribute__((unused)) void generate_UNARY_OPERATOR(ARM64Function *function, IROperation *op)
 {
-    ValueLocation result = arm64operator_apply(function, op->unary_operator.operand, op->unary_operator.op, VOID_ID, NULL);
-    arm64function_push_location(function, result);
+    OptionalValueLocation result = arm64operator_apply(function, op->unary_operator.operand, op->unary_operator.op, VOID_ID, NULL);
+    if (result.has_value) {
+        arm64function_push_location(function, result.value);
+    }
 }
 
 void generate_code(ARM64Function *arm_function)

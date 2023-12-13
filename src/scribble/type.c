@@ -62,11 +62,35 @@ char const *BuiltinType_name(BuiltinType type)
 
 IntegerType BuiltinType_integer_type(BuiltinType type)
 {
-    IntegerType unsigned_type = (IntegerType) (~(type & WIDTH_MASK) + 1);
-    if (unsigned_type & UNSIGNED_MASK) {
-        unsigned_type = (IntegerType) (~((int) unsigned_type) + 1);
+    uint8_t width = (uint8_t) (type & WIDTH_MASK);
+    if (type & UNSIGNED_MASK) {
+        return (IntegerType) width;
     }
-    return unsigned_type;
+    return (IntegerType) (-((int) width));
+    //
+    //    IntegerType unsigned_type = (IntegerType) (~(type & WIDTH_MASK) + 1);
+    //    if (unsigned_type & UNSIGNED_MASK) {
+    //        unsigned_type = (IntegerType) (~((int) unsigned_type) + 1);
+    //    }
+    //    return unsigned_type;
+}
+
+size_t BuiltinType_sizeof(BuiltinType type)
+{
+    if (type & ALL_INTEGERS_MASK) {
+        return (size_t) (type & WIDTH_MASK) / 8;
+    }
+    switch (type) {
+    case BIT_VOID:
+    case BIT_SELF:
+    case BIT_PARAMETER:
+    case BIT_ERROR:
+        return 0;
+    case BIT_FLOAT:
+        return sizeof(double);
+    default:
+        UNREACHABLE();
+    }
 }
 
 BuiltinType BuiltinType_by_integer_spec(size_t width, bool un_signed)
@@ -330,7 +354,7 @@ ErrorOrSize type_sizeof(ExpressionType *type)
 {
     switch (type_kind(type)) {
     case TK_PRIMITIVE:
-        RETURN(Size, BuiltinType_integer_type(type->builtin_type) / 8);
+        RETURN(Size, BuiltinType_sizeof(type->builtin_type));
     case TK_ENUM:
         RETURN(Size, typeid_sizeof(type->enumeration.underlying_type));
     case TK_ALIAS:
@@ -911,3 +935,14 @@ type_id typeid_pointer_references(type_id type)
     TemplateArgument *template_arg = type_get_argument(et, sv_from("T"));
     return template_arg->type;
 }
+
+#ifdef TYPE_TEST
+
+int main()
+{
+    type_registry_init();
+    printf("typeid_sizeof(STRING_ID): %zu\n", typeid_sizeof(STRING_ID));
+    return 0;
+}
+
+#endif /* TYPE_TEST */

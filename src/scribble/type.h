@@ -79,7 +79,7 @@ typedef enum {
 #define UNSIGNED_MASK 0x0100
 #define INTEGER_MASK 0x0200
 #define LIKE_INTEGER_MASK 0x0400
-#define ALL_INTEGERS_MASK 0x0600
+#define ALL_INTEGERS_MASK 0x0700
 #define WIDTH_MASK 0x00FF
 
 #define BUILTINTYPES(S)             \
@@ -251,6 +251,7 @@ ErrorOr(Size, size_t);
 
 extern char const        *TypeKind_name(TypeKind kind);
 extern char const        *BuiltinType_name(BuiltinType type);
+extern size_t             BuiltinType_sizeof(BuiltinType type);
 extern IntegerType        BuiltinType_integer_type(BuiltinType type);
 extern BuiltinType        BuiltinType_by_integer_spec(size_t width, bool un_signed);
 extern BuiltinType        BuiltinType_by_integer_type(IntegerType type);

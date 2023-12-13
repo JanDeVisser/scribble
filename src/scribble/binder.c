@@ -1749,7 +1749,7 @@ BoundNode *bind(SyntaxNode *program)
     ctx->program = program;
     BoundNode *ret = bind_node(NULL, program, ctx);
     int        total_warnings = ctx->warnings;
-    fprintf(stderr, "Iteration 1: %d warnings", ctx->warnings);
+    fprintf(stderr, "Iteration 1: %d warnings\n", ctx->warnings);
     if (ctx->errors) {
         fatal("Iteration 1: %d errors. Exiting...", ctx->errors);
     }

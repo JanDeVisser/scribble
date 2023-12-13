@@ -5,5 +5,7 @@
   "if_1",
   "if",
   "struct",
-  "variant"
+  "variant",
+  "for",
+  "while"
 ]
