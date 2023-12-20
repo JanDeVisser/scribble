@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <datum.h>
+#include <debugger.h>
 #include <intermediate.h>
 #include <sv.h>
 #include <type.h>
@@ -51,33 +52,18 @@ typedef struct call_stack {
     CallStackEntry *top;
 } CallStack;
 
-typedef enum execution_mode {
-    EM_RUN = 0x00,
-    EM_SINGLE_STEP = 0x01,
-    EM_STEP_OVER = 0x02,
-    EM_RUN_TO_RETURN = 0x04,
-    EM_CONTINUE = 0x08,
-} ExecutionMode;
-
 #define MAX_BREAKPOINTS 64
 
-typedef struct breakpoint {
+typedef struct execution_context {
+    IRProgram  *program;
+    Scope      *root_scope;
+    Scope      *function_scope;
+    Scope      *scope;
+    DatumStack  stack;
     IRFunction *function;
     size_t      index;
-} Breakpoint;
-
-typedef struct execution_context {
-    IRProgram    *program;
-    Scope        *root_scope;
-    Scope        *scope;
-    DatumStack    stack;
-    IRFunction   *function;
-    size_t        index;
-    CallStack     call_stack;
-    ExecutionMode execution_mode;
-    size_t        num_breakpoints;
-    Breakpoint    breakpoints[MAX_BREAKPOINTS];
-    bool          trace;
+    CallStack   call_stack;
+    void       *observer_data;
 } ExecutionContext;
 
 typedef enum function_return_type {
@@ -95,8 +81,28 @@ typedef struct function_return {
     };
 } FunctionReturn;
 
-int            execute(IRProgram program);
-Datum         *evaluate_function(IRFunction function);
-FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function);
+typedef enum next_instruction_type {
+    NIT_LABEL,
+    NIT_RELATIVE,
+    NIT_RETURN,
+    NIT_RESET,
+    NIT_EXIT,
+    NIT_EXCEPTION,
+} NextInstructionType;
+
+typedef struct next_instruction_pointer {
+    NextInstructionType type;
+    union {
+        size_t      pointer;
+        char const *exception;
+    };
+} NextInstructionPointer;
+
+extern void           datum_stack_dump(DatumStack *stack);
+extern void           call_stack_dump(CallStack *stack);
+extern void           scope_dump_variables(Scope *scope);
+extern int            execute(IRProgram program);
+extern Datum         *evaluate_function(IRFunction function);
+extern FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function);
 
 #endif /* __EXECUTE_H__ */

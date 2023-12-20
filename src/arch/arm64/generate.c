@@ -396,11 +396,20 @@ void generate_code(ARM64Function *arm_function)
     IRFunction *function = arm_function->function;
     assert(function->kind == FK_SCRIBBLE);
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
+    if (!debug_execution_observer(NULL, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = arm_function })) {
+        return;
+    }
     arm_function->scribble.current_scope = &arm_function->scope;
     arm64function_enter(arm_function);
     for (size_t ix = 0; ix < function->operations.size; ++ix) {
         IROperation *op = function->operations.elements + ix;
-        StringView   op_str = ir_operation_to_string(op);
+        if (!debug_execution_observer(NULL, (ExecutionMessage) {
+                                                .type = EMT_ON_INSTRUCTION,
+                                                .payload = op,
+                                            })) {
+            return;
+        }
+        StringView op_str = ir_operation_to_string(op);
         trace(CAT_COMPILE, "%.*s", SV_ARG(op_str));
         arm64function_add_comment(arm_function, "%.*s", SV_ARG(op_str));
         switch (op->operation) {
@@ -415,8 +424,17 @@ void generate_code(ARM64Function *arm_function)
             UNREACHABLE();
         }
         arm64function_add_text(arm_function, "\n");
+        if (!debug_execution_observer(NULL, (ExecutionMessage) {
+                                                .type = EMT_AFTER_INSTRUCTION,
+                                                .payload = op,
+                                            })) {
+            return;
+        }
     }
     arm64function_leave(arm_function);
+    debug_execution_observer(NULL, (ExecutionMessage) {
+                                       .type = EMT_FUNCTION_RETURN,
+                                   });
 }
 
 void generate_function_declaration(ARM64Function *arm_function, IRFunction *function)
@@ -578,6 +596,11 @@ ARM64Context *generate_arm64(IRProgram *program)
     ctx->program = program;
     ctx->scope.kind = SK_GLOBAL;
     ctx->scope.up = NULL;
+
+    if (!debug_execution_observer(ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START, .payload = program })) {
+        return NULL;
+    }
+
     da_resize_Assembly(&ctx->assemblies, program->modules.size);
     for (size_t ix = 0; ix < program->modules.size; ++ix) {
         IRModule *module = program->modules.elements + ix;
@@ -596,5 +619,8 @@ ARM64Context *generate_arm64(IRProgram *program)
         initialize_assembly(ctx->assemblies.elements + obj_ix);
         generate_assembly(ctx->assemblies.elements + obj_ix);
     }
+    debug_execution_observer(&ctx, (ExecutionMessage) {
+                                       .type = EMT_PROGRAM_EXIT,
+                                   });
     return ctx;
 }

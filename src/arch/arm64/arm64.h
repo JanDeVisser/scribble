@@ -5,6 +5,7 @@
  */
 
 #include <config.h>
+#include <debugger.h>
 #include <intermediate.h>
 #include <optional.h>
 #include <sv.h>
@@ -522,6 +523,7 @@ extern OptionalValueLocation arm64function_pop_location(ARM64Function *function)
 extern void                  arm64function_push_location(ARM64Function *function, ValueLocation entry);
 extern void                  arm64function_push_register(ARM64Function *function, type_id type, Register reg);
 extern void                  arm64function_push_registers(ARM64Function *function, type_id type, RegisterRange regs);
+extern void                  arm64function_location_stack_dump(ARM64Function *function);
 extern void                  arm64function_enter(ARM64Function *func);
 extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);
@@ -541,5 +543,6 @@ extern ARM64Variable         arm64variable_component(ARM64Variable *variable, si
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);
+extern bool                  arm64_inspect(ObserverContext *ctx, ExecutionMessage msg);
 
 #endif /* __ARM64_H__ */

@@ -318,6 +318,17 @@ ValueLocation arm64function_allocate_space(ARM64Function *function, type_id type
     };
 }
 
+void arm64function_location_stack_dump(ARM64Function *function)
+{
+    assert(function);
+    assert(function->function->kind == FK_SCRIBBLE);
+    ARM64Scope *scope = &function->scope;
+    assert(scope);
+    for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
+        printf("%.*s\n", SV_ARG(value_location_to_string(*l)));
+    }
+}
+
 void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)
 {
     ExpressionType *et = type_registry_get_type_by_id(ptr.type);

@@ -3,6 +3,7 @@ add_library(
         STATIC
         binder.c
         datum.c
+        debugger.c
         execute.c
         graph.c
         intermediate.c

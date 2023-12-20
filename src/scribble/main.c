@@ -8,6 +8,7 @@
 #include <arch/arm64/arm64.h>
 #include <binder.h>
 #include <config.h>
+#include <debugger.h>
 #include <execute.h>
 #include <graph.h>
 #include <intermediate.h>
@@ -57,5 +58,12 @@ int main(int argc, char **argv)
     }
     BoundNode *ast = bind(parse_result.program);
     IRProgram  ir = generate(ast);
-    MUST(Int, output_arm64(&ir));
+    if (OPT_EMULATE) {
+        if (OPT_DEBUG) {
+            register_execution_observer(debug_processor);
+        }
+        execute(ir);
+    } else {
+        MUST(Int, output_arm64(&ir));
+    }
 }
