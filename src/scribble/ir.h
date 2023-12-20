@@ -42,7 +42,8 @@
     S(SCOPE_BEGIN)            \
     S(SCOPE_END)              \
     S(SUBSCRIPT)              \
-    S(UNARY_OPERATOR)
+    S(UNARY_OPERATOR)         \
+    S(WHEN)
 
 typedef enum ir_operation_type {
 #undef IR_OPERATION_TYPE

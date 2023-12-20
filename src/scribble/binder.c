@@ -691,12 +691,14 @@ BoundNode *short_circuit_logical_operators(BoundNode *parent, SyntaxNode *stmt, 
     ret->ternary_expr.condition = lhs;
     if (stmt->binary_expr.operator== OP_LOGICAL_OR) {
         ret->ternary_expr.if_true = bound_node_make(BNT_BOOL, ret);
+        ret->ternary_expr.if_true->integer = integer_create(U8, 1);
         ret->ternary_expr.if_true->name = sv_from("true");
         ret->ternary_expr.if_true->typespec = (TypeSpec) { BOOL_ID, false };
         ret->ternary_expr.if_false = rhs;
     } else { // OP_LOGICAL_AND
         ret->ternary_expr.if_true = rhs;
         ret->ternary_expr.if_false = bound_node_make(BNT_BOOL, ret);
+        ret->ternary_expr.if_false->integer = integer_create(U8, 0);
         ret->ternary_expr.if_false->name = sv_from("false");
         ret->ternary_expr.if_false->typespec = (TypeSpec) { BOOL_ID, false };
     }

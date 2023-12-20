@@ -246,8 +246,10 @@ static inline char const *ValueLocationKind_name(ValueLocationKind kind)
 }
 
 typedef struct value_location {
-    type_id           type;
-    ValueLocationKind kind;
+    type_id                type;
+    ValueLocationKind      kind;
+    bool                   dont_release;
+    struct value_location *next;
     union {
         RegisterPointer pointer;
         Register        reg;
@@ -257,7 +259,6 @@ typedef struct value_location {
         double          float_value;
         Integer         integer;
     };
-    struct value_location *next;
 } ValueLocation;
 
 OPTIONAL(ValueLocation);

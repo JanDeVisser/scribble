@@ -546,21 +546,23 @@ __attribute__((unused)) void generate_STRUCT(BoundNode *node, IRObject *target)
 __attribute__((unused)) void generate_TERNARYEXPRESSION(BoundNode *node, IRObject *target)
 {
     IRFunction  *fnc = (IRFunction *) target;
+    unsigned int if_label = next_label();
     unsigned int else_label = next_label();
     unsigned int end_label = next_label();
 
     ir_function_add_operation(fnc, (IROperation) { .operation = IR_MATCH, .type = node->ternary_expr.if_true->typespec.type_id });
     generate_node(node->ternary_expr.condition, target);
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = else_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = if_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_PUSH_BOOL_CONSTANT, .bool_value = true });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_WHEN, .label = else_label });
     generate_node(node->ternary_expr.if_true, target);
     ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_CASE, .label = end_label });
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_LABEL, .label = else_label });
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_PUSH_BOOL_CONSTANT, .bool_value = true });
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = end_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_CASE, .label = else_label });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_PUSH_BOOL_CONSTANT, .bool_value = false });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_WHEN, .label = end_label });
     generate_node(node->ternary_expr.if_false, target);
     ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_CASE, .label = 0 });
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_LABEL, .label = end_label });
-    ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_MATCH });
+    ir_function_add_operation(fnc, (IROperation) { .operation = IR_END_MATCH, .label = end_label });
 }
 
 __attribute__((unused)) void generate_TYPE(BoundNode *node, IRObject *target)

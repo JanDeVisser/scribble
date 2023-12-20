@@ -61,6 +61,8 @@ extern void          datum_print(Datum *d);
 extern StringView    datum_sprint(Datum *d);
 extern void          datum_free_contents(Datum *d);
 extern void          datum_free(Datum *d);
+extern void          datums_free(Datum *d, ...);
+extern void          datums_vfree(Datum *d, const va_list args);
 
 static inline TypeKind datum_kind(Datum *d)
 {

@@ -16,16 +16,16 @@
 
 typedef int (*qsort_fnc_t)(void const *, void const *);
 
-#define TYPEKINDS(S)   \
-    S(PRIMITIVE, 0x00) \
-    S(AGGREGATE, 0x01) \
-    S(VARIANT, 0x02)   \
-    S(ALIAS, 0x04)     \
-    S(ENUM, 0x08)
+#define TYPEKINDS(S)            \
+    S(PRIMITIVE, 0x00, builtin) \
+    S(AGGREGATE, 0x01, struct)  \
+    S(VARIANT, 0x02, variant)   \
+    S(ALIAS, 0x04, alias)       \
+    S(ENUM, 0x08, enum)
 
 typedef enum /* : uint8_t */ {
 #undef TYPEKINDS_ENUM
-#define TYPEKINDS_ENUM(type, value) TK_##type = value,
+#define TYPEKINDS_ENUM(type, value, tag) TK_##type = value,
     TYPEKINDS(TYPEKINDS_ENUM)
 #undef TYPEKINDS_ENUM
 } TypeKind;
@@ -250,6 +250,7 @@ ErrorOr(TypeID, type_id);
 ErrorOr(Size, size_t);
 
 extern char const        *TypeKind_name(TypeKind kind);
+extern char const        *TypeKind_tag(TypeKind kind);
 extern char const        *BuiltinType_name(BuiltinType type);
 extern size_t             BuiltinType_sizeof(BuiltinType type);
 extern IntegerType        BuiltinType_integer_type(BuiltinType type);

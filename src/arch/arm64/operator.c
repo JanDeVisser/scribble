@@ -373,6 +373,27 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
 {
     ValueLocation rhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
     ValueLocation lhs = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+
+    if (rhs.kind == VLK_IMMEDIATE) {
+        ValueLocation immediate = rhs;
+        rhs = (ValueLocation) {
+            .type = lhs_type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+        arm64function_copy(function, rhs, immediate);
+    }
+
+    if (lhs.kind == VLK_IMMEDIATE) {
+        ValueLocation immediate = lhs;
+        rhs = (ValueLocation) {
+            .type = lhs_type,
+            .kind = VLK_REGISTER,
+            .reg = arm64function_allocate_register(function),
+        };
+        arm64function_copy(function, rhs, immediate);
+    }
+
     trace(CAT_COMPILE, "%.*s %s %.*s",
         SV_ARG(value_location_to_string(lhs)),
         Operator_name(op),

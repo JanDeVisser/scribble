@@ -165,6 +165,22 @@ void datum_free(Datum *d)
     free_datums(d, 1);
 }
 
+void datums_free(Datum *d, ...)
+{
+    va_list args;
+    va_start(args, d);
+    datums_vfree(d, args);
+    va_end(args);
+}
+
+void datums_vfree(Datum *d, va_list args)
+{
+    datum_free(d);
+    for (Datum *arg = va_arg(args, Datum *); arg; arg = va_arg(args, Datum *)) {
+        datum_free(arg);
+    }
+}
+
 #define INTEGERCASE(dt, n, ct, is_signed, format, size) case BIT_##dt:
 #define INTEGERCASES INTEGERTYPES(INTEGERCASE)
 
@@ -206,35 +222,40 @@ Datum *datum_copy(Datum *dest, Datum *src)
 {
     datum_free_contents(dest);
     dest->type = src->type;
-    switch (typeid_builtin_type(src->type)) {
-        INTEGERCASES
-        dest->integer = src->integer;
-        break;
+    switch (datum_kind(src)) {
+    case TK_PRIMITIVE: {
+        BuiltinType bit = typeid_builtin_type(src->type);
+        switch (bit) {
+            INTEGERCASES
+            dest->integer = src->integer;
+            break;
 #undef NONINTEGERPRIMITIVE
 #define NONINTEGERPRIMITIVE(bit, field, ctype) \
     case BIT_##bit:                            \
         dest->field = src->field;              \
         break;
-        DATUM_NONINTEGERPRIMITIVES(NONINTEGERPRIMITIVE)
+            DATUM_NONINTEGERPRIMITIVES(NONINTEGERPRIMITIVE)
 #undef NONINTEGERPRIMITIVE
-    default:
-        switch (datum_kind(src)) {
-        case TK_AGGREGATE: {
-            dest->aggregate.num_components = src->aggregate.num_components;
-            dest->aggregate.components = allocate_datums(src->aggregate.num_components);
-            for (size_t ix = 0; ix < dest->aggregate.num_components; ++ix) {
-                datum_copy(dest->aggregate.components + ix, src->aggregate.components + ix);
-            }
-        } break;
-        case TK_VARIANT:
-            dest->variant.tag = datum_allocate(src->variant.tag->type);
-            datum_copy(dest->variant.tag, src->variant.tag);
-            dest->variant.payload = datum_allocate(src->variant.payload->type);
-            datum_copy(dest->variant.payload, src->variant.payload);
-            break;
         default:
             UNREACHABLE();
         }
+        break;
+    }
+    case TK_AGGREGATE: {
+        dest->aggregate.num_components = src->aggregate.num_components;
+        dest->aggregate.components = allocate_datums(src->aggregate.num_components);
+        for (size_t ix = 0; ix < dest->aggregate.num_components; ++ix) {
+            datum_copy(dest->aggregate.components + ix, src->aggregate.components + ix);
+        }
+    } break;
+    case TK_VARIANT:
+        dest->variant.tag = datum_allocate(src->variant.tag->type);
+        datum_copy(dest->variant.tag, src->variant.tag);
+        dest->variant.payload = datum_allocate(src->variant.payload->type);
+        datum_copy(dest->variant.payload, src->variant.payload);
+        break;
+    default:
+        UNREACHABLE();
     }
     if (src->type == VAR_POINTER_ID && src->datum_pointer.size > 0) {
         dest->datum_pointer.components = allocate_array(size_t, dest->datum_pointer.cap);
@@ -817,7 +838,8 @@ StringView datum_sprint(Datum *d)
             sb_printf(&sb, "%f", d->float_value);
             break;
         case BIT_VAR_POINTER:
-            sb_printf(&sb, "%p", d->datum_pointer.pointer);
+            sb_printf(&sb, "%p -> ", d->datum_pointer.pointer);
+            sb_append_sv(&sb, datum_sprint(d->datum_pointer.pointer));
             for (size_t ix = 0; ix < d->datum_pointer.size; ++ix) {
                 sb_printf(&sb, "[%zu]", d->datum_pointer.components[ix]);
             }

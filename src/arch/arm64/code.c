@@ -34,6 +34,11 @@ void code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, 
 {
     StringView opcode_sv = sv_printf("\t%s\t%s", opcode, arg_fmt);
     assert(sv_is_cstr(opcode_sv));
+    va_list args_copy;
+    va_copy(args_copy, args);
+    StringView instr = sv_vprintf(opcode_sv.ptr, args_copy);
+    trace(CAT_COMPILE, "-- %.*s", SV_ARG(instr));
+    va_end(args_copy);
     code_vadd_text(code, opcode_sv.ptr, args);
 }
 
@@ -566,25 +571,27 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
     default:
         UNREACHABLE();
     }
-    switch (from_location.kind) {
-    case VLK_REGISTER: {
-        arm64function_release_register(code->function, from_location.reg);
-    } break;
-    case VLK_REGISTER_RANGE: {
-        for (size_t ix = from_location.range.start; ix < from_location.range.end; ++ix) {
-            arm64function_release_register(code->function, ix);
+    if (!from_location.dont_release) {
+        switch (from_location.kind) {
+        case VLK_REGISTER: {
+            arm64function_release_register(code->function, from_location.reg);
+        } break;
+        case VLK_REGISTER_RANGE: {
+            for (size_t ix = from_location.range.start; ix < from_location.range.end; ++ix) {
+                arm64function_release_register(code->function, ix);
+            }
+        } break;
+        case VLK_POINTER: {
+            arm64function_release_register(code->function, from_location.pointer.reg);
+        } break;
+        case VLK_STACK: {
+            if (to_location.kind != VLK_STACK) {
+                code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
+            }
+        } break;
+        default:
+            break;
         }
-    } break;
-    case VLK_POINTER: {
-        arm64function_release_register(code->function, from_location.pointer.reg);
-    } break;
-    case VLK_STACK: {
-        if (to_location.kind != VLK_STACK) {
-            code_add_instruction(code, "add", "sp,sp,#%zu", aligned_sz);
-        }
-    } break;
-    default:
-        break;
     }
 }
 

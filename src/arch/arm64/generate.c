@@ -82,7 +82,10 @@ __attribute__((unused)) void generate_CALL(ARM64Function *calling_function, IROp
 
 __attribute__((unused)) void generate_CASE(ARM64Function *function, IROperation *op)
 {
-    generate_JUMP_F(function, op);
+    generate_LABEL(function, op);
+    ValueLocation match_value = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    match_value.dont_release = true;
+    arm64function_push_location(function, match_value);
 }
 
 __attribute__((unused)) void generate_CAST(ARM64Function *function, IROperation *op)
@@ -172,8 +175,10 @@ __attribute__((unused)) void generate_END_CASE(ARM64Function *function, IROperat
     }
 }
 
-__attribute__((unused)) void generate_END_MATCH(ARM64Function *function, IROperation *)
+__attribute__((unused)) void generate_END_MATCH(ARM64Function *function, IROperation *op)
 {
+    generate_LABEL(function, op);
+    MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function)); // pop match value
     ARM64Scope *scope = function->scribble.current_scope;
     assert(scope);
     ValueLocation *match_location = scope->match_value_stack;
@@ -204,6 +209,8 @@ __attribute__((unused)) void generate_JUMP_F(ARM64Function *function, IROperatio
         SV_ARG(arm64function_label(function)), op->label);
     if (location.kind != VLK_REGISTER) {
         arm64function_release_register(function, l.reg);
+    } else {
+        arm64function_release_register(function, location.reg);
     }
 }
 
@@ -223,6 +230,8 @@ __attribute__((unused)) void generate_JUMP_T(ARM64Function *function, IROperatio
         SV_ARG(arm64function_label(function)), op->label);
     if (location.kind != VLK_REGISTER) {
         arm64function_release_register(function, l.reg);
+    } else {
+        arm64function_release_register(function, location.reg);
     }
 }
 
@@ -389,6 +398,13 @@ __attribute__((unused)) void generate_UNARY_OPERATOR(ARM64Function *function, IR
     if (result.has_value) {
         arm64function_push_location(function, result.value);
     }
+}
+
+__attribute__((unused)) void generate_WHEN(ARM64Function *function, IROperation *op)
+{
+    ValueLocation result = MUST_OPTIONAL(ValueLocation, arm64operator_apply(function, BOOL_ID, OP_EQUALS, BOOL_ID, NULL));
+    arm64function_push_location(function, result);
+    generate_JUMP_F(function, op);
 }
 
 void generate_code(ARM64Function *arm_function)

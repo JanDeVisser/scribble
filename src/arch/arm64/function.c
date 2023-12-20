@@ -187,6 +187,7 @@ extern Register arm64function_allocate_register(ARM64Function *function)
     for (Register ix = REG_X9; ix < REG_X16; ++ix) {
         if (!function->scribble.registers[ix]) {
             function->scribble.registers[ix] = true;
+            trace(CAT_COMPILE, "Allocated register %s", reg(ix));
             return ix;
         }
     }
@@ -212,6 +213,7 @@ extern RegisterRange arm64function_allocate_register_range(ARM64Function *functi
         for (size_t jx = 0; jx < num; ++jx) {
             function->scribble.registers[ix + jx] = true;
         }
+        trace(CAT_COMPILE, "Allocated register range %s-%s", reg(ix), reg(ix + num));
         return (RegisterRange) { .start = ix, .end = ix + num };
     next_1:;
     }
@@ -226,6 +228,7 @@ extern RegisterRange arm64function_allocate_register_range(ARM64Function *functi
             function->scribble.registers[ix + jx] = true;
             function->scribble.callee_saved[ix + jx - REG_X19] = true;
         }
+        trace(CAT_COMPILE, "Allocated register range %s-%s", reg(ix), reg(ix + num));
         return (RegisterRange) { .start = ix, .end = ix + num };
     next_2:;
     }
@@ -235,6 +238,7 @@ extern RegisterRange arm64function_allocate_register_range(ARM64Function *functi
 void arm64function_release_register(ARM64Function *function, Register reg)
 {
     if ((reg >= REG_X9 && reg < REG_X16) || (reg >= REG_X19 && reg < REG_FP)) {
+        trace(CAT_COMPILE, "Released register %s", x_reg(reg));
         function->scribble.registers[reg] = false;
     }
 }
@@ -711,18 +715,27 @@ ValueLocation arm64function_location_for_type(ARM64Function *function, type_id t
     }
     case TK_AGGREGATE:
     case TK_VARIANT: {
-        size_t size_in_double_words = align_at(typeid_sizeof(type), 8) / 8;
-        if (size_in_double_words <= 2) {
+        size_t size = typeid_sizeof(type);
+        size_t size_in_double_words = align_at(size, 8) / 8;
+        switch (size_in_double_words) {
+        case 1:
             return (ValueLocation) {
                 .type = type,
                 .kind = VLK_REGISTER,
-                .range = arm64function_allocate_register(function),
+                .reg = arm64function_allocate_register(function),
+            };
+        case 2:
+            return (ValueLocation) {
+                .type = type,
+                .kind = VLK_REGISTER_RANGE,
+                .range = arm64function_allocate_register_range(function, 2),
+            };
+        default:
+            return (ValueLocation) {
+                .type = type,
+                .kind = VLK_STACK,
             };
         }
-        return (ValueLocation) {
-            .type = type,
-            .kind = VLK_STACK,
-        };
     }
     default:
         NYI("arm64function_location_for_type for non-primitive, non-aggregate type");

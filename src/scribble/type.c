@@ -36,9 +36,23 @@ char const *TypeKind_name(TypeKind kind)
 {
     switch (kind) {
 #undef TYPEKINDS_ENUM
-#define TYPEKINDS_ENUM(type, value) \
-    case TK_##type:                 \
+#define TYPEKINDS_ENUM(type, value, tag) \
+    case TK_##type:                      \
         return #type;
+        TYPEKINDS(TYPEKINDS_ENUM)
+#undef TYPEKINDS_ENUM
+    default:
+        UNREACHABLE();
+    }
+}
+
+char const *TypeKind_tag(TypeKind kind)
+{
+    switch (kind) {
+#undef TYPEKINDS_ENUM
+#define TYPEKINDS_ENUM(type, value, tag) \
+    case TK_##type:                      \
+        return #tag;
         TYPEKINDS(TYPEKINDS_ENUM)
 #undef TYPEKINDS_ENUM
     default:
@@ -376,20 +390,6 @@ ErrorOrSize type_sizeof(ExpressionType *type)
     case TK_VARIANT: {
         size_t switch_size = typeid_sizeof(type->variant.enumeration);
         size_t payload_size = TRY(Size, type_sizeof_payload(type));
-        for (size_t ix = 0; ix < type->variant.size; ++ix) {
-            if (type->variant.elements[ix].kind != CK_TYPE) {
-                ERROR(Size, TypeError, 0, "Cannot get size of template type");
-            }
-            ExpressionType *component_type = type_registry_get_type_by_id(type->variant.elements[ix].type_id);
-            size_t          component_size = TRY(Size, type_sizeof(component_type));
-            size_t          align = TRY(Size, type_alignat(component_type));
-            if (switch_size % align) {
-                switch_size = switch_size + align - (switch_size % align);
-            }
-            if (component_size > payload_size) {
-                payload_size = component_size;
-            }
-        }
         RETURN(Size, switch_size + payload_size);
     }
     default:

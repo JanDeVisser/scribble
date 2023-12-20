@@ -87,8 +87,7 @@ ValueLocation arm64variable_pointer(ARM64Variable *variable)
 ValueLocation arm64variable_reference(ARM64Variable *variable)
 {
     ARM64Function *function = variable->scope->function;
-    ValueLocation  to_location = arm64function_location_for_type(function,
-         typeid_pointer_to(variable->var_decl.type.type_id));
+    ValueLocation  to_location = { 0 };
 
     switch (variable->kind) {
     case VK_PARAMETER:
