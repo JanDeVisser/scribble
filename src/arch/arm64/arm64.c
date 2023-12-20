@@ -229,14 +229,21 @@ ErrorOrInt output_arm64(IRProgram *program)
             fatal("ld failed with exit code %d", ld_result);
         }
 #endif
-        if (has_option("run-binary")) {
+        if (OPT_RUN) {
+            fflush(stderr);
+            fflush(stdout);
             StringView run_cmd = sv_printf("./%s", bin_name);
-            ErrorOrInt exit_code_or_error = execute(run_cmd);
+            Process   *p = process_create(run_cmd);
+            ErrorOrInt exit_code_or_error = process_execute(p);
             if (ErrorOrInt_is_error(exit_code_or_error)) {
                 Error e = exit_code_or_error.error;
                 ERROR(Int, ProcessError, e.code, "Program execution failed: %s", Error_to_string(e));
             } else {
+                printf("%.*s", SV_ARG(p->out.view));
                 result = exit_code_or_error.value;
+                if (has_option("exit-code")) {
+                    printf("%d\n", result);
+                }
             }
         }
     }
