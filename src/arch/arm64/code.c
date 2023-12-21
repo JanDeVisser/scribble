@@ -37,7 +37,9 @@ void code_vadd_instruction(Code *code, char const *opcode, char const *arg_fmt, 
     va_list args_copy;
     va_copy(args_copy, args);
     StringView instr = sv_vprintf(opcode_sv.ptr, args_copy);
-    trace(CAT_COMPILE, "-- %.*s", SV_ARG(instr));
+    if (code->function && code->function->function->kind == FK_SCRIBBLE && code->function->scribble.echo) {
+        printf("%.*s\n", SV_ARG(instr));
+    }
     va_end(args_copy);
     code_vadd_text(code, opcode_sv.ptr, args);
 }
@@ -85,6 +87,9 @@ void code_vadd_text(Code *code, char const *text, va_list args)
 
 void code_add_label(Code *code, StringView label)
 {
+    if (code->function && code->function->scribble.echo) {
+        printf("%.*s:\n", SV_ARG(label));
+    }
     sb_printf(code->active, "%.*s:\n", SV_ARG(label));
 }
 
@@ -94,6 +99,9 @@ void code_add_directive(Code *code, char const *directive, char const *args)
     if (*directive == '.') {
         ++directive;
         assert(*directive);
+    }
+    if (code->function && code->function->function->kind == FK_SCRIBBLE && code->function->scribble.echo) {
+        printf(".%s\t%s\n", directive, args);
     }
     sb_printf(code->active, ".%s\t%s\n", directive, args);
 }
@@ -257,12 +265,12 @@ void code_copy_to_registers(Code *code, Register r, Register from_pointer, size_
         r = next_reg + 1;
     }
     if (half_words % 2) {
-        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+        code_add_instruction(code, "ldrh", "%s,[%s,#%zu]",
             w_reg(r), x_reg(from_pointer), from_offset + 4 * words);
         r = next_reg + 1;
     }
-    if (size % 1) {
-        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+    if ((size == 1) || (size % 1)) {
+        code_add_instruction(code, "ldrb", "%s,[%s,#%zu]",
             w_reg(r), x_reg(from_pointer), from_offset + 2 * half_words);
     }
 }
@@ -294,8 +302,8 @@ void code_copy_from_registers(Code *code, Register to_pointer, size_t to_offset,
             w_reg(r), x_reg(to_pointer), to_offset + 4 * words);
         r = next_reg + 1;
     }
-    if (size % 1) {
-        code_add_instruction(code, "strh", "%s,[%s,#%zu]",
+    if ((size == 1) || (size % 1)) {
+        code_add_instruction(code, "strb", "%s,[%s,#%zu]",
             w_reg(r), x_reg(to_pointer), to_offset + 2 * half_words);
     }
 }

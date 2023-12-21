@@ -147,14 +147,11 @@ void debug_list_types()
 
 Command debug_get_command(char const *custom)
 {
-    static char arguments[256];
-    int         cmd = 0;
-    Command     ret = { 0 };
-    char       *current_arg;
-    char       *last_arg = NULL;
-    size_t      arg_count = 0;
+    static StringBuilder arguments = { 0 };
+    int                  cmd = 0;
+    Command              ret = { 0 };
 
-    memset(arguments, 0, 256);
+    sb_clear(&arguments);
     printf("*> ");
     bool loop = true;
     while (loop) {
@@ -169,14 +166,13 @@ Command debug_get_command(char const *custom)
         case '\n':
             if (cmd == 0) {
                 printf("*> ");
-            } else if (strchr("BCHLNOQRSTVXY", cmd) == NULL && strchr(custom, cmd) == NULL) {
+            } else if (strchr("BCHLNOQRSVXY", cmd) == NULL && strchr(custom, cmd) == NULL) {
                 printf("Unrecognized command '%c'\n", cmd);
                 cmd = 0;
                 printf("*> ");
             } else {
                 ret.command = cmd;
-                ret.command_str = sv_from(arguments);
-                ret.num_arguments = 0;
+                ret.command_str = sv_copy(arguments.view);
                 return ret;
             }
             break;
@@ -184,44 +180,33 @@ Command debug_get_command(char const *custom)
             if (!cmd) {
                 cmd = ch;
             }
-            arguments[strlen(arguments)] = (char) ch;
+            sb_append_chars(&arguments, (char const *) &ch, 1);
             break;
         }
     }
 
+    sl_free(&ret.arguments);
+    sv_free(ret.command_str);
     ret.command = cmd;
-    ret.command_str = sv_from(arguments);
-    last_arg = arguments + strlen(arguments);
-    current_arg = NULL;
+    ret.command_str = sv_copy(arguments.view);
+    sb_clear(&arguments);
     while (true) {
-        if (strlen(arguments) >= 255) {
-            fatal("Exhausted argument buffer");
-        }
         int ch = getchar();
         switch (ch) {
         case ' ':
         case '\t': {
-            if (current_arg) {
-                ret.arguments[arg_count] = sv_from(current_arg);
-                ret.num_arguments = ++arg_count;
-                last_arg = current_arg;
-                current_arg = NULL;
+            if (arguments.view.length) {
+                sl_push(&ret.arguments, sv_copy(arguments.view));
+                sb_clear(&arguments);
             }
         } break;
         case '\n':
-            if (current_arg) {
-                ret.arguments[arg_count] = sv_from(current_arg);
-                ret.num_arguments = ++arg_count;
+            if (arguments.view.length) {
+                sl_push(&ret.arguments, sv_copy(arguments.view));
             }
             return ret;
         default: {
-            if (!current_arg) {
-                if (arg_count == 16) {
-                    fatal("Argument array exhausted");
-                }
-                current_arg = last_arg + strlen(last_arg);
-            }
-            current_arg[strlen(current_arg)] = (char) ch;
+            sb_append_char(&arguments, (char) ch);
         }
         }
     }
@@ -292,7 +277,7 @@ bool debug_processor(ObserverContext *ctx, ExecutionMessage msg)
     if (msg.type == EMT_OBSERVER_INIT) {
         ObserverRegistry *registry = (ObserverRegistry *) msg.payload;
         assert(registry->processor == debug_processor);
-        registry->custom_commands = "SV";
+        registry->custom_commands = "STV";
         registry->help_text = s_debugger_help;
         return true;
     }
@@ -304,6 +289,11 @@ bool debug_processor(ObserverContext *ctx, ExecutionMessage msg)
     case 'S':
         datum_stack_dump(&execution_context->stack);
         break;
+    case 'T': {
+        for (ObserverStack *entry = ctx->stack; entry; entry = entry->prev) {
+            printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
+        }
+    } break;
     case 'V':
         scope_dump_variables(execution_context->scope);
         break;
@@ -328,22 +318,22 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
                 }
                 break;
             }
-            StringView bp_index = (ctx->command.num_arguments > 1) ? ctx->command.arguments[1] : sv_null();
-            StringView bp_function = (ctx->command.num_arguments > 0) ? ctx->command.arguments[0] : sv_null();
+            StringView bp_index = (ctx->command.arguments.size > 1) ? ctx->command.arguments.strings[1] : sv_null();
+            StringView bp_function = (ctx->command.arguments.size > 0) ? ctx->command.arguments.strings[0] : sv_null();
             debug_set_breakpoint(ctx, bp_function, bp_index);
         } break;
         case 'C':
             ctx->execution_mode = EM_CONTINUE;
             return true;
         case 'H':
-            printf("%s", s_debugger_help);
+            printf("%s", registry.help_text);
             break;
         case 'L': {
             IRFunction *fnc = ctx->stack->function;
-            if (ctx->command.num_arguments) {
-                fnc = ir_program_function_by_name(ctx->program, ctx->command.arguments[0]);
+            if (ctx->command.arguments.size) {
+                fnc = ir_program_function_by_name(ctx->program, ctx->command.arguments.strings[0]);
                 if (!fnc) {
-                    printf("Unknown function '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments[0]));
+                    printf("Unknown function '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments.strings[0]));
                 }
             }
             if (fnc) {
@@ -368,19 +358,14 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
             ctx->trace = !ctx->trace;
             printf("Tracing is %s\n", (ctx->trace) ? "ON" : "OFF");
             break;
-        case 'T': {
-            for (ObserverStack *entry = ctx->stack; entry; entry = entry->prev) {
-                printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
-            }
-        } break;
         case 'X':
             ctx->execution_mode = EM_RUN_TO_RETURN;
             return true;
         case 'Y': {
-            if (ctx->command.num_arguments) {
-                ExpressionType *type = type_registry_get_type_by_name(ctx->command.arguments[0]);
+            if (ctx->command.arguments.size) {
+                ExpressionType *type = type_registry_get_type_by_name(ctx->command.arguments.strings[0]);
                 if (type == NULL) {
-                    printf("Unknown type '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments[0]));
+                    printf("Unknown type '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments.strings[0]));
                 } else {
                     debug_describe_type(type);
                 }

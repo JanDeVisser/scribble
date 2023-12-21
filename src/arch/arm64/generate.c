@@ -84,6 +84,7 @@ __attribute__((unused)) void generate_CASE(ARM64Function *function, IROperation 
 {
     generate_LABEL(function, op);
     ValueLocation match_value = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    arm64function_push_location(function, match_value);
     match_value.dont_release = true;
     arm64function_push_location(function, match_value);
 }
@@ -412,7 +413,7 @@ void generate_code(ARM64Function *arm_function)
     IRFunction *function = arm_function->function;
     assert(function->kind == FK_SCRIBBLE);
     trace(CAT_COMPILE, "Generating code for %.*s", SV_ARG(function->name));
-    if (!debug_execution_observer(NULL, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = arm_function })) {
+    if (!debug_execution_observer(NULL, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = function })) {
         return;
     }
     arm_function->scribble.current_scope = &arm_function->scope;
@@ -447,10 +448,10 @@ void generate_code(ARM64Function *arm_function)
             return;
         }
     }
-    arm64function_leave(arm_function);
     debug_execution_observer(NULL, (ExecutionMessage) {
                                        .type = EMT_FUNCTION_RETURN,
                                    });
+    arm64function_leave(arm_function);
 }
 
 void generate_function_declaration(ARM64Function *arm_function, IRFunction *function)
@@ -584,6 +585,7 @@ void initialize_assembly(Assembly *assembly)
         if (function->kind == FK_SCRIBBLE) {
             arm_function->scribble.code = code_create(arm_function);
         }
+        function->data = arm_function;
         arm_function->scope.function = arm_function;
         generate_function_declaration(arm_function, function);
     }

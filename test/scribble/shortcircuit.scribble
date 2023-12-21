@@ -1,5 +1,5 @@
 func f(x: i32) : bool {
-  fputs(1, "f(");
+  puts("f(");
   puti(x);
   putln(")");
   return x < 42;
@@ -7,10 +7,11 @@ func f(x: i32) : bool {
 
 func b(x: bool) : bool {
     putln(x ? "true" : "false");
+    return x;
 }
 
 func main() : i32 {
-    b(f(12) && f(69));
+    putln((f(12) && f(69)) ? "true" : "false");
     b(f(69) || f(12));
 
     b(f(12) || f(69));

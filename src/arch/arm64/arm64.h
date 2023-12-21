@@ -405,6 +405,9 @@ typedef struct arm64_function {
             Code       *code;
             bool        registers[(int) REG_V31 + 1];
             bool        callee_saved[(int) REG_FP - (int) REG_X19];
+            bool        echo;
+            bool        follow_stack;
+            bool        follow_registers;
         } scribble;
         struct {
             StringView stub_name;
@@ -495,6 +498,7 @@ extern StringView            value_location_to_string(ValueLocation loc);
 extern StringView            arm64function_label(ARM64Function *function);
 extern StringView            arm64function_to_string(ARM64Function *function);
 extern ARM64Variable        *arm64function_variable_by_name(ARM64Function *function, StringView name);
+extern void                  arm64function_variables_dump(ARM64Function *function);
 extern void                  arm64function_add_instruction(ARM64Function *function, char const *opcode, char const *arg_fmt, ...);
 extern void                  arm64function_add_text(ARM64Function *function, char const *text, ...);
 extern void                  arm64function_vadd_text(ARM64Function *function, char const *text, va_list args);
@@ -524,7 +528,7 @@ extern OptionalValueLocation arm64function_pop_location(ARM64Function *function)
 extern void                  arm64function_push_location(ARM64Function *function, ValueLocation entry);
 extern void                  arm64function_push_register(ARM64Function *function, type_id type, Register reg);
 extern void                  arm64function_push_registers(ARM64Function *function, type_id type, RegisterRange regs);
-extern void                  arm64function_location_stack_dump(ARM64Function *function);
+extern size_t                arm64function_location_stack_dump(ARM64Function *function);
 extern void                  arm64function_enter(ARM64Function *func);
 extern void                  arm64function_return(ARM64Function *func);
 extern void                  arm64function_leave(ARM64Function *func);

@@ -420,9 +420,13 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
         arm64function_add_instruction(function, "and", "%s,%s,%s", w_reg(result_reg), w_reg(lhs.reg), w_reg(rhs.reg));
         arm64function_add_instruction(function, "cmp", "%s,wzr", w_reg(result_reg));
         arm64function_add_instruction(function, "cset", "%s,ne", w_reg(result_reg));
-        arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
-        arm64function_release_register(function, lhs.reg);
-        arm64function_release_register(function, rhs.reg);
+        arm64function_add_instruction(function, "ands", "%s,%s,#0xFF", res, res);
+        if (!lhs.dont_release) {
+            arm64function_release_register(function, lhs.reg);
+        }
+        if (!rhs.dont_release) {
+            arm64function_release_register(function, rhs.reg);
+        }
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
@@ -457,8 +461,12 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
         arm64function_add_instruction(function, "mov", "%s,wzr", res);
         arm64function_add_label(function, sv_printf("lbl_%zu", done));
         arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
-        arm64function_release_register(function, lhs.reg);
-        arm64function_release_register(function, rhs.reg);
+        if (!lhs.dont_release) {
+            arm64function_release_register(function, lhs.reg);
+        }
+        if (!rhs.dont_release) {
+            arm64function_release_register(function, rhs.reg);
+        }
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
@@ -496,8 +504,12 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
         arm64function_add_instruction(function, "mov", "%s,wzr", res);
         arm64function_add_label(function, sv_printf("lbl_%zu", done));
         arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
-        arm64function_release_register(function, lhs.reg);
-        arm64function_release_register(function, rhs.reg);
+        if (!lhs.dont_release) {
+            arm64function_release_register(function, lhs.reg);
+        }
+        if (!rhs.dont_release) {
+            arm64function_release_register(function, rhs.reg);
+        }
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
@@ -517,8 +529,12 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
         arm64function_add_instruction(function, "madd", "%s,%s,%s,%s",
             x_reg(result_reg), x_reg(rhs.reg), x_reg(sz_reg), x_reg(lhs.reg));
         arm64function_release_register(function, sz_reg);
-        arm64function_release_register(function, lhs.reg);
-        arm64function_release_register(function, rhs.reg);
+        if (!lhs.dont_release) {
+            arm64function_release_register(function, lhs.reg);
+        }
+        if (!rhs.dont_release) {
+            arm64function_release_register(function, rhs.reg);
+        }
         return (ValueLocation) {
             .type = lhs.type,
             .kind = VLK_REGISTER,
@@ -564,8 +580,12 @@ ValueLocation arm64operator_apply_binary(ARM64Function *function, type_id lhs_ty
             arm64function_add_instruction(function, "and", "%s,%s,#0xFF", res, res);
         }
     }
-    arm64function_release_register(function, lhs.reg);
-    arm64function_release_register(function, rhs.reg);
+    if (!lhs.dont_release) {
+        arm64function_release_register(function, lhs.reg);
+    }
+    if (!rhs.dont_release) {
+        arm64function_release_register(function, rhs.reg);
+    }
     return (ValueLocation) {
         .type = (conditional) ? BOOL_ID : lhs.type,
         .kind = VLK_REGISTER,
@@ -609,7 +629,9 @@ ValueLocation arm64operator_apply_unary(ARM64Function *function, Operator op, ty
     default:
         UNREACHABLE();
     }
-    arm64function_release_register(function, operand.reg);
+    if (!operand.dont_release) {
+        arm64function_release_register(function, operand.reg);
+    }
     return (ValueLocation) {
         .type = operand_type,
         .kind = VLK_REGISTER,

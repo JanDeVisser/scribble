@@ -52,8 +52,7 @@ typedef struct observer_stack {
 typedef struct command {
     int        command;
     StringView command_str;
-    size_t     num_arguments;
-    StringView arguments[16];
+    StringList arguments;
 } Command;
 
 typedef struct {

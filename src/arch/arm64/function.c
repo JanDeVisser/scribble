@@ -56,6 +56,24 @@ ARM64Variable *arm64function_variable_by_name(ARM64Function *function, StringVie
     return NULL;
 }
 
+void arm64function_variables_dump(ARM64Function *function)
+{
+    assert(function->function->kind == FK_SCRIBBLE);
+    assert(function->scribble.current_scope);
+    bool do_dash = false;
+    for (ARM64Scope *scope = function->scribble.current_scope; scope; scope = scope->up) {
+        for (size_t ix = 0; ix < scope->variables.size; ++ix) {
+            if (do_dash) {
+                printf("----\n");
+                do_dash = false;
+            }
+            ARM64Variable *var = scope->variables.elements + ix;
+            printf("%.*s\n", SV_ARG(arm64variable_to_string(var)));
+        }
+        do_dash = true;
+    }
+}
+
 void arm64function_add_instruction(ARM64Function *function, char const *opcode, char const *arg_fmt, ...)
 {
     va_list args;
@@ -322,15 +340,18 @@ ValueLocation arm64function_allocate_space(ARM64Function *function, type_id type
     };
 }
 
-void arm64function_location_stack_dump(ARM64Function *function)
+size_t arm64function_location_stack_dump(ARM64Function *function)
 {
     assert(function);
     assert(function->function->kind == FK_SCRIBBLE);
     ARM64Scope *scope = &function->scope;
     assert(scope);
+    int ret = 0;
     for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
         printf("%.*s\n", SV_ARG(value_location_to_string(*l)));
+        ++ret;
     }
+    return ret;
 }
 
 void arm64function_load_from_pointer(ARM64Function *function, ValueLocation ptr)

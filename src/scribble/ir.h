@@ -114,6 +114,7 @@ typedef struct ir_function {
     size_t            num_parameters;
     IRVarDecl        *parameters;
     TypeSpec          type;
+    void             *data;
     union {
         DA_IROperation operations;
         StringView     native_name;

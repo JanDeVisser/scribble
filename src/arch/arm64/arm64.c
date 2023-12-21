@@ -99,7 +99,7 @@ StringView value_location_to_string(ValueLocation loc)
     default:
         UNREACHABLE();
     }
-    sb_printf(&sb, " (%.*s, %zu)", SV_ARG(typeid_name(loc.type)), typeid_sizeof(loc.type));
+    sb_printf(&sb, "%s (%.*s, %zu)", (loc.dont_release) ? "!" : "", SV_ARG(typeid_name(loc.type)), typeid_sizeof(loc.type));
     return sb.view;
 }
 
