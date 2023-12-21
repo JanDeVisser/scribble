@@ -18,6 +18,14 @@ StringList sl_create()
     return ret;
 }
 
+void sl_free(StringList *sl)
+{
+    assert(sl);
+    for (size_t ix = 0; ix < sl->size; ++ix) {
+        sv_free(sl->strings[ix]);
+    }
+}
+
 StringList sl_copy(StringList *sl)
 {
     assert(sl);

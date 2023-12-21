@@ -100,6 +100,11 @@ StringBuilder sb_create()
     return sb;
 }
 
+void sb_clear(StringBuilder *sb)
+{
+    sb->view.length = 0;
+}
+
 StringBuilder sb_createf(char const *fmt, ...)
 {
     StringBuilder ret = sb_create();
@@ -158,6 +163,11 @@ void sb_append_sv(StringBuilder *sb, StringView sv)
 void sb_append_cstr(StringBuilder *sb, char const *s)
 {
     sb_append_chars(sb, s, strlen(s));
+}
+
+void sb_append_char(StringBuilder *sb, char ch)
+{
+    sb_append_chars(sb, &ch, 1);
 }
 
 void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)

@@ -101,9 +101,11 @@ extern StringBuilder sb_vcreatef(char const *fmt, va_list args);
 extern StringBuilder sb_copy_chars(char const *ptr, size_t len);
 extern StringBuilder sb_copy_cstr(char const *s);
 extern StringBuilder sb_copy_sv(StringView sv);
+extern void          sb_clear(StringBuilder *sb);
 extern void          sb_append_chars(StringBuilder *sb, char const *ptr, size_t len);
 extern void          sb_append_sv(StringBuilder *sb, StringView sv);
 extern void          sb_append_cstr(StringBuilder *sb, char const *s);
+extern void          sb_append_char(StringBuilder *sb, char ch);
 extern void          sb_vprintf(StringBuilder *sb, char const *fmt, va_list args);
 extern void          sb_printf(StringBuilder *sb, char const *fmt, ...);
 extern void          sb_insert_sv(StringBuilder *sb, StringView sv, size_t at);
@@ -115,6 +117,7 @@ extern StringView    sb_view(StringBuilder *sb);
 #define SB_ARG(sb) (int) (sb).view.length, (sb).view.ptr
 
 extern StringList  sl_create();
+extern void        sl_free(StringList *sl);
 extern StringList  sl_copy(StringList *sl);
 extern StringList *sl_push(StringList *sl, StringView sv);
 extern StringList *sl_extend(StringList *sl, StringList *with);
