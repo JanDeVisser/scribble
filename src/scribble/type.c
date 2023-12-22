@@ -91,15 +91,28 @@ IntegerType BuiltinType_integer_type(BuiltinType type)
 
 size_t BuiltinType_sizeof(BuiltinType type)
 {
-    if (type & ALL_INTEGERS_MASK) {
-        return (size_t) (type & WIDTH_MASK) / 8;
-    }
     switch (type) {
+    case BIT_BOOL:
+    case BIT_U8:
+    case BIT_I8:
+        return 1;
+    case BIT_U16:
+    case BIT_I16:
+        return 2;
+    case BIT_U32:
+    case BIT_I32:
+        return 4;
+    case BIT_U64:
+    case BIT_I64:
+        return 8;
     case BIT_VOID:
     case BIT_SELF:
     case BIT_PARAMETER:
     case BIT_ERROR:
         return 0;
+    case BIT_VAR_POINTER:
+    case BIT_RAW_POINTER:
+        return sizeof(void *);
     case BIT_FLOAT:
         return sizeof(double);
     default:

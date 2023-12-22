@@ -88,6 +88,8 @@ typedef enum {
     S(PARAMETER, parameter, 0x0003) \
     S(ERROR, error, 0x0004)         \
     S(FLOAT, float, 0x0005)         \
+    S(VAR_POINTER, var_ptr, 0x0406) \
+    S(RAW_POINTER, raw_ptr, 0x0407) \
     S(I8, i8, 0x0208)               \
     S(U8, u8, 0x0308)               \
     S(I16, i16, 0x0210)             \
@@ -97,8 +99,6 @@ typedef enum {
     S(I64, i64, 0x0240)             \
     S(U64, u64, 0x0340)             \
     S(BOOL, bool, 0x0408)           \
-    S(VAR_POINTER, var_ptr, 0x0440) \
-    S(RAW_POINTER, raw_ptr, 0x4440) \
     S(STRING, string, 0x1102)       \
     S(RANGE, range, 0x1202)         \
     S(ARRAY, array, 0x1302)
