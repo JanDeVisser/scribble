@@ -519,6 +519,7 @@ extern void                  arm64function_copy_from_registers(ARM64Function *fu
 extern void                  arm64function_copy_to_stack(ARM64Function *function, Register r, size_t size);
 extern void                  arm64function_copy(ARM64Function *function, ValueLocation to_location, ValueLocation from_location);
 extern void                  arm64function_write_char(ARM64Function *function, int fd, char ch);
+extern void                  arm64function_write_string(ARM64Function *function, int fd, StringView sv);
 extern Register              arm64function_allocate_register(ARM64Function *function);
 extern RegisterRange         arm64function_allocate_register_range(ARM64Function *function, size_t num);
 extern void                  arm64function_release_register(ARM64Function *function, Register reg);

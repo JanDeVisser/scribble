@@ -15,6 +15,7 @@
 #define __IR_H__
 
 #define IR_OPERATION_TYPES(S) \
+    S(ASSERT)                 \
     S(BINARY_OPERATOR)        \
     S(CALL)                   \
     S(CASE)                   \

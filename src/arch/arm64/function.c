@@ -139,6 +139,16 @@ void arm64function_write_char(ARM64Function *function, int fd, char ch)
     arm64function_add_instruction(function, "add", "sp,sp,16");
 }
 
+void arm64function_write_string(ARM64Function *function, int fd, StringView sv)
+{
+    size_t str_id = assembly_add_string(function->assembly, sv);
+    arm64function_add_instruction(function, "mov", "x0,#%d", fd); // x0: fd
+    arm64function_add_instruction(function, "adrp", "x1,str_%zu@PAGE", str_id);
+    arm64function_add_instruction(function, "add", "x1,x1,str_%zu@PAGEOFF", str_id);
+    arm64function_add_instruction(function, "mov", "x2,%zu", sv.length); // x2: Number of characters
+    arm64function_syscall(function, SYSCALL_WRITE);
+}
+
 void arm64function_syscall(ARM64Function *function, int id)
 {
     arm64function_add_instruction(function, "mov", SYSCALL_REG ",#0x%02x", id);

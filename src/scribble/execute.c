@@ -345,6 +345,19 @@ void scope_dump_variables(Scope *scope)
         }                                                    \
     } while (0)
 
+__attribute__((unused)) NextInstructionPointer execute_ASSERT(ExecutionContext *ctx, IROperation *op)
+{
+    Datum *assertion = NIP_POP_AND_CHECK(ctx);
+    assert(assertion->type == BOOL_ID);
+    bool asserted = assertion->bool_value;
+    datum_free(assertion);
+    if (!asserted) {
+        // FIXME include assertion message
+        NIP_EXCEPTION("Assertion failed");
+    }
+    NIP_NEXT;
+}
+
 __attribute__((unused)) NextInstructionPointer execute_BINARY_OPERATOR(ExecutionContext *ctx, IROperation *op)
 {
     Datum *d2 = NIP_POP_AND_CHECK(ctx);

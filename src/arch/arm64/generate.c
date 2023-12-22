@@ -50,6 +50,31 @@ void generate_native(ARM64Function *function)
     }
 }
 
+__attribute__((unused)) void generate_ASSERT(ARM64Function *function, IROperation *op)
+{
+    ValueLocation location = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+    assert(location.kind == VLK_REGISTER || location.kind == VLK_IMMEDIATE);
+    assert(location.type == BOOL_ID);
+    ValueLocation l = location;
+    if (location.kind != VLK_REGISTER) {
+        l.kind = VLK_REGISTER;
+        l.reg = arm64function_allocate_register(function);
+        arm64function_copy(function, l, location);
+    }
+    StringView lbl = sv_printf("__assert_%d_%.*s", op->index, SV_ARG(arm64function_label(function)));
+    arm64function_add_instruction(function, "cbnz", "%s,%.*s", reg(l.reg), SV_ARG(lbl));
+    arm64function_write_string(function, 2, sv_from("Assertion error: "));
+    arm64function_write_string(function, 2, op->sv);
+    arm64function_write_char(function, 2, '\n');
+    arm64function_syscall1(function, SYSCALL_EXIT, 1);
+    arm64function_add_label(function, lbl);
+    if (location.kind != VLK_REGISTER) {
+        arm64function_release_register(function, l.reg);
+    } else {
+        arm64function_release_register(function, location.reg);
+    }
+}
+
 __attribute__((unused)) void generate_BINARY_OPERATOR(ARM64Function *function, IROperation *op)
 {
     OptionalValueLocation result = arm64operator_apply(function, op->binary_operator.lhs, op->binary_operator.op, op->binary_operator.rhs, NULL);

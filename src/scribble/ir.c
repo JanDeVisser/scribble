@@ -83,6 +83,7 @@ static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
         break;
     case IR_END_MATCH:
         break;
+    case IR_ASSERT:
     case IR_PUSH_VAR_ADDRESS:
     case IR_PUSH_STRING_CONSTANT:
         sb_printf(&sb, SV_SPEC, SV_ARG(op->sv));
