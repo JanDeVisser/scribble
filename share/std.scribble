@@ -4,6 +4,30 @@
  * SPDX-License-Identifier: MIT
  */
 
+ enum IntegerType : i32 {
+    I8 = -8,
+    U8 = 8,
+    I16 = -16,
+    U16 = 16,
+    I32 = -32,
+    U32 = 32,
+    I64 = -64,
+    U64 = 64,
+};
+
+variant Integer : IntegerType {
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
+};
+
+func static_message() : void => "static_message";
+
 func puts(s: string) : i32 -> "scribble$puts";
 func putln(s: string) : i32 -> "scribble$putln";
 func endln() : i32 -> "scribble$endln";
@@ -37,6 +61,6 @@ func write(fh: i32, buffer: pchar, num: i32) : i32 -> "scribble$read";
 
 func alloc(sz: i32) : pchar -> "scribble$alloc";
 
-//func static_message() : void => "static_message";
+func static_message() : void => "static_message";
 //func format() : string => "bind_format";
 //func fmt_format() : string -> "fmt_format";
