@@ -996,30 +996,6 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
         fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
-    if (fnc->function.function_impl->type == BNT_MACRO) {
-        Datum **args = allocate_array(Datum *, 3);
-        args[0] = datum_allocate(RAW_POINTER_ID);
-        args[0]->raw_pointer = parent;
-        args[1] = datum_allocate(RAW_POINTER_ID);
-        args[1]->raw_pointer = stmt;
-        args[2] = datum_allocate(RAW_POINTER_ID);
-        args[3]->raw_pointer = ctx;
-
-        Datum *processed = datum_allocate(RAW_POINTER_ID);
-        native_call(fnc->function.function_impl->name, 3, args, processed);
-        BoundNode *macro_ret = (BoundNode *) processed->raw_pointer;
-        if (macro_ret) {
-            if (macro_ret->type == BNT_FUNCTION_CALL) {
-                if (macro_ret->typespec.type_id == VOID_ID) {
-                    return error(parent, stmt, ctx, "Macro '%.*s' returned void function call to '%.*s'",
-                        SV_ARG(fnc->function.function_impl->name),
-                        SV_ARG(macro_ret->name));
-                }
-                macro_ret->call.discard_result = false;
-            }
-        }
-        return macro_ret;
-    }
 
     BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
     ret->name = stmt->name;
