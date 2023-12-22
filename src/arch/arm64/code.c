@@ -442,7 +442,7 @@ void code_copy(Code *code, ValueLocation to_location, ValueLocation from_locatio
         }
     } break;
     case VLK_REGISTER_RANGE: {
-        assert(to_location.range.end - to_location.range.start == sz / 8);
+        assert(to_location.range.end - to_location.range.start == align_at(sz, 8) / 8);
         switch (from_location.kind) {
         case VLK_POINTER: {
             code_copy_to_registers(code, to_location.range.start, from_location.pointer.reg, from_location.pointer.offset, sz);

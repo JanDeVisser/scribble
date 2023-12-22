@@ -847,7 +847,7 @@ ValueLocation arm64function_component(ARM64Function *function, ValueLocation ref
             arm64function_add_instruction(function, "lsr", "%s,%s,#%ld", x_reg(ret.reg), x_reg(ret.reg), offset % 8);
         }
         if (sz < 8) {
-            arm64function_add_instruction(function, "and", "%s,%s,#0x%0x", x_reg(ret.reg), x_reg(ret.reg), (1 << (sz * 8)) - 1);
+            arm64function_add_instruction(function, "and", "%s,%s,#0x%0x", x_reg(ret.reg), x_reg(ret.reg), (1ul << (sz * 8)) - 1);
         }
     } break;
     case VLK_DATA:
