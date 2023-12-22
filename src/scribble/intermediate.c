@@ -654,6 +654,32 @@ __attribute__((unused)) void generate_VARIABLE(BoundNode *node, IRObject *target
                 for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
                     EnumValue *v = enumeration->enumeration.elements + ix;
                     if (sv_eq(v->name, sub->name)) {
+
+                        // TODO: Wrap this in a !unsafe block once we have that.
+                        {
+                            IROperation op2 = { 0 };
+                            ir_operation_set(&op2, IR_PUSH_VAR_ADDRESS);
+                            op2.sv = node->name;
+                            ir_function_add_operation((IRFunction *) target, op2);
+                            ir_operation_set(&op2, IR_SUBSCRIPT);
+                            for (size_t sub_ix = 0; sub_ix < op.var_component.size; ++sub_ix) {
+                                DIA_APPEND(size_t, (&op2.var_component), op.var_component.elements[sub_ix]);
+                            }
+                            DIA_APPEND(size_t, (&op2.var_component), -1);
+                            ir_function_add_operation((IRFunction *) target, op2);
+                            ir_operation_set(&op2, IR_PUSH_VALUE);
+                            ir_function_add_operation((IRFunction *) target, op2);
+                            ir_operation_set(&op2, IR_PUSH_INT_CONSTANT);
+                            op2.integer = v->value;
+                            ir_function_add_operation((IRFunction *) target, op2);
+                            ir_operation_set(&op2, IR_BINARY_OPERATOR);
+                            op2.binary_operator.lhs = op2.binary_operator.rhs = enumeration->enumeration.underlying_type;
+                            op2.binary_operator.op = OP_EQUALS;
+                            ir_function_add_operation((IRFunction *) target, op2);
+                            ir_operation_set(&op2, IR_ASSERT);
+                            op2.sv = sv_from("Variant tag/payload reference mismatch");
+                            ir_function_add_operation((IRFunction *) target, op2);
+                        }
                         payload = type_registry_get_type_by_id(et->variant.elements[ix].type_id);
                         op.var_component.type = payload->type_id;
                         DIA_APPEND(size_t, (&op.var_component), ix);
