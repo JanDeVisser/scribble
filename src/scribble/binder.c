@@ -1600,16 +1600,25 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         return NULL;
     }
 
+    trace(CAT_BIND, "Binding %s node '%.*s'", SyntaxNodeType_name(stmt->type), SV_ARG(stmt->name));
+    BoundNode *ret = NULL;
     switch (stmt->type) {
-#define SYNTAXNODETYPE_ENUM(type)                                                    \
-    case SNT_##type:                                                                 \
-        trace(CAT_BIND, "Binding " #type " node '" SV_SPEC "'", SV_ARG(stmt->name)); \
-        return bind_##type(parent, stmt, ctx);
+#define SYNTAXNODETYPE_ENUM(type)             \
+    case SNT_##type:                          \
+        ret = bind_##type(parent, stmt, ctx); \
+        break;
         SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
 #undef SYNTAXNODETYPE_ENUM
     default:
         UNREACHABLE();
     }
+    if (ret != NULL) {
+        trace(CAT_BIND, "Binding %s node '%.*s' => %s",
+            SyntaxNodeType_name(stmt->type), SV_ARG(stmt->name), BoundNodeType_name(ret->type));
+    } else {
+        trace(CAT_BIND, "Binding %s node '%.*s' => (null)", SyntaxNodeType_name(stmt->type), SV_ARG(stmt->name));
+    }
+    return ret;
 }
 
 int bind_nodes(BoundNode *parent, SyntaxNode *first, BoundNode **first_dst, BindContext *ctx)
@@ -1644,6 +1653,14 @@ void rebind_nodes(BoundNode *parent, BoundNode **first, BindContext *ctx)
     for (BoundNode **stmt = first; *stmt != NULL; stmt = &((*stmt)->next)) {
         BoundNode *bound_node = rebind_node(*stmt, ctx);
         if (!bound_node) {
+            if ((*stmt)->prev) {
+                (*stmt)->prev->next = (*stmt)->next;
+            } else {
+                *first = (*stmt)->next;
+            }
+            if ((*stmt)->next) {
+                (*stmt)->next->prev = (*stmt)->prev;
+            }
             continue;
         }
         if (bound_node->type == BNT_UNBOUND_NODE) {
