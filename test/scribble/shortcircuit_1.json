@@ -1,0 +1,9 @@
+{
+  "name": "shortcircuit_1",
+  "exit": 0,
+  "stdout": [
+    "true"
+  ],
+  "stderr": [],
+  "args": []
+}

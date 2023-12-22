@@ -1,5 +1,4 @@
-func main() : i32
-{
-    static_message("Hello, {d} World!", 42);
+func main() : int {
+    static_message("Hello, world!");
     return 0;
 }

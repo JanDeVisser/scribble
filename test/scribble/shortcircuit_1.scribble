@@ -1,0 +1,7 @@
+func main() : i32 {
+    var x = 1;
+    var y = 2;
+    var z = (x < 10) && (y < 10);
+    putln(z ? "true" : "false");
+    return 0;
+}

@@ -8,5 +8,10 @@
   "variant",
   "for",
   "while",
-  "function"
+  "function",
+  "ternary",
+  "shortcircuit_1",
+  "shortcircuit",
+  "variant_error",
+  "integer"
 ]

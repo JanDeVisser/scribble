@@ -1,0 +1,9 @@
+{
+  "name": "integer",
+  "exit": 0,
+  "stdout": [
+    "42"
+  ],
+  "stderr": [],
+  "args": []
+}

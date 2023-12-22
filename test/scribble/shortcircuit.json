@@ -1,0 +1,18 @@
+{
+  "name": "shortcircuit",
+  "exit": 0,
+  "stdout": [
+    "f(12)",
+    "f(69)",
+    "false",
+    "f(69)",
+    "f(12)",
+    "true",
+    "f(12)",
+    "true",
+    "f(69)",
+    "false"
+  ],
+  "stderr": [],
+  "args": []
+}

@@ -1,0 +1,9 @@
+{
+  "name": "variant_error",
+  "exit": 1,
+  "stdout": [],
+  "stderr": [
+    "Assertion error: Variant tag/payload reference mismatch"
+  ],
+  "args": []
+}
