@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include <da.h>
+#include <error_or.h>
 #include <integer.h>
 #include <mem.h>
 #include <optional.h>
@@ -22,6 +23,7 @@ typedef struct string_view {
 } StringView;
 
 OPTIONAL(StringView)
+ErrorOr(StringView, StringView);
 
 DA_ELEMENTS(StringView, strings)
 typedef DA_StringView StringList;
@@ -73,6 +75,7 @@ extern bool               sv_endswith(StringView s1, StringView s2);
 extern IntegerParseResult sv_parse_integer(StringView sv, IntegerType type);
 extern StringView         sv_lchop(StringView sv, size_t num);
 extern StringView         sv_rchop(StringView sv, size_t num);
+extern StringView         sv_chop_to_delim(StringView *sv, StringView delim);
 extern int                sv_first(StringView sv, char ch);
 extern int                sv_last(StringView sv, char ch);
 extern int                sv_find(StringView sv, StringView sub);
@@ -131,6 +134,7 @@ extern size_t      sl_size(StringList *sl);
 extern StringScanner ss_create(StringView sv);
 extern void          ss_reset(StringScanner *ss);
 extern bool          ss_expect(StringScanner *ss, char ch);
+extern bool          ss_expect_sv(StringScanner *ss, StringView sv);
 extern bool          ss_expect_with_offset(StringScanner *ss, char ch, size_t offset);
 extern bool          ss_expect_one_of_with_offset(StringScanner *ss, char const *expect, size_t offset);
 extern bool          ss_expect_one_of(StringScanner *ss, char const *expect);
@@ -138,11 +142,13 @@ extern bool          ss_is_one_of(StringScanner *ss, char const *expect);
 extern bool          ss_is_one_of_with_offset(StringScanner *ss, char const *expect, size_t offset);
 extern int           ss_one_of(StringScanner *ss, char const *expect);
 extern StringView    ss_read(StringScanner *ss, size_t num);
+extern StringView    ss_read_from_mark(StringScanner *ss);
 extern int           ss_readchar(StringScanner *ss);
 extern int           ss_peek(StringScanner *ss);
 extern int           ss_peek_with_offset(StringScanner *ss, size_t offset);
 extern void          ss_skip(StringScanner *ss, size_t num);
 extern void          ss_skip_one(StringScanner *ss);
+extern void          ss_skip_whitespace(StringScanner *ss);
 extern size_t        ss_read_number(StringScanner *ss);
 
 #endif /* __SV_H__ */

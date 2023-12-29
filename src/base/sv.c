@@ -7,6 +7,7 @@
 #include <ctype.h>
 
 #include <allocate.h>
+#include <stddef.h>
 #include <sv.h>
 
 DECLARE_SHARED_ALLOCATOR(sv)
@@ -326,6 +327,26 @@ StringView sv_rchop(StringView sv, size_t num)
     return ret;
 }
 
+StringView sv_chop_to_delim(StringView *src, StringView delim)
+{
+    StringView ret = *src;
+    if (sv_empty(ret) || sv_empty(delim) || ret.length < delim.length) {
+        return sv_null();
+    }
+    int ix = sv_find(ret, delim);
+    if (ix == -1) {
+        *src = sv_null();
+        return ret;
+    }
+    if (ret.length - ix - delim.length == 0) {
+        *src = sv_null();
+    } else {
+        *src = (StringView) { ret.ptr + ix + delim.length, ret.length - ix - delim.length };
+    }
+    ret.length = ix;
+    return ret;
+}
+
 int sv_first(StringView sv, char ch)
 {
     for (int ix = 0; ix < sv.length; ++ix) {
@@ -366,18 +387,24 @@ StringView sv_substring(StringView sv, size_t at, size_t len)
 
 StringList sv_split(StringView sv, StringView sep)
 {
+    assert(sep.length > 0);
     StringList  ret = sl_create();
+    if (sv.length == 0) {
+        return ret;
+    }
     char const *ptr = sv.ptr;
     char const *component_start = sv.ptr;
     while (true) {
-        if (ptr - sv.ptr > sv.length - sep.length) {
+        if (ptr - sv.ptr > (ptrdiff_t) sv.length - (ptrdiff_t) sep.length) {
             sl_push(&ret, (StringView) { component_start, sv.ptr + sv.length - component_start });
             return ret;
         }
         if (memcmp(ptr, sep.ptr, sep.length) == 0) {
             sl_push(&ret, (StringView) { component_start, ptr - component_start });
-            ptr += sep.length;
-            component_start = ptr;
+            do {
+                ptr += sep.length;
+                component_start = ptr;
+            } while (memcmp(ptr, sep.ptr, sep.length) == 0);
             continue;
         }
         ++ptr;
