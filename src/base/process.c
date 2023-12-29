@@ -50,6 +50,31 @@ Process *_process_create(StringView cmd, ...)
     return ret;
 }
 
+ErrorOrInt process_start(Process *p)
+{
+    size_t sz = p->arguments.size;
+    char **argv = allocate_array(char *, sz + 2);
+    argv[0] = (char *) sv_cstr(p->command);
+    for (size_t ix = 0u; ix < sz; ++ix) {
+        argv[ix + 1] = (char *) sv_cstr(p->arguments.strings[ix]);
+    }
+    argv[sz + 1] = NULL;
+    StringView args = sl_join(&p->arguments, sv_from(" "));
+    printf("[CMD] %.*s %.*s\n", SV_ARG(p->command), SV_ARG(args));
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        ERROR(Int, ProcessError, errno, "fork() failed");
+    }
+    p->pid = pid;
+    if (pid == 0) {
+        execvp(sv_cstr(p->command), argv);
+        printf("execvp(%.*s) failed: %s\n", SV_ARG(p->command), strerror(errno));
+        exit(1);
+    }
+    RETURN(Int, pid);
+}
+
 ErrorOrInt process_execute(Process *p)
 {
     size_t sz = p->arguments.size;
@@ -116,10 +141,8 @@ ErrorOrInt execute_sl(StringView cmd, StringList *args)
 ErrorOrInt _execute(StringView cmd, ...)
 {
     va_list  args;
-    Process *p;
-
     va_start(args, cmd);
-    p = process_vcreate(cmd, args);
+    Process *p = process_vcreate(cmd, args);
     va_end(args);
     return process_execute(p);
 }

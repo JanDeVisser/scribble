@@ -11,6 +11,7 @@
 #define __PROCESS_H__
 
 typedef struct process {
+    pid_t         pid;
     StringView    command;
     StringList    arguments;
     StringBuilder out;
@@ -20,6 +21,7 @@ typedef struct process {
 extern Process   *process_create_sl(StringView cmd, StringList *args);
 extern Process   *process_vcreate(StringView cmd, va_list args);
 extern Process   *_process_create(StringView cmd, ...);
+extern ErrorOrInt process_start(Process *p);
 extern ErrorOrInt process_execute(Process *p);
 ErrorOrInt        execute_sl(StringView cmd, StringList *args);
 ErrorOrInt        _execute(StringView cmd, ...);
