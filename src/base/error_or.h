@@ -54,7 +54,7 @@ extern char const *Error_to_string(Error error);
         ErrorOr##name ret = { 0 };                                                                                 \
         ret.error.cat = cat;                                                                                       \
         ret.error.code = code;                                                                                     \
-        size_t msg_len = vsnprintf(NULL, 0, msg, args) + 1;                                                            \
+        size_t msg_len = vsnprintf(NULL, 0, msg, args) + 1;                                                        \
         ret.error.message = (char *) mem_allocate(msg_len);                                                        \
         vsnprintf(ret.error.message, msg_len, msg, args);                                                          \
         return ret;                                                                                                \
