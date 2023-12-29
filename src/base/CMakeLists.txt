@@ -24,6 +24,7 @@ add_library(
         ss.c
         sv.c
         threadonce.h
+        da.c
 )
 
 add_executable(
@@ -41,3 +42,21 @@ add_executable(
 
 target_link_libraries(fmt_test scb_base)
 target_compile_definitions(fmt_test PUBLIC FMT_TEST)
+
+add_executable(
+        http_test
+        http.c
+)
+
+target_link_libraries(http_test scb_base)
+target_compile_definitions(http_test PUBLIC HTTP_TEST)
+
+add_executable(
+        json_test
+        json.c
+)
+
+target_link_libraries(json_test scb_base)
+target_compile_definitions(json_test PUBLIC JSON_TEST)
+
+add_subdirectory("test")
