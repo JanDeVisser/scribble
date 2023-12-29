@@ -75,4 +75,30 @@ static inline void release_allocator(AllocatorState savepoint)
 #define allocate_new(t) allocate(sizeof(t))
 #define allocate_array(t, num) array_allocate(sizeof(t), num)
 
+#define FREE_LIST(T, N)  \
+    T   *allocate_##N(); \
+    void free_##N(T *obj)
+
+#define FREE_LIST_IMPL(T, N)               \
+    static T *N##_free_list = NULL;        \
+                                           \
+    T *allocate_##N()                      \
+    {                                      \
+        T *ret = NULL;                     \
+        if (N##_free_list) {               \
+            ret = N##_free_list;           \
+            N##_free_list = *((T **) ret); \
+            memset(ret, 0, sizeof(T));     \
+        } else {                           \
+            ret = allocate_new(T);         \
+        }                                  \
+        return ret;                        \
+    }                                      \
+                                           \
+    void free_##N(T *obj)                  \
+    {                                      \
+        *((T **) obj) = N##_free_list;     \
+        N##_free_list = obj;               \
+    }
+
 #endif /* __ALLOCATE_H__ */
