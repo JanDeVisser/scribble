@@ -21,7 +21,7 @@ static bool s_categories[CAT_COUNT];
 static void vemit_log_message(LogLevel level, char const *msg, va_list args);
 static void emit_log_message(LogLevel level, char const *msg, ...);
 
-static LogLevel log_level = 99;
+static LogLevel log_level = LL_PANIC;
 
 void emit_log_message(LogLevel level, char const *msg, ...)
 {
