@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -45,4 +46,12 @@ bool fs_is_newer(StringView file_name1, StringView file_name2)
         return st1.st_mtimespec.tv_nsec > st2.st_mtimespec.tv_nsec;
     }
     return st1.st_mtimespec.tv_sec > st2.st_mtimespec.tv_sec;
+}
+
+ErrorOrInt fs_unlink(StringView file_name)
+{
+    if (unlink(sv_cstr(file_name)) < 0) {
+        ERROR(Int, IOError, 0, "Error unlinking '%.*s': %s", SV_ARG(file_name), strerror(errno));
+    }
+    RETURN(Int, 0);
 }
