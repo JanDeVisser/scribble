@@ -24,7 +24,8 @@
     S(LexerError, 6)       \
     S(ParserError, 7)      \
     S(CompilerError, 8)    \
-    S(RuntimeError, 9)
+    S(RuntimeError, 9)     \
+    S(HttpError, 10)
 
 typedef enum {
 #undef ERRORCATEGORY_ENUM
@@ -53,7 +54,7 @@ extern char const *Error_to_string(Error error);
         ErrorOr##name ret = { 0 };                                                                                 \
         ret.error.cat = cat;                                                                                       \
         ret.error.code = code;                                                                                     \
-        size_t msg_len = vsnprintf(NULL, 0, msg, args);                                                            \
+        size_t msg_len = vsnprintf(NULL, 0, msg, args) + 1;                                                            \
         ret.error.message = (char *) mem_allocate(msg_len);                                                        \
         vsnprintf(ret.error.message, msg_len, msg, args);                                                          \
         return ret;                                                                                                \
@@ -132,17 +133,17 @@ extern char const *Error_to_string(Error error);
     name##_maybe.value;                           \
 })
 
-#define TRY_TO(name, to_name, typ, var, expr)             \
-    typ var;                                              \
-    {                                                     \
+#define TRY_TO(name, to_name, expr)                       \
+    ({                                                    \
         ErrorOr##name _maybe = (expr);                    \
         if (ErrorOr##name##_is_error(_maybe)) {           \
             return ErrorOr##to_name##_copy(_maybe.error); \
         }                                                 \
-        var = var##_maybe.value;                          \
-    }
+        _maybe.value;                                     \
+    })
 
 ErrorOr(Char, char *);
+ErrorOr(VoidPtr, void *);
 ErrorOr(UInt64, uint64_t);
 ErrorOr(Int, int);
 

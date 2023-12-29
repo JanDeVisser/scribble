@@ -26,7 +26,7 @@ char const *Error_to_string(Error error)
 #undef _ERROR_MSG_FORMAT
 #define _ERROR_MSG_FORMAT "ERROR: %s(%d): %s"
     size_t str_len = snprintf(NULL, 0, _ERROR_MSG_FORMAT,
-        ErrorCode_name(error.code), error.code, error.message);
+        ErrorCode_name(error.code), error.code, error.message) + 1;
     char  *str = mem_allocate(str_len);
     snprintf(str, str_len, _ERROR_MSG_FORMAT,
         ErrorCode_name(error.code), error.code, error.message);
