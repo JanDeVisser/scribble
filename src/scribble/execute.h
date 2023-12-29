@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #include <datum.h>
-#include <debugger.h>
+// #include <debugger.h>
 #include <intermediate.h>
 #include <sv.h>
 #include <type.h>

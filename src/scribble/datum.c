@@ -9,7 +9,7 @@
 #include <datum.h>
 
 #undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c) __attribute__((unused)) static Datum *datum_##op(Datum *, Datum *);
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c, cl) __attribute__((unused)) static Datum *datum_##op(Datum *, Datum *);
 BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
@@ -26,7 +26,7 @@ typedef struct operator_functions {
 
 static OperatorFunctions s_functions[] = {
 #undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c) { OP_##op, datum_##op },
+#define ENUM_BINARY_OPERATOR(op, a, p, k, c, cl) { OP_##op, datum_##op },
     BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
 #undef ENUM_BINARY_OPERATOR
 #undef ENUM_UNARY_OPERATOR
@@ -782,6 +782,31 @@ __attribute__((unused)) Datum *datum_ASSIGN_MODULO(Datum *d1, Datum *d2)
 {
     Datum *d = datum_MODULO(d1, d2);
     return datum_ASSIGN(d1, d);
+}
+
+__attribute__((unused)) Datum *datum_CAST(Datum *, Datum *)
+{
+    UNREACHABLE();
+}
+
+__attribute__((unused)) Datum *datum_COMMA(Datum *, Datum *)
+{
+    UNREACHABLE();
+}
+
+__attribute__((unused)) Datum *datum_COMPOUND(Datum *, Datum *)
+{
+    UNREACHABLE();
+}
+
+__attribute__((unused)) Datum *datum_TERNARY(Datum *, Datum *)
+{
+    UNREACHABLE();
+}
+
+__attribute__((unused)) Datum *datum_TERNARY_ELSE(Datum *, Datum *)
+{
+    UNREACHABLE();
 }
 
 Datum *datum_apply(Datum *d1, Operator op, Datum *d2)

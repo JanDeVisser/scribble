@@ -12,14 +12,22 @@
 #ifndef __FMT_H__
 #define __FMT_H__
 
+typedef enum {
+    FMT_INTEGER,
+    FMT_FLOAT,
+    FMT_STRING,
+    FMT_POINTER,
+    FMT_CSTR,
+} ArgType;
+
 typedef struct fmt_arg {
+    ArgType type;
     union {
         Integer     integer;
         double      flt;
         StringView  sv;
         void       *pointer;
         char const *cstr;
-        char        padding[16];
     };
 } FMTArg;
 

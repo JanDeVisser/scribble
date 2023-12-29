@@ -772,39 +772,39 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
     }
 
-    if (!debug_execution_observer(ctx, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = function })) {
-        FunctionReturn ret = { 0 };
-        ret.type = FRT_EXIT;
-        ret.exit_code = 0;
-        ctx->scope = current;
-        return ret;
-    }
+    // if (!debug_execution_observer(ctx, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = function })) {
+    //     FunctionReturn ret = { 0 };
+    //     ret.type = FRT_EXIT;
+    //     ret.exit_code = 0;
+    //     ctx->scope = current;
+    //     return ret;
+    // }
 
     while (ix < function->operations.size) {
         ctx->index = function->operations.elements[ix].index;
-        if (!debug_execution_observer(ctx, (ExecutionMessage) {
-                                               .type = EMT_ON_INSTRUCTION,
-                                               .payload = function->operations.elements + ix,
-                                           })) {
-            FunctionReturn ret = { 0 };
-            ret.type = FRT_EXIT;
-            ret.exit_code = 0;
-            ctx->scope = current;
-            return ret;
-        }
+        // if (!debug_execution_observer(ctx, (ExecutionMessage) {
+        //                                        .type = EMT_ON_INSTRUCTION,
+        //                                        .payload = function->operations.elements + ix,
+        //                                    })) {
+        //     FunctionReturn ret = { 0 };
+        //     ret.type = FRT_EXIT;
+        //     ret.exit_code = 0;
+        //     ctx->scope = current;
+        //     return ret;
+        // }
 
         NextInstructionPointer pointer = execute_operation(ctx, function->operations.elements + ix);
 
-        if (!debug_execution_observer(ctx, (ExecutionMessage) {
-                                               .type = EMT_AFTER_INSTRUCTION,
-                                               .payload = &pointer,
-                                           })) {
-            FunctionReturn ret = { 0 };
-            ret.type = FRT_EXIT;
-            ret.exit_code = 0;
-            ctx->scope = current;
-            return ret;
-        }
+        // if (!debug_execution_observer(ctx, (ExecutionMessage) {
+        //                                        .type = EMT_AFTER_INSTRUCTION,
+        //                                        .payload = &pointer,
+        //                                    })) {
+        //     FunctionReturn ret = { 0 };
+        //     ret.type = FRT_EXIT;
+        //     ret.exit_code = 0;
+        //     ctx->scope = current;
+        //     return ret;
+        // }
 
         switch (pointer.type) {
         case NIT_RELATIVE:
@@ -838,15 +838,15 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         }
     }
 
-    if (!debug_execution_observer(ctx, (ExecutionMessage) {
-                                           .type = EMT_FUNCTION_RETURN,
-                                       })) {
-        FunctionReturn ret = { 0 };
-        ret.type = FRT_EXIT;
-        ret.exit_code = 0;
-        ctx->scope = current;
-        return ret;
-    }
+    // if (!debug_execution_observer(ctx, (ExecutionMessage) {
+    //                                        .type = EMT_FUNCTION_RETURN,
+    //                                    })) {
+    //     FunctionReturn ret = { 0 };
+    //     ret.type = FRT_EXIT;
+    //     ret.exit_code = 0;
+    //     ctx->scope = current;
+    //     return ret;
+    // }
 
     ctx->scope = current;
     return (FunctionReturn) { .type = FRT_NORMAL, .return_value = NULL };
@@ -862,9 +862,9 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     ctx.program = &program;
     ctx.root_scope = &root_scope;
 
-    if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
-        return -1;
-    }
+    // if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
+    //     return -1;
+    // }
 
     for (size_t ix = 0; ix < program.modules.size; ++ix) {
         IRModule *module = program.modules.elements + ix;
@@ -874,9 +874,9 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     }
 
     FunctionReturn ret = execute_function(&ctx, main);
-    debug_execution_observer(&ctx, (ExecutionMessage) {
-                                       .type = EMT_PROGRAM_EXIT,
-                                   });
+    // debug_execution_observer(&ctx, (ExecutionMessage) {
+    //                                    .type = EMT_PROGRAM_EXIT,
+    //                                });
 
     if (ret.type == FRT_EXCEPTION) {
         printf("Exception caught: %s\n", ret.exception->error.exception);
@@ -908,13 +908,13 @@ Datum *evaluate_function(IRFunction function)
     Scope            root_scope = { 0 };
     ExecutionContext ctx = { 0 };
     ctx.root_scope = &root_scope;
-    if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
-        return datum_error("Execution observer returned false");
-    }
+    // if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
+    //     return datum_error("Execution observer returned false");
+    // }
     FunctionReturn ret = execute_function(&ctx, &function);
-    debug_execution_observer(&ctx, (ExecutionMessage) {
-                                       .type = EMT_PROGRAM_EXIT,
-                                   });
+    // debug_execution_observer(&ctx, (ExecutionMessage) {
+    //                                    .type = EMT_PROGRAM_EXIT,
+    //                                });
     if (ret.type == FRT_EXCEPTION) {
         return NULL;
     }

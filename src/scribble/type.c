@@ -24,7 +24,7 @@ typedef struct {
 
 static TypeRegistry type_registry = { 0 };
 
-#define BUILTINTYPE_ENUM(type, name, code) type_id type##_ID = 0;
+#define BUILTINTYPE_ENUM(type, name, code) type_id type##_ID = (type_id) -1;
 BUILTINTYPES(BUILTINTYPE_ENUM)
 #undef BUILTINTYPE_ENUM
 type_id PCHAR_ID = 0;

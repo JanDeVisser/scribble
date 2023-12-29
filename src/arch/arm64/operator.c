@@ -226,39 +226,46 @@ ValueLocation arm64_apply_array_op(ARM64Function *function, type_id lhs_type, Op
 
     switch (op) {
     case OP_SUBSCRIPT: {
-        assert(lhs.kind == VLK_REGISTER_RANGE);
         assert(rhs.kind == VLK_REGISTER);
+        assert(lhs.kind == VLK_REGISTER);
+        ValueLocation arr_length = lhs;
+        ValueLocation arr_ptr = MUST_OPTIONAL(ValueLocation, arm64function_pop_location(function));
+        assert(arr_ptr.kind == VLK_REGISTER);
+
+        StringView lbl = sv_printf("__assert_%zu_%.*s", label_reserve_id(), SV_ARG(arm64function_label(function)));
+        arm64function_add_instruction(function, "cmp", "%s,%s", x_reg(rhs.reg), x_reg(arr_length.reg));
+        arm64function_add_instruction(function, "b.lo", "%.*s", SV_ARG(lbl));
+        arm64function_write_string(function, 2, sv_from("Index out of bounds"));
+        arm64function_write_char(function, 2, '\n');
+        arm64function_syscall1(function, SYSCALL_EXIT, 1);
+        arm64function_add_label(function, lbl);
 
         ExpressionType *array_type = type_registry_get_type_by_id(lhs_type);
         type_id         ptr_type_id = array_type->components.components[0].type_id;
         ExpressionType *ptr_type = type_registry_get_type_by_id(ptr_type_id);
-        Register        ptr_reg = lhs.range.start;
-        ValueLocation   ptr_location = {
-              .type = ptr_type_id,
-              .kind = VLK_REGISTER,
-              .reg = ptr_reg,
-        };
-        arm64function_push_location(function, ptr_location);
+        Register        ptr_reg = arr_ptr.reg;
+
+        arm64function_push_location(function, arr_ptr);
         arm64function_push_location(function, rhs);
-        ptr_location = MUST_OPTIONAL(ValueLocation, arm64operator_apply(function, ptr_type_id, OP_ADD, rhs_type, &ptr_location));
-        assert(ptr_location.kind == VLK_REGISTER);
+        arr_ptr = MUST_OPTIONAL(ValueLocation, arm64operator_apply(function, ptr_type_id, OP_ADD, rhs_type, NULL));
+        assert(arr_ptr.kind == VLK_REGISTER);
         type_id       elem_type_id = ptr_type->template_arguments[0].type;
         ValueLocation subscript_ptr = {
             .kind = VLK_POINTER,
             .type = elem_type_id,
             .pointer = {
-                .reg = ptr_location.reg,
+                .reg = arr_ptr.reg,
                 .offset = 0,
             },
         };
-        ptr_location.type = elem_type_id;
+        arr_ptr.type = elem_type_id;
         ValueLocation elem_location = arm64function_location_for_type(function, elem_type_id);
         arm64function_copy(
             function,
             elem_location,
             subscript_ptr);
         arm64function_release_register(function, ptr_reg);
-        arm64function_release_register(function, lhs.range.start + 1);
+        arm64function_release_register(function, arr_length.reg);
         arm64function_release_register(function, rhs.reg);
         return elem_location;
     }

@@ -105,9 +105,9 @@ StringView value_location_to_string(ValueLocation loc)
 
 ErrorOrInt output_arm64(IRProgram *program)
 {
-    if (OPT_DEBUG) {
-        register_execution_observer(arm64_inspect);
-    }
+    // if (OPT_DEBUG) {
+    //     register_execution_observer(arm64_inspect);
+    // }
 
     ARM64Context *ctx = generate_arm64(program);
     Assembly     *main = NULL;

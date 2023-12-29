@@ -61,7 +61,7 @@ void show_stack(ARM64Function *function)
 bool arm64_inspect(ObserverContext *ctx, ExecutionMessage msg)
 {
     switch (msg.type) {
-    case EMT_OBSERVER_INIT: {
+    case EMT_STAGE_INIT: {
         ObserverRegistry *registry = (ObserverRegistry *) msg.payload;
         assert(registry->processor == arm64_inspect);
         registry->custom_commands = "EFSV";

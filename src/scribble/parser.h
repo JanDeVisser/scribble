@@ -12,10 +12,11 @@
 #define __PARSER_H__
 
 typedef struct operator_mapping {
-    Operator operator;
+    Operator  operator;
     bool      binary;
     TokenKind token_kind;
     TokenCode token_code;
+    char      closed_by;
     int       precedence;
 } OperatorMapping;
 
@@ -25,7 +26,6 @@ typedef struct operator_mapping {
     S(BLOCK)               \
     S(BOOL)                \
     S(BREAK)               \
-    S(CAST)                \
     S(COMPOUND)            \
     S(CONTINUE)            \
     S(DECIMAL)             \
@@ -49,7 +49,6 @@ typedef struct operator_mapping {
     S(RETURN)              \
     S(STRING)              \
     S(STRUCT)              \
-    S(TERNARYEXPRESSION)   \
     S(TYPE)                \
     S(TYPE_COMPONENT)      \
     S(UNARYEXPRESSION)     \
@@ -103,10 +102,6 @@ typedef struct syntax_node {
             bool                discard_result;
         } call;
         struct {
-            struct syntax_node *expr;
-            struct syntax_node *cast_to;
-        } cast_expr;
-        struct {
             struct syntax_node *expressions;
         } compound_expr;
         struct {
@@ -118,7 +113,7 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *lhs;
             struct syntax_node *rhs;
-            Operator operator;
+            Operator            operator;
         } binary_expr;
         struct {
             struct syntax_node *argument;
@@ -126,7 +121,7 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *variable;
             struct syntax_node *expression;
-            Operator operator;
+            Operator            operator;
         } assignment;
         struct {
             struct syntax_node *underlying_type;
@@ -157,15 +152,10 @@ typedef struct syntax_node {
         struct {
             struct syntax_node *components;
         } struct_def;
-        struct {
-            struct syntax_node *condition;
-            struct syntax_node *if_true;
-            struct syntax_node *if_false;
-        } ternary_expr;
         TypeDescr type_descr;
         struct {
             struct syntax_node *operand;
-            Operator operator;
+            Operator            operator;
         } unary_expr;
         struct {
             struct syntax_node *variable;

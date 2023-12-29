@@ -8,7 +8,6 @@
 #include <arch/arm64/arm64.h>
 #include <binder.h>
 #include <config.h>
-#include <debugger.h>
 #include <execute.h>
 #include <graph.h>
 #include <intermediate.h>
@@ -56,12 +55,12 @@ int main(int argc, char **argv)
         graph_program(parse_result.program);
         register_binding_observer(graph_ast);
     }
-    BoundNode *ast = bind(parse_result.program);
+    BoundNode *ast = bind_program(parse_result.program);
     IRProgram  ir = generate(ast);
     if (OPT_EMULATE) {
-        if (OPT_DEBUG) {
-            register_execution_observer(debug_processor);
-        }
+        // if (OPT_DEBUG) {
+        //     register_execution_observer(debug_processor);
+        // }
         execute(ir);
     } else {
         MUST(Int, output_arm64(&ir));

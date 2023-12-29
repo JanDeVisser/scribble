@@ -174,8 +174,8 @@ typedef struct bound_node {
 typedef void (*BindingObserver)(int, BoundNode *);
 
 extern char const     *BoundNodeType_name(BoundNodeType type);
-extern BoundNode      *bind(SyntaxNode *program);
+extern BoundNode      *bind_program(SyntaxNode *program);
 extern BindingObserver register_binding_observer(BindingObserver observer);
-extern BoundNode      *bind_format(BoundNode *parent, SyntaxNode *stmt, void *ctx);
+extern BoundNode      *bind_format(BoundNode *node, void *v_ctx);
 
 #endif /* __BINDER_H__ */

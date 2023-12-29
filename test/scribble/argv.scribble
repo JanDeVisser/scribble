@@ -1,6 +1,7 @@
-func main(argv: string[]) : i32
+func main(argv: array<string>) : i32
 {
-    for x in 0 .. #argv {
+    puti(#argv as i32); endln();
+    for x in (0 .. #argv) {
         putln(argv[x]);
     }
     return 0;

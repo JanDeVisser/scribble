@@ -3,7 +3,6 @@ add_library(
         STATIC
         binder.c
         datum.c
-        debugger.c
         execute.c
         graph.c
         intermediate.c
@@ -13,6 +12,7 @@ add_library(
         parser.c
         type.c
         op.h
+        engine.c
 )
 
 add_executable(

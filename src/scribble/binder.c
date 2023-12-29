@@ -87,14 +87,14 @@ void context_function_is_main(BindContext *ctx, BoundNode *function)
         return;
     }
     if (function->function.parameter) {
-        if (!function->function.parameter->next) {
+        if (function->function.parameter->next) {
             error(NULL, ctx->program, ctx, "main() function can have at most one parameter");
             return;
         }
         type_id         param_type = typeid_canonical_type_id(function->function.parameter->typespec.type_id);
         ExpressionType *et = type_registry_get_type_by_id(param_type);
         assert(et);
-        if (et->type_id != ARRAY_ID || et->num_arguments != 1 || et->template_arguments[0].arg_type != TPT_TYPE || et->template_arguments[0].type != STRING_ID) {
+        if (et->specialization_of != ARRAY_ID || et->num_arguments != 1 || et->template_arguments[0].arg_type != TPT_TYPE || et->template_arguments[0].type != STRING_ID) {
             error(NULL, ctx->program, ctx, "main() function parameter must be an string array");
             return;
         }
@@ -390,7 +390,7 @@ bool resolve_binary_expression_type(Operator op, TypeSpec lhs, TypeSpec rhs, Typ
                             }));
                     return true;
                 }
-            } else if (result == BIT_PARAMETER) {
+            } else if (typeid_builtin_type(result) == BIT_PARAMETER) {
                 assert(typeid_is_specialization(lhs.type_id));
                 ExpressionType *type = type_registry_get_type_by_id(lhs.type_id);
                 assert(type->num_arguments == 1);
@@ -767,6 +767,51 @@ __attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, Synt
     if (stmt->binary_expr.operator== OP_LOGICAL_OR || stmt->binary_expr.operator== OP_LOGICAL_AND) {
         return short_circuit_logical_operators(parent, stmt, ctx);
     }
+
+    if (stmt->binary_expr.operator == OP_CAST) {
+        BoundNode *cast = bound_node_make(BNT_CAST, parent);
+        BoundNode *lhs = bind_node(cast, stmt->binary_expr.lhs, ctx);
+        BoundNode *rhs = bind_node(cast, stmt->binary_expr.rhs, ctx);
+        if (lhs->type == BNT_UNBOUND_NODE || rhs->type == BNT_UNBOUND_NODE) {
+            return bound_node_make_unbound(parent, stmt, NULL);
+        }
+        if (rhs->type != BNT_TYPE) {
+            return error(parent, stmt, ctx, "Cast operator must be followed by a type");
+        }
+        cast->typespec = rhs->typespec;
+        cast->name = stmt->name;
+        cast->cast_expr.expr = lhs;
+        cast->cast_expr.cast_to = rhs->typespec.type_id;
+        return cast;
+    }
+
+    if (stmt->binary_expr.operator == OP_TERNARY) {
+        BoundNode *ternary = bound_node_make(BNT_TERNARYEXPRESSION, parent);
+        BoundNode *condition = bind_node(ternary, stmt->binary_expr.lhs, ctx);
+        BoundNode *rhs = bind_node(ternary, stmt->binary_expr.rhs, ctx);
+        if (condition->type == BNT_UNBOUND_NODE || rhs->type == BNT_UNBOUND_NODE) {
+            return bound_node_make_unbound(parent, stmt, NULL);
+        }
+        if (typeid_canonical_type_id(condition->typespec.type_id) != BOOL_ID) {
+            return error(parent, stmt, ctx, "Ternary expression condition must be of type 'bool'");
+        }
+        if (rhs->type != BNT_BINARYEXPRESSION || rhs->binary_expr.operator!= OP_TERNARY_ELSE) {
+            return error(parent, stmt, ctx, "Ternary expression must be followed by a binary ':' expression");
+        }
+
+        BoundNode *if_true = rhs->binary_expr.lhs;
+        BoundNode *if_false = rhs->binary_expr.rhs;
+        if (typeid_canonical_type_id(if_true->typespec.type_id) != typeid_canonical_type_id(if_false->typespec.type_id)) {
+            return error(parent, stmt, ctx, "Ternary expression `true` and `false` values must be of the same type");
+        }
+        ternary->typespec = (TypeSpec) { .type_id = typeid_canonical_type_id(if_true->typespec.type_id), .optional = false };
+        ternary->name = sv_from("?:");
+        ternary->ternary_expr.condition = condition;
+        ternary->ternary_expr.if_true = if_true;
+        ternary->ternary_expr.if_false = if_false;
+        return evaluate_node(ternary);
+    }
+
     BoundNode *ret = bound_node_make(BNT_BINARYEXPRESSION, parent);
     BoundNode *lhs = bind_node(ret, stmt->binary_expr.lhs, ctx);
     BoundNode *rhs = bind_node(ret, stmt->binary_expr.rhs, ctx);
@@ -830,22 +875,6 @@ __attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stm
     BoundNode *ret = bound_node_make((stmt->type == SNT_BREAK) ? BNT_BREAK : BNT_CONTINUE, parent);
     ret->controlled_statement = controllable;
     return ret;
-}
-
-__attribute__((unused)) BoundNode *bind_CAST(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
-{
-    BoundNode *cast = bound_node_make(BNT_CAST, parent);
-    cast->name = stmt->name;
-    cast->cast_expr.expr = bind_node(cast, stmt->cast_expr.expr, ctx);
-    if (cast->cast_expr.expr->type == BNT_UNBOUND_NODE) {
-        return bound_node_make_unbound(parent, stmt, ctx);
-    }
-    TypeSpec spec;
-    if (!resolve_type_node(stmt->cast_expr.cast_to, &spec)) {
-        return bound_node_make_unbound(parent, stmt, ctx);
-    }
-    cast->cast_expr.cast_to = spec.type_id;
-    return cast;
 }
 
 __attribute__((unused)) BoundNode *bind_COMPOUND(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
@@ -1251,32 +1280,19 @@ __attribute__((unused)) BoundNode *bind_STRUCT(BoundNode *parent, SyntaxNode *st
     return NULL;
 }
 
-__attribute__((unused)) BoundNode *bind_TERNARYEXPRESSION(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
+__attribute__((unused)) BoundNode *bind_TYPE(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    BoundNode *ret = bound_node_make(BNT_TERNARYEXPRESSION, parent);
-    BoundNode *condition = bind_node(ret, stmt->ternary_expr.condition, ctx);
-    BoundNode *if_true = bind_node(ret, stmt->ternary_expr.if_true, ctx);
-    BoundNode *if_false = bind_node(ret, stmt->ternary_expr.if_false, ctx);
-    if (condition->type == BNT_UNBOUND_NODE || if_true->type == BNT_UNBOUND_NODE || if_false->type == BNT_UNBOUND_NODE) {
-        return bound_node_make_unbound(parent, stmt, NULL);
+    ErrorOrTypeID type_id_maybe = resolve_type(&stmt->type_descr);
+    if (ErrorOrTypeID_is_error(type_id_maybe)) {
+        fprintf(stderr, "Could not resolve type '%.*s'\n", SV_ARG(stmt->type_descr.name));
+        return bound_node_make_unbound(parent, stmt, ctx);
     }
-    if (typeid_canonical_type_id(condition->typespec.type_id) != BOOL_ID) {
-        return error(parent, stmt, ctx, "Ternary expression condition must be of type 'bool'");
-    }
-    if (typeid_canonical_type_id(if_true->typespec.type_id) != typeid_canonical_type_id(if_false->typespec.type_id)) {
-        return error(parent, stmt, ctx, "Ternary expression `true` and `false` values must be of the same type");
-    }
-    ret->typespec = (TypeSpec) { .type_id = typeid_canonical_type_id(if_true->typespec.type_id), .optional = false };
-    ret->name = sv_from("?:");
-    ret->ternary_expr.condition = condition;
-    ret->ternary_expr.if_true = if_true;
-    ret->ternary_expr.if_false = if_false;
-    return evaluate_node(ret);
-}
 
-__attribute__((unused)) BoundNode *bind_TYPE(BoundNode *, SyntaxNode *, BindContext *)
-{
-    return NULL;
+    BoundNode *ret = bound_node_make(BNT_TYPE, parent);
+    ret->name = ret->name;
+    ret->typespec.type_id = type_id_maybe.value;
+    ret->typespec.optional = false;
+    return ret;
 }
 
 __attribute__((unused)) BoundNode *bind_TYPE_COMPONENT(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
@@ -1591,11 +1607,11 @@ __attribute__((unused)) BoundNode *bind_WHILE(BoundNode *parent, SyntaxNode *stm
 
 BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
 {
-    static size_t VOID_ID = -1;
-
-    if (VOID_ID < 0) {
+    // Trigger type system initialization:
+    if ((int) VOID_ID < 0) {
         type_registry_id_of_builtin_type(BIT_VOID);
     }
+
     if (!stmt) {
         return NULL;
     }
@@ -1738,7 +1754,7 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
 
 static BindingObserver s_observer = NULL;
 
-BoundNode *bind(SyntaxNode *program)
+BoundNode *bind_program(SyntaxNode *program)
 {
     BindContext *ctx = allocate(sizeof(BindContext));
     ctx->program = program;
@@ -1829,38 +1845,38 @@ __attribute__((unused)) BoundNode *static_message(BoundNode *node, void *v_ctx)
 }
 
 #if 0
-
-__attribute__((unused)) BoundNode *bind_format(BoundNode *parent, SyntaxNode *stmt, void *v_ctx)
+__attribute__((unused)) BoundNode *bind_format(BoundNode *node, void *v_ctx)
 {
     BindContext *ctx = (BindContext *) v_ctx;
-    BoundNode *fmt_format = bound_node_find(parent, BNT_FUNCTION, sv_from("fmt_format"));
+    BoundNode *fmt_format = bound_node_find(node->parent, BNT_FUNCTION, sv_from("fmt_format"));
     if (!fmt_format) {
-        return bound_node_make_unbound(parent, stmt, ctx);
+        fatal("Cannot find fmt_format function");
     }
-    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, parent);
+    BoundNode *ret = bound_node_make(BNT_FUNCTION_CALL, node->parent);
     ret->call.function = fmt_format;
     size_t argc = 0;
-    BoundNode **last = NULL;
-    for (SyntaxNode *arg = stmt->arguments.argument; arg; arg = arg->next) {
-        if (argc == 0) {
-            BoundNode *fmt_arg = bind_node(ret, arg, ctx);
-            if (fmt_arg->type == BNT_UNBOUND_NODE) {
-                return bound_node_make_unbound(parent, stmt, ctx);
-            }
-            ret->call.argument = fmt_arg;
-            last = &fmt_arg;
+    for (BoundNode *arg = node->call.argument; arg; arg = arg->next) {
+        if (argc == -1) {
+            assert(arg->typespec.type_id == STRING_ID);
+            ret->call.argument = arg;
         } else {
-
+            FMTArg fmt_arg;
+            if (datum_is_integer(evaluated)) {
+                fmt_arg.integer = evaluated->integer;
+            } else if (evaluated->type == STRING_ID) {
+                fmt_arg.sv = evaluated->string;
+            } else if (typeid_builtin_type(evaluated->type) == BIT_RAW_POINTER) {
+                fmt_arg.pointer = evaluated->raw_pointer;
+            } else {
+                fatal("Unsupported type in static_message");
+            }
+            da_append_FMTArg(&args, fmt_arg);
         }
         ++argc;
     }
-    assert(argc > 0);
-
-
-    if (!fnc) {
-        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
-        return bound_node_make_unbound(parent, stmt, ctx);
+    if (argc < 0) {
+        fatal("No format message specified in static_message");
     }
-
+    return ret;
 }
 #endif

@@ -15,7 +15,7 @@
 
 static ObserverStack *stack_free_list = NULL;
 
-static ObserverRegistry s_observers[16] = { 0 };
+static ObserverRegistry s_executors[16] = { 0 };
 
 DA_IMPL(Breakpoint)
 
@@ -274,7 +274,7 @@ static char const *s_debugger_help = "\nScribble debugger commands\n\n"
 
 bool debug_processor(ObserverContext *ctx, ExecutionMessage msg)
 {
-    if (msg.type == EMT_OBSERVER_INIT) {
+    if (msg.type == EMT_STAGE_INIT) {
         ObserverRegistry *registry = (ObserverRegistry *) msg.payload;
         assert(registry->processor == debug_processor);
         registry->custom_commands = "STV";
@@ -384,16 +384,16 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
 bool debug_execution_observer(void *context, ExecutionMessage msg)
 {
     ObserverContext *ctx = NULL;
-    for (size_t ix = 0; ix < 16 && s_observers[ix].processor != NULL; ++ix) {
-        ctx = s_observers[ix].context;
+    for (size_t ix = 0; ix < 16 && s_executors[ix].processor != NULL; ++ix) {
+        ctx = s_executors[ix].context;
         if (ctx == NULL) {
             ctx = allocate_new(ObserverContext);
             ctx->execution_context = context;
-            s_observers[ix].context = ctx;
+            s_executors[ix].context = ctx;
         }
         switch (msg.type) {
-        case EMT_OBSERVER_INIT:
-            return s_observers[ix].processor(ctx, msg);
+        case EMT_STAGE_INIT:
+            return s_executors[ix].processor(ctx, msg);
         case EMT_PROGRAM_START: {
             ctx->program = (IRProgram *) msg.payload;
             StringList breakpoints = get_option_values(sv_from("breakpoint"));
@@ -404,7 +404,7 @@ bool debug_execution_observer(void *context, ExecutionMessage msg)
                 debug_set_breakpoint(ctx, bp_function, bp_index);
             }
             ctx->execution_mode = (OPT_RUN) ? EM_CONTINUE : EM_SINGLE_STEP;
-            return s_observers[ix].processor(ctx, msg);
+            return s_executors[ix].processor(ctx, msg);
         }
         case EMT_FUNCTION_ENTRY: {
             ObserverStack *entry = allocate_observer_stack();
@@ -415,7 +415,7 @@ bool debug_execution_observer(void *context, ExecutionMessage msg)
             }
             entry->prev = ctx->stack;
             ctx->stack = entry;
-            return s_observers[ix].processor(ctx, msg);
+            return s_executors[ix].processor(ctx, msg);
         } break;
         case EMT_ON_INSTRUCTION: {
             IROperation *instruction = (IROperation *) msg.payload;
@@ -434,12 +434,12 @@ bool debug_execution_observer(void *context, ExecutionMessage msg)
                 break;
             }
             ir_operation_print(instruction);
-            return process(ctx, msg, s_observers[ix]);
+            return process(ctx, msg, s_executors[ix]);
         }
         case EMT_AFTER_INSTRUCTION:
-            return s_observers[ix].processor(ctx, msg);
+            return s_executors[ix].processor(ctx, msg);
         case EMT_FUNCTION_RETURN: {
-            bool           ret = s_observers[ix].processor(ctx, msg);
+            bool           ret = s_executors[ix].processor(ctx, msg);
             ObserverStack *entry = ctx->stack;
             if (ctx->execution_mode == EM_RUN_TO_RETURN || ctx->execution_mode == EM_STEP_OVER || entry->step_over) {
                 ctx->execution_mode = EM_SINGLE_STEP;
@@ -449,9 +449,9 @@ bool debug_execution_observer(void *context, ExecutionMessage msg)
             return ret;
         }
         case EMT_PROGRAM_EXIT: {
-            bool ret = s_observers[ix].processor(ctx, msg);
+            bool ret = s_executors[ix].processor(ctx, msg);
             ctx->program = NULL;
-            s_observers[ix].context = NULL;
+            s_executors[ix].context = NULL;
             return ret;
         }
         default:
@@ -464,9 +464,9 @@ bool debug_execution_observer(void *context, ExecutionMessage msg)
 void register_execution_observer(ObservationProcessor observer)
 {
     for (size_t ix = 0; ix < 16; ++ix) {
-        if (s_observers[ix].processor == NULL) {
-            s_observers[ix].processor = observer;
-            observer(NULL, (ExecutionMessage) { .type = EMT_OBSERVER_INIT, .payload = &s_observers[ix] });
+        if (s_executors[ix].processor == NULL) {
+            s_executors[ix].processor = observer;
+            observer(NULL, (ExecutionMessage) { .type = EMT_STAGE_INIT, .payload = &s_executors[ix] });
             return;
         }
     }

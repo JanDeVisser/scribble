@@ -5,7 +5,6 @@
  */
 
 #include <config.h>
-#include <debugger.h>
 #include <intermediate.h>
 #include <optional.h>
 #include <sv.h>
@@ -438,6 +437,7 @@ typedef struct assembly {
     bool                  has_exports;
     bool                  has_main;
     StringID             *strings;
+    size_t                label_id;
 } Assembly;
 
 DA(Assembly)
@@ -549,6 +549,6 @@ extern ARM64Variable         arm64variable_component(ARM64Variable *variable, si
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
 extern ARM64Context         *generate_arm64(IRProgram *program);
 extern ErrorOrInt            output_arm64(IRProgram *program);
-extern bool                  arm64_inspect(ObserverContext *ctx, ExecutionMessage msg);
+// extern bool                  arm64_inspect(ObserverContext *ctx, ExecutionMessage msg);
 
 #endif /* __ARM64_H__ */

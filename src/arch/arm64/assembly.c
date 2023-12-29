@@ -20,7 +20,7 @@ DA_IMPL(Assembly)
 
 size_t label_reserve_id()
 {
-    static size_t id = 0;
+    static size_t id = 5000;
     return id++;
 }
 

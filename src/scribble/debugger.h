@@ -20,7 +20,7 @@ typedef enum execution_mode {
 } ExecutionMode;
 
 typedef enum {
-    EMT_OBSERVER_INIT,
+    EMT_STAGE_INIT,
     EMT_PROGRAM_START,
     EMT_FUNCTION_ENTRY,
     EMT_ON_INSTRUCTION,

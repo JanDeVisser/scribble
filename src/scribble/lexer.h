@@ -75,6 +75,7 @@ typedef struct {
     int        code;
 } Keyword;
 
+// clang-format off
 #define KEYWORDS(S)                \
     S(AS, as, 0)                   \
     S(BREAK, break, 1)             \
@@ -118,9 +119,11 @@ typedef struct {
     S(NOT_EQUALS, !=, 39)          \
     S(RANGE, .., 40)               \
     S(FUNC_BINDING, ->, 41)        \
-    S(MACRO_BINDING, = >, 42)      \
+    S(MACRO_BINDING, =>, 42)      \
     S(UNARY_DECREMENT, --, 43)     \
     S(UNARY_INCREMENT, ++, 44)
+
+// clang-format on
 
 typedef enum {
 #undef KEYWORD_ENUM
