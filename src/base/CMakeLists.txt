@@ -9,8 +9,10 @@ add_library(
         fn.c
         fs.c
         hash.c
+        http.c
         integer.c
         io.c
+        json.c
         log.c
         mem.c
         mutex.c
