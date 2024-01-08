@@ -43,10 +43,10 @@ bool bootstrap_backend(BackendConnection *conn)
     http_request_send(conn->fd, &request);
     sv_free(request.request);
 
-    if (http_get_message(conn->fd, sv_from("/hello"), (StringList) {0}) != HTTP_STATUS_HELLO) {
+    if (http_get_message(conn->fd, sv_from("/hello"), (StringList) { 0 }) != HTTP_STATUS_HELLO) {
         fatal("/hello failed");
     }
-    conn->config = HTTP_GET_REQUEST_MUST(conn->fd, "/bootstrap/config", (StringList) {0});
+    conn->config = HTTP_GET_REQUEST_MUST(conn->fd, "/bootstrap/config", (StringList) { 0 });
     return true;
 }
 
@@ -55,9 +55,9 @@ ErrorOrInt compile_program(BackendConnection *conn)
     StringView target = json_get_string(&conn->config, "target", sv_from("."));
 
     ParserContext parse_result = parse(conn);
-    bool debug = json_get_bool(&conn->config, "debug_parser", false);
+    bool          debug = json_get_bool(&conn->config, "debug_parser", false);
 
-    if (debug && http_post_message(conn->fd, sv_from("/parser/start"), (JSONValue) {0}) != HTTP_STATUS_OK) {
+    if (debug && http_post_message(conn->fd, sv_from("/parser/start"), (JSONValue) { 0 }) != HTTP_STATUS_OK) {
         fatal("/parser/start failed");
     }
     if (parse_result.first_error) {
@@ -76,7 +76,7 @@ ErrorOrInt compile_program(BackendConnection *conn)
         exit(1);
     }
     if (debug) {
-        HTTP_GET_MUST(conn->fd, "/parser/done", (StringList) {0});
+        HTTP_GET_MUST(conn->fd, "/parser/done", (StringList) { 0 });
     }
 
     if (json_get_bool(&conn->config, "graph", false)) {

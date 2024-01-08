@@ -23,7 +23,7 @@ typedef struct string_view {
 } StringView;
 
 OPTIONAL(StringView)
-ERROR_OR_ALIAS(StringView, StringView);
+ERROR_OR(StringView);
 
 DA_ELEMENTS(StringView, strings)
 typedef DA_StringView StringList;
