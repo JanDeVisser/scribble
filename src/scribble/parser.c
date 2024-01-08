@@ -1130,7 +1130,7 @@ ParserContext parse(BackendConnection *conn)
     DIR *dir = opendir(dir_cstr);
     if (dir == NULL) {
         if (errno == ENOTDIR) {
-            dir = opendir(sv_cstr(ret.source_name));
+            dir = opendir(".");
             if (dir == NULL) {
                 fatal("Could not open current directory");
             }

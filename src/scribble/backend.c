@@ -37,29 +37,22 @@ void exit_backend(BackendConnection *conn, StringView error)
 
 bool bootstrap_backend(BackendConnection *conn)
 {
-    HttpRequest request = { 0 };
-    request.method = HTTP_METHOD_GET;
-    request.url = sv_from("/hello");
-    http_request_send(conn->fd, &request);
-    sv_free(request.request);
-
     if (http_get_message(conn->fd, sv_from("/hello"), (StringList) { 0 }) != HTTP_STATUS_HELLO) {
         fatal("/hello failed");
     }
     conn->config = HTTP_GET_REQUEST_MUST(conn->fd, "/bootstrap/config", (StringList) { 0 });
+    printf("[C] Got config\n");
     return true;
 }
 
 ErrorOrInt compile_program(BackendConnection *conn)
 {
-    StringView target = json_get_string(&conn->config, "target", sv_from("."));
-
-    ParserContext parse_result = parse(conn);
     bool          debug = json_get_bool(&conn->config, "debug_parser", false);
 
     if (debug && http_post_message(conn->fd, sv_from("/parser/start"), (JSONValue) { 0 }) != HTTP_STATUS_OK) {
         fatal("/parser/start failed");
     }
+    ParserContext parse_result = parse(conn);
     if (parse_result.first_error) {
         JSONValue errors = json_array();
         for (ScribbleError *err = parse_result.first_error; err; err = err->next) {
@@ -95,6 +88,7 @@ int main(int argc, char **argv)
     if (argc != 2) {
         exit(1);
     }
+    set_option(sv_from("trace"), sv_from("IPC"));
     log_init();
     type_registry_init();
     StringView socket_path = sv_from(argv[1]);

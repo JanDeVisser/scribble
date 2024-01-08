@@ -39,6 +39,8 @@ int main(int argc, char **argv)
     log_init();
 
     JSONValue config = json_object();
+    json_set(&config, "debug_intermediate", json_bool(true));
+    json_set_cstr(&config, "target", program_dir_or_file);
     socket_t conn_fd = MUST(Socket, engine_start_backend());
 
     while (true) {
@@ -48,6 +50,13 @@ int main(int argc, char **argv)
         if (sv_eq_cstr(request.url, "/hello")) {
             HttpResponse response = { 0 };
             response.status = HTTP_STATUS_HELLO;
+            http_response_send(conn_fd, &response);
+            continue;
+        }
+        if (sv_eq_cstr(request.url, "/bootstrap/config")) {
+            HttpResponse response = { 0 };
+            response.status = HTTP_STATUS_OK;
+            response.body = json_encode(config);
             http_response_send(conn_fd, &response);
             continue;
         }

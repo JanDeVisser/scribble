@@ -22,7 +22,9 @@ ErrorOrSocket engine_start_backend()
 {
     StringView     path = sv_printf("/tmp/scribble-engine-%zu", getpid());
     socket_t const listen_fd = MUST(Socket, unix_socket_listen(path));
-    TRY_TO(Int, Socket, execute(sv_from("scribble-backend"), sv_cstr(path)));
+    Process       *client = process_create(sv_from("scribble-backend"), sv_cstr(path));
+    MUST(Int, process_start(client));
+    trace(CAT_IPC, "Started client, pid = %d\n", client->pid);
     return socket_accept(listen_fd);
 }
 
