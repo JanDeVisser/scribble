@@ -44,3 +44,8 @@ add_executable(
 
 target_link_libraries(type_test scb_base scb_impl)
 target_compile_definitions(type_test PUBLIC TYPE_TEST)
+
+install(TARGETS scribble scribble-backend scb_base testlib
+        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib)
