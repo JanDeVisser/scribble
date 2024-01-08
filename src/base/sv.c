@@ -540,7 +540,7 @@ int digit_value_in_base(int ch, size_t base)
             if (nneg > nmax || (nneg == nmax && c > 5)) {                     \
                 return ret;                                                   \
             }                                                                 \
-            ret.integer.u##sz = base * ret.integer.u##sz - c;                 \
+            ret.integer.u##sz = base * ret.integer.u##sz + c;                 \
             ix++;                                                             \
         }                                                                     \
         ret.success = true;                                                   \
@@ -643,6 +643,23 @@ int main()
     test_split_join(sv_from("  ab cd ef  "));
     test_split_join(sv_from("ab cd ef  "));
     test_split_join(sv_from("  ab \t cd \n\n ef"));
+
+    IntegerParseResult res = sv_parse_u64(sv_from("69"));
+    if (res.success) {
+        printf("Sixtynine u64 = %llu\n", res.integer.u64);
+    }
+    res = sv_parse_u32(sv_from("69"));
+    if (res.success) {
+        printf("Sixtynine u32 = %u\n", res.integer.u32);
+    }
+    res = sv_parse_i64(sv_from("69"));
+    if (res.success) {
+        printf("Sixtynine i64 = %lld\n", res.integer.i64);
+    }
+    res = sv_parse_i32(sv_from("69"));
+    if (res.success) {
+        printf("Sixtynine i32 = %d\n", res.integer.i32);
+    }
     return 0;
 }
 
