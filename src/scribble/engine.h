@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <da.h>
-#include <ir.h>
-#include <type.h>
-
 #ifndef __ENGINE_H__
 #define __ENGINE_H__
+
+#include <io.h>
+#include <json.h>
+#include <type.h>
 
 typedef enum execution_mode {
     EM_RUN = 0x00,
@@ -58,17 +58,17 @@ typedef struct {
     bool execute;
 } EngineStageConfig;
 
-typedef struct engine_connection {
-    int               fd;
-    EngineStage       stage;
-    EngineStageConfig config[ES_MAX];
-    StringView        target;
-    void             *context;
-} EngineConnection;
+typedef struct backend_connection {
+    socket_t         fd;
+    StringView  socket;
+    EngineStage stage;
+    JSONValue   config;
+    void       *context;
+} BackendConnection;
 
-typedef bool (*EngineStageExecutor)(EngineConnection *, ExecutionMessage);
+typedef bool (*EngineStageExecutor)(BackendConnection *, ExecutionMessage);
 
-extern void engine_start_stage(EngineConnection *conn, EngineStage stage);
-extern bool engine_callback(EngineConnection *conn, ExecutionMessage msg);
+extern ErrorOrSocket        engine_start_backend();
+extern BackendConnection engine_initialize_backend(StringView path);
 
 #endif /* __ENGINE_H__ */

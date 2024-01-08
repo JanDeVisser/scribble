@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: MIT
  */
 
+#ifndef __PARSER_H__
+#define __PARSER_H__
+
+#include <engine.h>
 #include <lexer.h>
 #include <op.h>
 #include <sv.h>
-
-#ifndef __PARSER_H__
-#define __PARSER_H__
 
 typedef struct operator_mapping {
     Operator  operator;
@@ -202,7 +203,7 @@ typedef struct parser_context {
 extern size_t        next_index();
 extern char const   *SyntaxNodeType_name(SyntaxNodeType type);
 extern SyntaxNode   *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
-extern ParserContext parse(char const *dir_or_file);
+extern ParserContext parse(BackendConnection *conn);
 
 #define SN_LOC_ARG(node) LOC_ARG(node->token.loc)
 

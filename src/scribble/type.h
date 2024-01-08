@@ -246,8 +246,7 @@ extern type_id RESULT_ID;
 extern type_id FIRST_CUSTOM_IX;
 extern type_id NEXT_CUSTOM_IX;
 
-ErrorOr(TypeID, type_id);
-ErrorOr(Size, size_t);
+ERROR_OR_ALIAS(TypeID, type_id);
 
 extern char const        *TypeKind_name(TypeKind kind);
 extern char const        *TypeKind_tag(TypeKind kind);

@@ -103,13 +103,13 @@ StringView value_location_to_string(ValueLocation loc)
     return sb.view;
 }
 
-ErrorOrInt output_arm64(IRProgram *program)
+ErrorOrInt output_arm64(BackendConnection *conn, IRProgram *program)
 {
     // if (OPT_DEBUG) {
     //     register_execution_observer(arm64_inspect);
     // }
 
-    ARM64Context *ctx = generate_arm64(program);
+    ARM64Context *ctx = generate_arm64(conn, program);
     Assembly     *main = NULL;
 
 #ifdef IS_APPLE

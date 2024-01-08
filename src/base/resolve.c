@@ -29,7 +29,7 @@
 
 #define SCRIBBLE_INIT "_scribble_init"
 
-ErrorOr(DLResult, void *);
+ERROR_OR_ALIAS(DLResult, void *);
 
 static ErrorOrDLResult _resolve_result_create(void *);
 

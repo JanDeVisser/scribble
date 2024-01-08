@@ -6,6 +6,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include <log.h>
 #include <options.h>
@@ -33,6 +34,7 @@ void emit_log_message(LogLevel level, char const *msg, ...)
 void vemit_log_message(LogLevel level, char const *msg, va_list args)
 {
     if (level >= log_level) {
+        fprintf(stderr, "[%05d] ", getpid());
         vfprintf(stderr, msg, args);
         fprintf(stderr, "\n");
     }

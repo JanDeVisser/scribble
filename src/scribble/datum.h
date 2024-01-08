@@ -17,7 +17,7 @@ typedef struct error_info {
 
 typedef struct datum_pointer {
     struct datum *pointer;
-    DIA_ELEMENTS(size_t, components);
+                  DIA_ELEMENTS(size_t, components);
 } DatumPointer;
 
 #define DATUM_NONINTEGERPRIMITIVES(S)           \
@@ -59,10 +59,11 @@ extern Datum        *datum_copy(Datum *dest, Datum *src);
 extern Datum        *datum_apply(Datum *d1, Operator op, Datum *d2);
 extern void          datum_print(Datum *d);
 extern StringView    datum_sprint(Datum *d);
+extern JSONValue     datum_to_json(Datum *d);
 extern void          datum_free_contents(Datum *d);
 extern void          datum_free(Datum *d);
 extern void          datums_free(Datum *d, ...);
-extern void          datums_vfree(Datum *d, const va_list args);
+extern void          datums_vfree(Datum *d, va_list const args);
 
 static inline TypeKind datum_kind(Datum *d)
 {

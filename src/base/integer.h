@@ -4,15 +4,14 @@
  * SPDX-License-Identifier: MIT
  */
 
+#ifndef __INTEGER_H__
+#define __INTEGER_H__
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <optional.h>
-#include <sv.h>
-
-#ifndef __INTEGER_H__
-#define __INTEGER_H__
 
 #define INTEGER_SIZES(S) S(8) S(16) S(32) S(64)
 
@@ -58,7 +57,7 @@ inline static char const *IntegerType_name(IntegerType type)
 }
 
 struct string_view;
-extern IntegerType IntegerType_from_name(struct string_view name);
+extern IntegerType IntegerType_from_name(char const *name);
 
 static inline bool IntegerType_is_signed(IntegerType type)
 {

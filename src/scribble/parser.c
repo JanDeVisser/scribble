@@ -9,10 +9,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <engine.h>
 #include <error_or.h>
 #include <fn.h>
 #include <fs.h>
 #include <io.h>
+#include <json.h>
 #include <lexer.h>
 #include <log.h>
 #include <options.h>
@@ -421,7 +423,11 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             ret->integer.type = I32;
             Token type = lexer_next(ctx->lexer);
             if (token_matches_kind(type, TK_IDENTIFIER)) {
-                IntegerType integer_type = IntegerType_from_name(type.text);
+                char const *cstr = sv_cstr(type.text);
+                IntegerType integer_type = IntegerType_from_name(cstr);
+                if (cstr != type.text.ptr) {
+                    free_buffer((char *) cstr);
+                }
                 if (integer_type != IU_NO_SUCH_TYPE) {
                     lexer_lex(ctx->lexer);
                     ret->integer.type = integer_type;
@@ -1105,27 +1111,30 @@ SyntaxNode *parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
     return parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
 }
 
-ParserContext parse(char const *dir_or_file)
+ParserContext parse(BackendConnection *conn)
 {
+    StringView dir_or_file = json_get_string(&conn->config, "target", sv_from("."));
+
     if (OPT_TRACE) {
         char cwd[256];
         getcwd(cwd, 256);
-        trace(CAT_PARSE, "CWD: %s dir: %s", cwd, dir_or_file);
+        trace(CAT_PARSE, "CWD: %s dir: %.*s", cwd, SV_ARG(dir_or_file));
     }
     ParserContext ret = { 0 };
-    ret.source_name = sv_copy_cstr(dir_or_file);
+    ret.source_name = sv_copy(dir_or_file);
     Token token = { ret.source_name, TK_PROGRAM, TC_NONE };
     ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(ret.source_name), token);
     import_package(&ret, token, sv_from("std"));
 
-    DIR *dir = opendir(dir_or_file);
+    char const *dir_cstr = sv_cstr(ret.source_name);
+    DIR *dir = opendir(dir_cstr);
     if (dir == NULL) {
         if (errno == ENOTDIR) {
-            dir = opendir(".");
+            dir = opendir(sv_cstr(ret.source_name));
             if (dir == NULL) {
                 fatal("Could not open current directory");
             }
-            SyntaxNode *module = parse_module_file(&ret, dirfd(dir), dir_or_file);
+            SyntaxNode *module = parse_module_file(&ret, dirfd(dir), dir_cstr);
             module->next = ret.program->program.modules;
             ret.program->program.modules = module;
             closedir(dir);

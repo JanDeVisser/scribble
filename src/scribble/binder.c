@@ -6,7 +6,7 @@
 
 #include <binder.h>
 #include <execute.h>
-#include <intermediate.h>
+#include <graph.h>
 #include <log.h>
 #include <native.h>
 #include <options.h>
@@ -15,6 +15,7 @@
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
+#include <http.h>
 
 typedef struct bind_context {
     struct bind_context *parent;
@@ -59,6 +60,15 @@ char const *BoundNodeType_name(BoundNodeType type)
     default:
         UNREACHABLE();
     }
+}
+
+JSONValue bound_node_to_json(BoundNode *node)
+{
+    JSONValue ret = json_object();
+    json_set(&ret, "nodetype", json_string(sv_from(BoundNodeType_name(node->type))));
+    json_set(&ret, "name", json_string(node->name));
+    json_set(&ret, "type", json_string(typeid_name(node->typespec.type_id)));
+    return ret;
 }
 
 BindContext *context_make_subcontext(BindContext *ctx)
@@ -303,24 +313,24 @@ typedef struct unary_operator_signature {
 // clang-format off
 static BinaryOperatorSignature s_operator_signatures[] = {
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt) ARITHMETIC_OPS(BIT_##dt)
+#define INTEGERTYPE(dt) ARITHMETIC_OPS(BIT_## dt)
 INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    { .op = OP_MODULO, .lhs = BIT_##dt, .rhs = BIT_##dt, .result = BIT_##dt },
+    { .op = OP_MODULO, .lhs = BIT_## dt, .rhs = BIT_## dt, .result = BIT_## dt },
     INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt) COMPARISON_OPS(BIT_##dt)
+#define INTEGERTYPE(dt) COMPARISON_OPS(BIT_## dt)
     INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt) BITWISE_OPS(BIT_##dt)
+#define INTEGERTYPE(dt) BITWISE_OPS(BIT_## dt)
     INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
 #undef INTEGERTYPE
-#define INTEGERTYPE(dt, n, ct, is_signed, format, size) SHIFT_OPS(BIT_##dt)
+#define INTEGERTYPE(dt, n, ct, is_signed, format, size) SHIFT_OPS(BIT_## dt)
     INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size) \
-    { .op = OP_RANGE, .lhs = BIT_##dt, .rhs = BIT_##dt, .result = BIT_RANGE },
+    { .op = OP_RANGE, .lhs = BIT_## dt, .rhs = BIT_## dt, .result = BIT_RANGE },
     INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
 
@@ -348,9 +358,9 @@ INTEGERTYPES_WITH_BOOL(INTEGERTYPE)
 static UnaryOperatorSignature s_unary_operator_signatures[] = {
 #undef INTEGERTYPE
 #define INTEGERTYPE(dt, n, ct, is_signed, format, size)                  \
-    { .op = OP_IDENTITY, .operand = BIT_##dt, .result = BIT_##dt },      \
-    { .op = OP_NEGATE, .operand = BIT_##dt, .result = BIT_##dt },        \
-    { .op = OP_BITWISE_INVERT, .operand = BIT_##dt, .result = BIT_##dt },
+    { .op = OP_IDENTITY, .operand = BIT_## dt, .result = BIT_## dt },      \
+    { .op = OP_NEGATE, .operand = BIT_## dt, .result = BIT_## dt },        \
+    { .op = OP_BITWISE_INVERT, .operand = BIT_## dt, .result = BIT_## dt },
     INTEGERTYPES(INTEGERTYPE)
 #undef INTEGERTYPE
     { .op = OP_LOGICAL_INVERT, .operand = BIT_BOOL, .result = BIT_BOOL },
@@ -768,7 +778,7 @@ __attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, Synt
         return short_circuit_logical_operators(parent, stmt, ctx);
     }
 
-    if (stmt->binary_expr.operator == OP_CAST) {
+    if (stmt->binary_expr.operator== OP_CAST) {
         BoundNode *cast = bound_node_make(BNT_CAST, parent);
         BoundNode *lhs = bind_node(cast, stmt->binary_expr.lhs, ctx);
         BoundNode *rhs = bind_node(cast, stmt->binary_expr.rhs, ctx);
@@ -785,7 +795,7 @@ __attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, Synt
         return cast;
     }
 
-    if (stmt->binary_expr.operator == OP_TERNARY) {
+    if (stmt->binary_expr.operator== OP_TERNARY) {
         BoundNode *ternary = bound_node_make(BNT_TERNARYEXPRESSION, parent);
         BoundNode *condition = bind_node(ternary, stmt->binary_expr.lhs, ctx);
         BoundNode *rhs = bind_node(ternary, stmt->binary_expr.rhs, ctx);
@@ -1752,57 +1762,50 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
 }
 
-static BindingObserver s_observer = NULL;
-
-BoundNode *bind_program(SyntaxNode *program)
+BoundNode *bind_program(BackendConnection *conn, SyntaxNode *program)
 {
     BindContext *ctx = allocate(sizeof(BindContext));
     ctx->program = program;
-    BoundNode *ret = bind_node(NULL, program, ctx);
-    int        total_warnings = ctx->warnings;
-    fprintf(stderr, "Iteration 1: %d warnings\n", ctx->warnings);
-    if (ctx->errors) {
-        fatal("Iteration 1: %d errors. Exiting...", ctx->errors);
-    }
-    int current_unbound = INT32_MAX;
-    int iter = 1;
-    if (s_observer) {
-        s_observer(iter, ret);
-    }
-    while (ctx->unbound > 0 && ctx->unbound < current_unbound) {
-        fprintf(stderr, "Iteration %d: %d unbound nodes\n", iter++, ctx->unbound);
-        current_unbound = ctx->unbound;
-        ctx->unbound = 0;
-        ctx->errors = 0;
-        ctx->warnings = 0;
-        rebind_node(ret, ctx);
-        if (ctx->warnings) {
-            fprintf(stderr, "Iteration %d: %d warnings\n", iter, ctx->warnings);
-        }
-        total_warnings += ctx->warnings;
-        if (ctx->errors) {
-            fatal("Iteration %d: %d errors. Exiting...", iter, ctx->errors);
-        }
-        if (s_observer) {
-            s_observer(iter, ret);
-        }
-    }
-    fprintf(stderr, "Iteration %d: %d Total warnings\n", iter, total_warnings);
-    if (ctx->unbound > 0) {
-        fatal("Iteration %d: There are %d unbound nodes. Exiting...", iter, ctx->unbound);
-    }
-    fprintf(stderr, "Iteration %d: All bound\n", iter);
-    if (!ctx->main) {
-        fatal("No main function found");
-    }
-    return ret;
-}
 
-BindingObserver register_binding_observer(BindingObserver observer)
-{
-    BindingObserver ret = s_observer;
-    s_observer = observer;
-    return ret;
+    int        current_unbound = INT32_MAX;
+    BoundNode *ret = NULL;
+    int        total_warnings = 0;
+    for (int iter = 1; true; ++iter) {
+        if (iter == 1) {
+            ret = bind_node(NULL, program, ctx);
+        } else {
+            current_unbound = ctx->unbound;
+            ctx->unbound = 0;
+            ctx->errors = 0;
+            ctx->warnings = 0;
+            rebind_node(ret, ctx);
+        }
+        if (json_get_bool(&conn->config, "graph", false)) {
+            graph_ast(iter, ret);
+        }
+
+        total_warnings += ctx->warnings;
+        JSONValue iter_stats = json_object();
+        json_set(&iter_stats, "iteration", json_int(iter));
+        json_set(&iter_stats, "warnings", json_int(ctx->warnings));
+        json_set(&iter_stats, "total_warnings", json_int(total_warnings));
+        json_set(&iter_stats, "errors", json_int(ctx->errors));
+        json_set(&iter_stats, "unbound", json_int(ctx->unbound));
+        char const *url = NULL;
+        if (ctx->errors || ctx->unbound >= current_unbound) {
+            url = "/bind/error";
+        } else if (ctx->unbound > 0) {
+            url = "/bind/iteration";
+        } else {
+            url = "/bind/done";
+        }
+        HTTP_POST_MUST(conn->fd, url, iter_stats);
+        if (ctx->errors || ctx->unbound >= current_unbound) {
+            exit(1);
+        }
+    }
+    while (ctx->unbound > 0)
+        return ret;
 }
 
 #include <fmt.h>

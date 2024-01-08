@@ -16,19 +16,22 @@
 #include <fs.h>
 #include <http.h>
 #include <io.h>
+#include <options.h>
 #include <process.h>
 
 int main(int argc, char **argv)
 {
+    set_option(sv_from("trace"), sv_from("IPC"));
+    log_init();
     StringView path = sv_printf("/tmp/http-test-%zu", getpid());
-    int const  listen_fd = MUST(Int, unix_socket_listen(path));
+    socket_t const  listen_fd = MUST(Socket, unix_socket_listen(path));
     printf("[S] Listening to socket\n");
 
     Process *client = process_create(sv_from("http_client"), sv_cstr(path));
     MUST(Int, process_start(client));
     printf("[S] Started client, pid = %d\n", client->pid);
 
-    int const conn_fd = MUST(Int, socket_accept(listen_fd));
+    socket_t const conn_fd = MUST(Socket, socket_accept(listen_fd));
     printf("[S] Got client connection\n");
 
     while (true) {
@@ -41,6 +44,15 @@ int main(int argc, char **argv)
             http_response_send(conn_fd, &response);
             continue;
         }
+        if (sv_eq_cstr(request.url, "/work")) {
+            HttpResponse response = { 0 };
+            response.status = HTTP_STATUS_NOW_CLIENT;
+            http_response_send(conn_fd, &response);
+            printf("[S] Sending /callback... ");
+            HttpResponse callback_response = http_get_request(conn_fd, sv_from("/callback"), (StringList) {0});
+            printf("Sent. Got back %s\n", http_status_to_string(callback_response.status));
+            continue;
+        }
         if (sv_eq_cstr(request.url, "/goodbye")) {
             HttpResponse response = { 0 };
             response.status = HTTP_STATUS_OK;
@@ -51,8 +63,8 @@ int main(int argc, char **argv)
         response.status = HTTP_STATUS_NOT_FOUND;
         http_response_send(conn_fd, &response);
     }
-    close(conn_fd);
-    close(listen_fd);
+    socket_close(conn_fd);
+    socket_close(listen_fd);
     MUST(Int, fs_unlink(path));
     return 0;
 }

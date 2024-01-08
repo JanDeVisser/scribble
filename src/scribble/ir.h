@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: MIT
  */
 
+#ifndef __IR_H__
+#define __IR_H__
+
 #include <stdlib.h>
 
 #include <da.h>
+#include <json.h>
 #include <op.h>
 #include <sv.h>
 #include <type.h>
-
-#ifndef __IR_H__
-#define __IR_H__
 
 #define IR_OPERATION_TYPES(S) \
     S(ASSERT)                 \
@@ -84,7 +85,7 @@ typedef struct ir_operation {
         } unary_operator;
         struct {
             type_id type;
-            DIA(size_t);
+                    DIA(size_t);
         } var_component;
     };
 } IROperation;
@@ -106,6 +107,18 @@ typedef enum ir_function_kind {
     FK_SCRIBBLE = 0,
     FK_NATIVE,
 } IRFunctionKind;
+
+static char const *IRFunctionKind_name(IRFunctionKind kind)
+{
+    switch (kind) {
+    case FK_SCRIBBLE:
+        return "SCRIBBLE";
+    case FK_NATIVE:
+        return "NATIVE";
+    default:
+        UNREACHABLE();
+    }
+}
 
 typedef struct ir_function {
     IRObjectType      obj_type;
@@ -142,20 +155,24 @@ typedef struct ir_program {
 
 extern char const *ir_operation_type_name(IROperationType optype);
 extern void        ir_operation_set(IROperation *op, IROperationType operation);
-extern void        ir_function_add_operation(IRFunction *fnc, IROperation op);
-extern void        ir_function_add_push_u64(IRFunction *fnc, uint64_t value);
+extern JSONValue   ir_operation_to_json(IROperation op);
 extern StringView  ir_operation_to_string(IROperation *op);
 extern void        ir_operation_print_prefix(IROperation *op, char const *prefix);
 extern void        ir_operation_print(IROperation *op);
 extern StringView  ir_var_decl_to_string(IRVarDecl *var);
 extern void        ir_var_decl_print(IRVarDecl *var);
+extern JSONValue   ir_var_decl_to_json(IRVarDecl var_decl);
+extern void        ir_function_add_operation(IRFunction *fnc, IROperation op);
+extern JSONValue   ir_function_to_json(IRFunction *fnc);
 extern void        ir_function_list(IRFunction *function, size_t mark);
 extern StringView  ir_function_to_string(IRFunction *function);
 extern void        ir_function_print(IRFunction *function);
 extern ErrorOrSize ir_function_resolve_label(IRFunction *function, size_t label);
+extern JSONValue   ir_module_to_json(IRModule module);
 extern void        ir_module_list(IRModule *module, bool header);
 extern IRFunction *ir_module_function_by_name(IRModule *module, StringView name);
 extern void        ir_program_list(IRProgram program);
+extern JSONValue   ir_program_to_json(IRProgram program);
 extern IRFunction *ir_program_function_by_name(IRProgram *program, StringView name);
 
 #endif /* __IR_H__ */

@@ -31,7 +31,8 @@
     S(BIND)                \
     S(IR)                  \
     S(EXECUTE)             \
-    S(COMPILE)
+    S(COMPILE)             \
+    S(IPC)
 
 typedef enum trace_category {
 #undef TRACECATEGORY

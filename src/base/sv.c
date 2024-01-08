@@ -14,7 +14,6 @@ DECLARE_SHARED_ALLOCATOR(sv)
 
 char  *allocate_for_length(size_t length, size_t *capacity);
 size_t buffer_capacity(char const *buffer);
-void   free_buffer(char *buffer);
 
 StringView sv_from(char const *s)
 {
@@ -293,6 +292,32 @@ bool sv_eq_chars(StringView s1, char const *s2, size_t n)
     return memcmp(s1.ptr, s2, n) == 0;
 }
 
+bool sv_eq_ignore_case(StringView s1, StringView s2)
+{
+    return sv_eq_ignore_case_chars(s1, s2.ptr, s2.length);
+}
+
+bool sv_eq_ignore_case_cstr(StringView s1, char const *s2)
+{
+    return sv_eq_ignore_case_chars(s1, s2, strlen(s2));
+}
+
+bool sv_eq_ignore_case_chars(StringView s1, char const *s2, size_t n)
+{
+    if (s1.length != n) {
+        return false;
+    }
+    if (s1.length == 0 && (!s2 || !*s2)) {
+        return true;
+    }
+    for (size_t ix = 0; ix < n; ++ix) {
+        if (toupper(s1.ptr[ix]) != toupper(s2[ix])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool sv_startswith(StringView s1, StringView s2)
 {
     if (!s2.length || s1.length < s2.length) {
@@ -388,7 +413,7 @@ StringView sv_substring(StringView sv, size_t at, size_t len)
 StringList sv_split(StringView sv, StringView sep)
 {
     assert(sep.length > 0);
-    StringList  ret = sl_create();
+    StringList ret = sl_create();
     if (sv.length == 0) {
         return ret;
     }

@@ -23,7 +23,7 @@ typedef struct string_view {
 } StringView;
 
 OPTIONAL(StringView)
-ErrorOr(StringView, StringView);
+ERROR_OR_ALIAS(StringView, StringView);
 
 DA_ELEMENTS(StringView, strings)
 typedef DA_StringView StringList;
@@ -48,6 +48,7 @@ typedef struct StringScanner {
     size_t     point;
 } StringScanner;
 
+extern void               free_buffer(char  *buffer);
 extern StringView         sv_null();
 extern void               sv_free(StringView sv);
 extern StringView         sv_copy(StringView sv);
@@ -70,6 +71,9 @@ extern int                sv_cmp(StringView s1, StringView s2);
 extern bool               sv_eq(StringView s1, StringView s2);
 extern bool               sv_eq_cstr(StringView s1, char const *s2);
 extern bool               sv_eq_chars(StringView s1, char const *s2, size_t n);
+extern bool               sv_eq_ignore_case(StringView s1, StringView s2);
+extern bool               sv_eq_ignore_case_cstr(StringView s1, char const *s2);
+extern bool               sv_eq_ignore_case_chars(StringView s1, char const *s2, size_t n);
 extern bool               sv_startswith(StringView s1, StringView s2);
 extern bool               sv_endswith(StringView s1, StringView s2);
 extern IntegerParseResult sv_parse_integer(StringView sv, IntegerType type);

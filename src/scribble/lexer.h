@@ -142,7 +142,7 @@ typedef struct {
     Location   loc;
 } Token;
 
-ErrorOr(Token, Token)
+ERROR_OR_ALIAS(Token, Token)
     OPTIONAL(Token)
 
 #define TOKEN_SPEC "%.*s:%zu:%zu: %s %s [%.*s]:%zu"

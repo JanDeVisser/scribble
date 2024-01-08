@@ -915,6 +915,85 @@ StringView datum_sprint(Datum *d)
     return sb.view;
 }
 
+JSONValue datum_to_json(Datum *d)
+{
+    JSONValue ret = json_object();
+    json_set(&ret, "type", json_string(typeid_name(d->type)));
+    switch (datum_kind(d)) {
+    case TK_PRIMITIVE: {
+        switch (typeid_builtin_type(d->type)) {
+        case BIT_VOID:
+            break;
+        case BIT_ERROR:
+            json_set(&ret, "message", json_string(sv_from(d->error.exception)));
+            break;
+        case BIT_U8:
+        case BIT_I8:
+        case BIT_U16:
+        case BIT_I16:
+        case BIT_U32:
+        case BIT_I32:
+        case BIT_U64:
+        case BIT_I64:
+            json_set(&ret, "integer", json_integer(d->integer));
+            break;
+        case BIT_FLOAT:
+            json_set(&ret, "double", json_number(d->float_value));
+            break;
+        case BIT_VAR_POINTER: {
+            JSONValue var_pointer = json_object();
+            json_set(&var_pointer, "pointer_to", json_string(typeid_name(d->datum_pointer.pointer->type)));
+            JSONValue components = json_array();
+            for (size_t ix = 0; ix < d->datum_pointer.size; ++ix) {
+                json_append(&components, json_integer(u64(d->datum_pointer.components[ix])));
+            }
+            json_set(&var_pointer, "components", components);
+            json_set(&ret, "var_pointer", var_pointer);
+        } break;
+        case BIT_RAW_POINTER:
+            json_set(&ret, "pointer", json_integer(u64((uint64_t) d->raw_pointer)));
+            break;
+        case BIT_BOOL:
+            json_set(&ret, "bool", json_bool(d->bool_value));
+            break;
+        default:
+            UNREACHABLE();
+        }
+    } break;
+    case TK_AGGREGATE: {
+        if (d->type == STRING_ID) {
+            json_set(&ret, "string", json_string(d->string));
+            break;
+        }
+        JSONValue aggregate = json_array();
+        ExpressionType *et = type_registry_get_type_by_id(d->type);
+        for (size_t ix = 0; ix < d->aggregate.num_components; ++ix) {
+            JSONValue component = json_object();
+            json_set(&component, "name", json_string(et->components.components[ix].name));
+            json_set(&component, "value", datum_to_json(d->aggregate.components + ix));
+            json_append(&aggregate, component);
+        }
+        json_set(&ret, "aggregate", aggregate);
+    } break;
+    case TK_VARIANT: {
+        JSONValue variant = json_object();
+        ExpressionType *et = type_registry_get_type_by_id(d->variant.tag->type);
+        ExpressionType *enumeration = type_registry_get_type_by_id(et->variant.enumeration);
+        for (size_t ix = 0; ix < enumeration->enumeration.size; ++ix) {
+            if (integer_equals(d->variant.tag->integer, enumeration->enumeration.elements[ix].value)) {
+                json_set(&variant, "tag", json_string(enumeration->enumeration.elements[ix].name));
+                break;
+            }
+        }
+        json_set(&variant, "payload", datum_to_json(d->variant.payload));
+        json_set(&ret, "variant", variant);
+    } break;
+    default:
+        UNREACHABLE();
+    }
+    return ret;
+}
+
 Datum *datum_make_integer(Integer value)
 {
     Datum *d = datum_allocate(

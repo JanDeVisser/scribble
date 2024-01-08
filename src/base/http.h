@@ -4,11 +4,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <error_or.h>
-#include <sv.h>
-
 #ifndef __HTTP_H__
 #define __HTTP_H__
+
+#include <error_or.h>
+#include <io.h>
+#include <json.h>
+#include <sv.h>
 
 #define HTTPMETHODS(S) \
     S(UNKNOWN)         \
@@ -56,6 +58,8 @@ static inline HttpMethod http_method_from_string(StringView method)
     S(ACCEPTED, 202)              \
     S(NO_CONTENT, 204)            \
     S(HELLO, 290)                 \
+    S(NOW_CLIENT, 291)            \
+    S(READY, 292)                 \
     S(MOVED_PERMANENTLY, 301)     \
     S(FOUND, 302)                 \
     S(NOT_MODIFIED, 304)          \
@@ -118,7 +122,7 @@ typedef struct {
     StringView  body;
 } HttpRequest;
 
-ErrorOr(HttpRequest, HttpRequest);
+ERROR_OR_ALIAS(HttpRequest, HttpRequest);
 
 typedef struct {
     StringView  response;
@@ -127,13 +131,64 @@ typedef struct {
     StringView  body;
 } HttpResponse;
 
-ErrorOr(HttpResponse, HttpResponse);
+ERROR_OR_ALIAS(HttpResponse, HttpResponse);
 
 void                http_request_free(HttpRequest *request);
-ErrorOrInt          http_request_send(int fd, HttpRequest *request);
-ErrorOrHttpRequest  http_request_receive(int fd);
+ErrorOrInt          http_request_send(socket_t socket, HttpRequest *request);
+ErrorOrHttpRequest  http_request_receive(socket_t socket);
 void                http_response_free(HttpResponse *response);
-ErrorOrInt          http_response_send(int fd, HttpResponse *response);
-ErrorOrHttpResponse http_response_receive(int fd);
+ErrorOrInt          http_response_send(socket_t socket, HttpResponse *response);
+ErrorOrHttpResponse http_response_receive(socket_t socket);
+HttpResponse        http_get_request(socket_t socket, StringView url, StringList params);
+HttpResponse        http_post_request(socket_t socket, StringView url, JSONValue body);
+HttpStatus          http_get_message(socket_t socket, StringView url, StringList params);
+HttpStatus          http_post_message(socket_t socket, StringView url, JSONValue body);
+
+#define HTTP_POST_REQUEST_MUST(fd, url, req_body)                               \
+    ({                                                                          \
+        HttpResponse _resp = http_post_request((fd), sv_from(url), (req_body)); \
+        if (_resp.status != HTTP_STATUS_OK) {                                   \
+            fatal("%s failed", (url));                                          \
+        }                                                                       \
+        MUST(JSONValue, json_decode(_resp.body));                               \
+    })
+
+#define HTTP_GET_REQUEST_MUST(fd, url, params)                               \
+    ({                                                                       \
+        HttpResponse _resp = http_get_request((fd), sv_from(url), (params)); \
+        if (_resp.status != HTTP_STATUS_OK) {                                \
+            fatal("%s failed", (url));                                       \
+        }                                                                    \
+        MUST(JSONValue, json_decode(_resp.body));                            \
+    })
+
+#define HTTP_POST_CALLBACK_MUST(fd, url, req_body, callback, ctx)               \
+    ({                                                                          \
+        HttpResponse _resp = http_post_request((fd), sv_from(url), (req_body)); \
+        switch (_resp.status) {                                                 \
+        case HTTP_STATUS_NOW_CLIENT:                                            \
+            _resp = callback(ctx, _resp);                                       \
+            break;                                                              \
+        case HTTP_STATUS_OK:                                                    \
+            break;                                                              \
+        default:                                                                \
+            fatal("%s failed", (url));                                          \
+        }                                                                       \
+        MUST(JSONValue, json_decode(_resp.body));                               \
+    })
+
+#define HTTP_POST_MUST(fd, url, body)                                          \
+    do {                                                                       \
+        if (http_post_message((fd), sv_from(url), (body)) != HTTP_STATUS_OK) { \
+            fatal("%s failed", (url));                                         \
+        }                                                                      \
+    } while (0)
+
+#define HTTP_GET_MUST(fd, url, params)                                          \
+    do {                                                                        \
+        if (http_get_message((fd), sv_from(url), (params)) != HTTP_STATUS_OK) { \
+            fatal("%s failed", (url));                                          \
+        }                                                                       \
+    } while (0)
 
 #endif /* __HTTP_H__ */

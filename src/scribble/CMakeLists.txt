@@ -17,10 +17,19 @@ add_library(
 
 add_executable(
         scribble
-        main.c
+        frontend.c
+        engine.c
 )
 
-target_link_libraries(scribble scb_impl scb_base scb_arm64 scribblert)
+target_link_libraries(scribble scb_base)
+
+add_executable(
+        scribble-backend
+        backend.c
+        engine.c
+)
+
+target_link_libraries(scribble-backend scb_impl scb_base scb_arm64 scribblert)
 
 add_library(
         testlib

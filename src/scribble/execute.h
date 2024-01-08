@@ -4,16 +4,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <stdint.h>
-
-#include <datum.h>
-// #include <debugger.h>
-#include <intermediate.h>
-#include <sv.h>
-#include <type.h>
-
 #ifndef __EXECUTE_H__
 #define __EXECUTE_H__
+
+#include <datum.h>
+#include <engine.h>
+#include <intermediate.h>
+#include <sv.h>
 
 typedef struct var_list {
     StringView       name;
@@ -55,15 +52,17 @@ typedef struct call_stack {
 #define MAX_BREAKPOINTS 64
 
 typedef struct execution_context {
-    IRProgram  *program;
-    Scope      *root_scope;
-    Scope      *function_scope;
-    Scope      *scope;
-    DatumStack  stack;
-    IRFunction *function;
-    size_t      index;
-    CallStack   call_stack;
-    void       *observer_data;
+    BackendConnection *conn;
+    bool               debug;
+    IRProgram         *program;
+    Scope             *root_scope;
+    Scope             *function_scope;
+    Scope             *scope;
+    DatumStack         stack;
+    IRFunction        *function;
+    size_t             index;
+    CallStack          call_stack;
+    void              *observer_data;
 } ExecutionContext;
 
 typedef enum function_return_type {
@@ -101,7 +100,7 @@ typedef struct next_instruction_pointer {
 extern void           datum_stack_dump(DatumStack *stack);
 extern void           call_stack_dump(CallStack *stack);
 extern void           scope_dump_variables(Scope *scope);
-extern int            execute(IRProgram program);
+extern ErrorOrInt     execute(BackendConnection *conn, IRProgram program);
 extern Datum         *evaluate_function(IRFunction function);
 extern FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function);
 

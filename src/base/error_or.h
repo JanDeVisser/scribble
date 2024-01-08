@@ -25,7 +25,8 @@
     S(ParserError, 7)      \
     S(CompilerError, 8)    \
     S(RuntimeError, 9)     \
-    S(HttpError, 10)
+    S(HttpError, 10)       \
+    S(JSONError, 11)
 
 typedef enum {
 #undef ERRORCATEGORY_ENUM
@@ -43,7 +44,7 @@ typedef struct {
 extern char const *ErrorCategory_name(ErrorCategory code);
 extern char const *Error_to_string(Error error);
 
-#define ErrorOr(name, typ)                                                                                         \
+#define ERROR_OR_ALIAS(name, typ)                                                                                  \
     typedef struct {                                                                                               \
         typ   value;                                                                                               \
         Error error;                                                                                               \
@@ -142,9 +143,12 @@ extern char const *Error_to_string(Error error);
         _maybe.value;                                     \
     })
 
-ErrorOr(Char, char *);
-ErrorOr(VoidPtr, void *);
-ErrorOr(UInt64, uint64_t);
-ErrorOr(Int, int);
+#define ERROR_OR(T) ERROR_OR_ALIAS(T, T)
+
+ERROR_OR_ALIAS(Char, char *);
+ERROR_OR_ALIAS(VoidPtr, void *);
+ERROR_OR_ALIAS(UInt64, uint64_t);
+ERROR_OR_ALIAS(Int, int);
+ERROR_OR_ALIAS(Size, size_t);
 
 #endif /* __ERROR_H__ */

@@ -4,26 +4,28 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <string.h>
+
 #include <integer.h>
 #include <log.h>
 
-IntegerType IntegerType_from_name(StringView name)
+IntegerType IntegerType_from_name(char const *name)
 {
-    if (sv_eq_cstr(name, "i8")) {
+    if (strcmp(name, "i8")) {
         return I8;
-    } else if (sv_eq_cstr(name, "u8")) {
+    } else if (strcmp(name, "u8")) {
         return U8;
-    } else if (sv_eq_cstr(name, "i16")) {
+    } else if (strcmp(name, "i16")) {
         return I16;
-    } else if (sv_eq_cstr(name, "u16")) {
+    } else if (strcmp(name, "u16")) {
         return U16;
-    } else if (sv_eq_cstr(name, "i32")) {
+    } else if (strcmp(name, "i32")) {
         return I32;
-    } else if (sv_eq_cstr(name, "u32")) {
+    } else if (strcmp(name, "u32")) {
         return U32;
-    } else if (sv_eq_cstr(name, "i64")) {
+    } else if (strcmp(name, "i64")) {
         return I64;
-    } else if (sv_eq_cstr(name, "u64")) {
+    } else if (strcmp(name, "u64")) {
         return U64;
     } else {
         return IU_NO_SUCH_TYPE;

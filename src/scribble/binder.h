@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: MIT
  */
 
+#ifndef __BINDER_H__
+#define __BINDER_H__
+
+#include <engine.h>
+#include <json.h>
 #include <parser.h>
 #include <sv.h>
 #include <type.h>
-
-#ifndef __BINDER_H__
-#define __BINDER_H__
 
 #define BOUNDNODETYPES(S) \
     S(ASSIGNMENT)         \
@@ -171,11 +173,9 @@ typedef struct bound_node {
     };
 } BoundNode;
 
-typedef void (*BindingObserver)(int, BoundNode *);
-
 extern char const     *BoundNodeType_name(BoundNodeType type);
-extern BoundNode      *bind_program(SyntaxNode *program);
-extern BindingObserver register_binding_observer(BindingObserver observer);
+extern JSONValue       bound_node_to_json(BoundNode *node);
+extern BoundNode      *bind_program(BackendConnection *conn, SyntaxNode *program);
 extern BoundNode      *bind_format(BoundNode *node, void *v_ctx);
 
 #endif /* __BINDER_H__ */

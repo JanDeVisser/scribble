@@ -37,14 +37,6 @@ void ir_function_add_operation(IRFunction *fnc, IROperation op)
     da_append_IROperation(&fnc->operations, op);
 }
 
-void ir_function_add_push_u64(IRFunction *fnc, uint64_t value)
-{
-    IROperation op;
-    ir_operation_set(&op, IR_PUSH_INT_CONSTANT);
-    op.integer = integer_create(U64, value);
-    ir_function_add_operation(fnc, op);
-}
-
 StringView ir_var_decl_to_string(IRVarDecl *var)
 {
     StringBuilder sb = sb_create();
@@ -59,6 +51,91 @@ void ir_var_decl_print(IRVarDecl *var)
     StringView     s = ir_var_decl_to_string(var);
     printf(SV_SPEC, SV_ARG(s));
     release_allocator(as);
+}
+
+JSONValue ir_var_decl_to_json(IRVarDecl var_decl)
+{
+    JSONValue ret = json_object();
+    json_set(&ret, "name", json_string(var_decl.name));
+    json_set(&ret, "type", json_string(typeid_name(var_decl.type.type_id)));
+    return ret;
+}
+
+JSONValue ir_operation_to_json(IROperation op)
+{
+    JSONValue ret = json_object();
+    json_set(&ret, "index", json_int(op.index));
+    json_set(&ret, "type", json_string(sv_from(ir_operation_type_name(op.operation))));
+    switch (op.operation) {
+    case IR_CALL: {
+        JSONValue call = json_object();
+        json_set(&call, "name", json_string(op.call.name));
+        json_set(&call, "discard", json_bool(op.call.discard_result));
+        json_set(&ret, "call", call);
+    } break;
+    case IR_CASE:
+    case IR_END_CASE:
+    case IR_JUMP:
+    case IR_JUMP_F:
+    case IR_JUMP_T:
+    case IR_LABEL:
+        json_set(&ret, "label", json_int(op.label));
+        break;
+    case IR_CAST:
+    case IR_MATCH:
+        json_set(&ret, "type", json_string(typeid_name(op.type)));
+        break;
+    case IR_END_MATCH:
+        break;
+    case IR_ASSERT:
+    case IR_PUSH_VAR_ADDRESS:
+    case IR_PUSH_STRING_CONSTANT:
+        json_set(&ret, "string", json_string(op.sv));
+        break;
+    case IR_DECL_VAR:
+        json_set(&ret, "var_decl", ir_var_decl_to_json(op.var_decl));
+        break;
+    case IR_PUSH_BOOL_CONSTANT:
+    case IR_RETURN:
+        json_set(&ret, "bool", json_bool(op.bool_value));
+        break;
+    case IR_PUSH_FLOAT_CONSTANT:
+        json_set(&ret, "double", json_number(op.double_value));
+        break;
+    case IR_PUSH_INT_CONSTANT: {
+        JSONValue integer = json_object();
+        json_set(&integer, "value", json_string(sv_render_integer(op.integer)));
+        json_set(&integer, "type", json_string(sv_from(IntegerType_name(op.integer.type))));
+        json_set(&integer, "integer", integer);
+        json_set(&ret, "integer", integer);
+    } break;
+    case IR_SUBSCRIPT: {
+        JSONValue subscript = json_object();
+        json_set(&subscript, "name", json_string(op.sv));
+        JSONValue components = json_array();
+        for (size_t ix = 0; ix < op.var_component.size; ++ix) {
+            json_append(&components, json_int(op.var_component.elements[ix]));
+        }
+        json_set(&subscript, "components", components);
+        json_set(&ret, "subscript", subscript);
+    } break;
+    case IR_BINARY_OPERATOR: {
+        JSONValue bin_op = json_object();
+        json_set(&bin_op, "operator", json_string(sv_from(Operator_name(op.binary_operator.op))));
+        json_set(&bin_op, "lhs", json_string(typeid_name(op.binary_operator.lhs)));
+        json_set(&bin_op, "rhs", json_string(typeid_name(op.binary_operator.rhs)));
+        json_set(&ret, "binary_op", bin_op);
+    } break;
+    case IR_UNARY_OPERATOR: {
+        JSONValue unary_op = json_object();
+        json_set(&unary_op, "operator", json_string(sv_from(Operator_name(op.unary_operator.op))));
+        json_set(&unary_op, "operand", json_string(typeid_name(op.unary_operator.operand)));
+        json_set(&ret, "unary_op", unary_op);
+    } break;
+    default:
+        UNREACHABLE();
+    }
+    return ret;
 }
 
 static StringView _ir_operation_to_string(IROperation *op, char const *prefix)
@@ -185,6 +262,23 @@ void ir_function_print(IRFunction *function)
     release_allocator(as);
 }
 
+JSONValue ir_function_to_json(IRFunction *fnc)
+{
+    JSONValue ret;
+    if (fnc->module) {
+        json_set_string(&ret, "module", fnc->module->name);
+    }
+    json_set_cstr(&ret, "kind", IRFunctionKind_name(fnc->kind));
+    json_set_string(&ret, "name", fnc->name);
+    json_set_string(&ret, "type", typeid_name(fnc->type.type_id));
+    JSONValue params = json_array();
+    for (size_t ix = 0; ix < fnc->num_parameters; ++ix) {
+        json_append(&params, ir_var_decl_to_json(fnc->parameters[ix]));
+    }
+    json_set(&ret, "parameters", params);
+    return ret;
+}
+
 void ir_function_list(IRFunction *function, size_t mark)
 {
     printf(SV_SPEC "(", SV_ARG(function->name));
@@ -232,6 +326,18 @@ void ir_module_list(IRModule *module, bool header)
     }
 }
 
+JSONValue ir_module_to_json(IRModule module)
+{
+    JSONValue ret;
+    json_set_string(&ret, "name", module.name);
+    JSONValue functions = json_array();
+    for (size_t ix = 0; ix < module.functions.size; ++ix) {
+        json_append(&functions, ir_function_to_json(module.functions.elements + ix));
+    }
+    json_set(&ret, "functions", functions);
+    return ret;
+}
+
 IRFunction *ir_module_function_by_name(IRModule *module, StringView name)
 {
     for (size_t fix = 0; fix < module->functions.size; ++fix) {
@@ -250,6 +356,18 @@ void ir_program_list(IRProgram program)
         IRModule *module = program.modules.elements + ix;
         ir_module_list(module, program.modules.size > 1);
     }
+}
+
+JSONValue ir_program_to_json(IRProgram program)
+{
+    JSONValue ret;
+    json_set_string(&ret, "name", program.name);
+    JSONValue modules = json_array();
+    for (size_t ix = 0; ix < program.modules.size; ++ix) {
+        json_append(&modules, ir_module_to_json(program.modules.elements[ix]));
+    }
+    json_set(&ret, "modules", modules);
+    return ret;
 }
 
 IRFunction *ir_program_function_by_name(IRProgram *program, StringView name)

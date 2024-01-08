@@ -57,7 +57,7 @@ size_t buffer_capacity(char const *buffer)
     return (buffer && *((size_t *) buffer - 1) == SENTINEL) ? *((size_t *) buffer - 2) : 0;
 }
 
-void free_buffer(char *buffer)
+void free_buffer(char * buffer)
 {
     size_t capacity = buffer_capacity(buffer);
     if (!capacity) {

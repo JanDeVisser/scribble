@@ -10,6 +10,7 @@
 #define STATIC_ALLOCATOR
 #include <allocate.h>
 #include <execute.h>
+#include <http.h>
 #include <native.h>
 #include <options.h>
 
@@ -85,6 +86,15 @@ void datum_stack_dump(DatumStack *stack)
     }
 }
 
+JSONValue datum_stack_to_json(DatumStack *stack)
+{
+    JSONValue ret = json_array();
+    for (DatumStackEntry *entry = stack->top; entry; entry = entry->prev) {
+        json_append(&ret, datum_to_json(entry->datum));
+    }
+    return ret;
+}
+
 CallStackEntry call_stack_pop(CallStack *stack)
 {
     assert(stack->top);
@@ -115,6 +125,18 @@ void call_stack_dump(CallStack *stack)
     for (CallStackEntry *entry = stack->top; entry; entry = entry->down) {
         printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
     }
+}
+
+JSONValue call_stack_to_json(CallStack *stack)
+{
+    JSONValue ret = json_array();
+    for (CallStackEntry *entry = stack->top; entry; entry = entry->down) {
+        JSONValue e = json_object();
+        json_set(&e, "function", json_string(entry->function->name));
+        json_set(&e, "index", json_int(entry->index));
+        json_append(&ret, e);
+    }
+    return ret;
 }
 
 VarList *scope_variable(Scope *scope, StringView name)
@@ -378,7 +400,7 @@ __attribute__((unused)) NextInstructionPointer execute_CALL(ExecutionContext *ct
     IRFunction *function = NULL;
     function = ir_program_function_by_name(ctx->program, op->sv);
     assert(function);
-    FunctionReturn func_ret;
+    FunctionReturn func_ret = { 0 };
     switch (function->kind) {
     case FK_SCRIBBLE:
         func_ret = execute_function(ctx, (IRFunction *) function);
@@ -743,10 +765,31 @@ NextInstructionPointer execute_operation(ExecutionContext *ctx, IROperation *op)
     }
 }
 
+HttpResponse on_function_entry(ExecutionContext *ctx, HttpResponse response)
+{
+    return response;
+}
+
+HttpResponse on_function_exit(ExecutionContext *ctx, HttpResponse response)
+{
+    return response;
+}
+
+HttpResponse on_operation(ExecutionContext *ctx, HttpResponse response)
+{
+    return response;
+}
+
+HttpResponse after_operation(ExecutionContext *ctx, HttpResponse response)
+{
+    return response;
+}
+
 FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
 {
     Scope  func_scope = { 0 };
     Scope *current = ctx->scope;
+    Scope *current_function_scope = ctx->function_scope;
     size_t ix = 0;
 
     func_scope.enclosing = ctx->root_scope;
@@ -757,7 +800,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
 
     for (size_t param_ix = 0; param_ix < function->num_parameters; ++param_ix) {
         IRVarDecl *var_decl = function->parameters + param_ix;
-        VarList   *end;
+        VarList   *end = NULL;
         for (end = ctx->scope->var_list; end && end->next; end = end->next) {
             if (sv_eq(end->name, var_decl->name)) {
                 FunctionReturn ret = { 0 };
@@ -766,45 +809,60 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
                 ret.exception->error.exception = "Duplicate parameter name?";
                 ret.exception->error.operation = NULL;
                 ctx->scope = current;
+                ctx->function_scope = current_function_scope;
                 return ret;
             }
         }
         scope_declare_variable(ctx->scope, var_decl->name, var_decl->type.type_id);
     }
-
-    // if (!debug_execution_observer(ctx, (ExecutionMessage) { .type = EMT_FUNCTION_ENTRY, .payload = function })) {
-    //     FunctionReturn ret = { 0 };
-    //     ret.type = FRT_EXIT;
-    //     ret.exit_code = 0;
-    //     ctx->scope = current;
-    //     return ret;
-    // }
-
+    if (ctx->debug) {
+        JSONValue resp = HTTP_POST_CALLBACK_MUST(
+            ctx->conn->fd,
+            "/emulation/function/entry",
+            ir_function_to_json(function),
+            on_function_entry,
+            ctx);
+        assert(resp.type == JSON_TYPE_BOOLEAN);
+        if (!resp.boolean) {
+            FunctionReturn ret = { .type = FRT_EXIT, .exit_code = 0 };
+            ctx->scope = current;
+            ctx->function_scope = current_function_scope;
+            return ret;
+        }
+    }
     while (ix < function->operations.size) {
         ctx->index = function->operations.elements[ix].index;
-        // if (!debug_execution_observer(ctx, (ExecutionMessage) {
-        //                                        .type = EMT_ON_INSTRUCTION,
-        //                                        .payload = function->operations.elements + ix,
-        //                                    })) {
-        //     FunctionReturn ret = { 0 };
-        //     ret.type = FRT_EXIT;
-        //     ret.exit_code = 0;
-        //     ctx->scope = current;
-        //     return ret;
-        // }
+        if (ctx->debug) {
+            JSONValue resp = HTTP_POST_CALLBACK_MUST(ctx->conn->fd,
+                "/emulation/function/on",
+                ir_operation_to_json(function->operations.elements[ix]),
+                on_operation, ctx);
+            assert(resp.type == JSON_TYPE_BOOLEAN);
+            if (!resp.boolean) {
+                FunctionReturn ret = { .type = FRT_EXIT, .exit_code = 0 };
+                ctx->scope = current;
+                ctx->function_scope = current_function_scope;
+                return ret;
+            }
+        }
 
         NextInstructionPointer pointer = execute_operation(ctx, function->operations.elements + ix);
 
-        // if (!debug_execution_observer(ctx, (ExecutionMessage) {
-        //                                        .type = EMT_AFTER_INSTRUCTION,
-        //                                        .payload = &pointer,
-        //                                    })) {
-        //     FunctionReturn ret = { 0 };
-        //     ret.type = FRT_EXIT;
-        //     ret.exit_code = 0;
-        //     ctx->scope = current;
-        //     return ret;
-        // }
+        if (ctx->debug) {
+            JSONValue resp = HTTP_POST_CALLBACK_MUST(
+                ctx->conn->fd,
+                "/emulation/function/after",
+                ir_operation_to_json(function->operations.elements[ix]),
+                after_operation,
+                ctx);
+            assert(resp.type == JSON_TYPE_BOOLEAN);
+            if (!resp.boolean) {
+                FunctionReturn ret = { .type = FRT_EXIT, .exit_code = 0 };
+                ctx->scope = current;
+                ctx->function_scope = current_function_scope;
+                return ret;
+            }
+        }
 
         switch (pointer.type) {
         case NIT_RELATIVE:
@@ -830,6 +888,7 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
             FunctionReturn ret = { 0 };
             ret.type = FRT_EXCEPTION;
             ctx->scope = current;
+            ctx->function_scope = current_function_scope;
             ret.exception = datum_allocate(ERROR_ID);
             ret.exception->error.exception = pointer.exception;
             ret.exception->error.operation = function->operations.elements + ix;
@@ -838,33 +897,43 @@ FunctionReturn execute_function(ExecutionContext *ctx, IRFunction *function)
         }
     }
 
-    // if (!debug_execution_observer(ctx, (ExecutionMessage) {
-    //                                        .type = EMT_FUNCTION_RETURN,
-    //                                    })) {
-    //     FunctionReturn ret = { 0 };
-    //     ret.type = FRT_EXIT;
-    //     ret.exit_code = 0;
-    //     ctx->scope = current;
-    //     return ret;
-    // }
+    if (ctx->debug) {
+        JSONValue resp = HTTP_POST_CALLBACK_MUST(
+            ctx->conn->fd,
+            "/emulation/function/exit",
+            ir_function_to_json(function),
+            on_function_exit,
+            ctx);
+        assert(resp.type == JSON_TYPE_BOOLEAN);
+        if (!resp.boolean) {
+            FunctionReturn ret = { .type = FRT_EXIT, .exit_code = 0 };
+            ctx->scope = current;
+            ctx->function_scope = current_function_scope;
+            return ret;
+        }
+    }
 
     ctx->scope = current;
+    ctx->function_scope = current_function_scope;
     return (FunctionReturn) { .type = FRT_NORMAL, .return_value = NULL };
 }
 
-int execute(IRProgram program /*, int argc, char **argv*/)
+ErrorOrInt execute(BackendConnection *conn, IRProgram program /*, int argc, char **argv*/)
 {
     IRFunction *main = ir_program_function_by_name(&program, sv_from("main"));
     assert(main);
     Scope root_scope = { 0 };
     root_scope.program = &program;
     ExecutionContext ctx = { 0 };
+    ctx.conn = conn;
     ctx.program = &program;
     ctx.root_scope = &root_scope;
 
-    // if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
-    //     return -1;
-    // }
+    ctx.debug = (conn != NULL) && json_get_bool(&conn->config, "debug_emulation", false);
+
+    if (ctx.debug) {
+        HTTP_GET_MUST(conn->fd, "/emulation/start", (StringList) { 0 });
+    }
 
     for (size_t ix = 0; ix < program.modules.size; ++ix) {
         IRModule *module = program.modules.elements + ix;
@@ -874,33 +943,29 @@ int execute(IRProgram program /*, int argc, char **argv*/)
     }
 
     FunctionReturn ret = execute_function(&ctx, main);
-    // debug_execution_observer(&ctx, (ExecutionMessage) {
-    //                                    .type = EMT_PROGRAM_EXIT,
-    //                                });
 
-    if (ret.type == FRT_EXCEPTION) {
-        printf("Exception caught: %s\n", ret.exception->error.exception);
+    if (ret.type == FRT_EXCEPTION && ctx.debug) {
+        JSONValue exception = json_object();
         if (ret.exception->error.operation) {
-            printf("\nInstruction:\n");
-            ir_operation_print((IROperation *) ret.exception->error.operation);
+            IROperation op = *((IROperation *) ret.exception->error.operation);
+            json_set(&exception, "instruction", ir_operation_to_json(op));
         }
-        printf("\nCall stack:\n");
-        call_stack_dump(&ctx.call_stack);
-        if (ctx.stack.top) {
-            printf("\nCurrent data stack:\n");
-            printf("-------------------\n");
-            datum_stack_dump(&ctx.stack);
-            printf("-------------------\n");
-        } else {
-            printf("\nCurrent data stack EMPTY\n");
-        }
-        return -1;
+        json_set(&exception, "callstack", call_stack_to_json(&ctx.call_stack));
+        json_set(&exception, "datastack", datum_stack_to_json(&ctx.stack));
+        HTTP_POST_MUST(conn->fd, "/emulation/exception", exception);
+        ERROR(Int, RuntimeError, 0, "Exception: %s", ret.exception->error.exception);
     }
+    int    exit_code = 0;
     Datum *d = datum_stack_pop(&ctx.stack);
     if (datum_is_integer(d)) {
-        return (int) datum_signed_integer_value(d);
+        exit_code = (int) datum_signed_integer_value(d);
     }
-    return 0;
+    if (ctx.debug) {
+        StringList params = sl_create();
+        sl_push(&params, sv_printf("exit_code=%d", exit_code));
+        HTTP_GET_MUST(conn->fd, "/emulation/done", params);
+    }
+    RETURN(Int, exit_code);
 }
 
 Datum *evaluate_function(IRFunction function)
@@ -908,13 +973,7 @@ Datum *evaluate_function(IRFunction function)
     Scope            root_scope = { 0 };
     ExecutionContext ctx = { 0 };
     ctx.root_scope = &root_scope;
-    // if (!debug_execution_observer(&ctx, (ExecutionMessage) { .type = EMT_PROGRAM_START })) {
-    //     return datum_error("Execution observer returned false");
-    // }
     FunctionReturn ret = execute_function(&ctx, &function);
-    // debug_execution_observer(&ctx, (ExecutionMessage) {
-    //                                    .type = EMT_PROGRAM_EXIT,
-    //                                });
     if (ret.type == FRT_EXCEPTION) {
         return NULL;
     }

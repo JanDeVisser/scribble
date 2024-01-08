@@ -443,11 +443,13 @@ typedef struct assembly {
 DA(Assembly)
 
 typedef struct arm64_context {
-    IRProgram  *program;
-    ARM64Scope  scope;
-    DA_Assembly assemblies;
-    IntList    *stack_depths;
-    size_t      stack_allocated;
+    BackendConnection *conn;
+    IRProgram         *program;
+    ARM64Scope         scope;
+    DA_Assembly        assemblies;
+    IntList           *stack_depths;
+    size_t             stack_allocated;
+    bool               debug;
 } ARM64Context;
 
 typedef struct opcode_map {
@@ -547,8 +549,8 @@ extern ValueLocation         arm64variable_pointer(ARM64Variable *variable);
 extern ValueLocation         arm64variable_reference(ARM64Variable *variable);
 extern ARM64Variable         arm64variable_component(ARM64Variable *variable, size_t index);
 extern ARM64Function        *arm64context_function_by_name(ARM64Context *ctx, StringView name);
-extern ARM64Context         *generate_arm64(IRProgram *program);
-extern ErrorOrInt            output_arm64(IRProgram *program);
+extern ARM64Context         *generate_arm64(BackendConnection *conn, IRProgram *program);
+extern ErrorOrInt            output_arm64(BackendConnection *conn, IRProgram *program);
 // extern bool                  arm64_inspect(ObserverContext *ctx, ExecutionMessage msg);
 
 #endif /* __ARM64_H__ */
