@@ -208,9 +208,9 @@ Token directive_handle(Lexer *lexer)
     if (directive_end == 0) {
         if (buffer[0]) {
             StringView directive = { buffer, 1 };
-            fatal(LOC_SPEC "No preprocessor directive after '$' but '" SV_SPEC "'", SV_ARG(directive));
+            fatal(LOC_SPEC "No preprocessor directive after '$' but '%.*s'", TOKEN_LOC_ARG(lexer->current), SV_ARG(directive));
         } else {
-            fatal(LOC_SPEC "'$' character cannot end source");
+            fatal(LOC_SPEC "'$' character cannot end source", TOKEN_LOC_ARG(lexer->current));
         }
     }
     StringView directive = { buffer, directive_end };
@@ -225,7 +225,7 @@ Token directive_handle(Lexer *lexer)
             return lexer_peek(lexer);
         }
     }
-    fatal(LOC_SPEC "Unrecognized preprocessor directive '" SV_SPEC "'", LOC_ARG(lexer->sources->loc), SV_ARG(directive));
+    fatal(LOC_SPEC "Unrecognized preprocessor directive '%.*s'", LOC_ARG(lexer->sources->loc), SV_ARG(directive));
 }
 
 Token lexer_set_current(Lexer *lexer, Token token)

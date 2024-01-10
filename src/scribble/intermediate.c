@@ -776,7 +776,7 @@ __attribute__((unused)) void generate_WHILE(BoundNode *node, IRContext *ctx)
 
 __attribute__((unused)) void generate_node(BoundNode *node, IRContext *ctx)
 {
-    trace(CAT_IR, "Generating IR for %s node '" SV_SPEC "'", BoundNodeType_name(node->type), SV_ARG(node->name));
+    trace(CAT_IR, "Generating IR for %s node '%.*s'", BoundNodeType_name(node->type), SV_ARG(node->name));
     if (ctx->conn && json_get_bool(&ctx->conn->config, "debug_intermediate", false)) {
         http_post_message(ctx->conn->fd, sv_from("/intermediate/node"), bound_node_to_json(node));
     }

@@ -221,26 +221,26 @@ bool debug_set_breakpoint(ObserverContext *ctx, StringView bp_function, StringVi
         bp.function = ir_program_function_by_name(ctx->program, bp_function);
         if (bp.function) {
             if (bp.function->kind != FK_SCRIBBLE) {
-                printf("Cannot set breakpoint in function '" SV_SPEC "'\n", SV_ARG(bp_function));
+                printf("Cannot set breakpoint in function '%.*s'\n", SV_ARG(bp_function));
                 bp.function = NULL;
             } else {
                 bp.index = 1;
                 if (sv_not_empty(bp_index)) {
                     IntegerParseResult parse_result = sv_parse_i64(bp_index);
                     if (!parse_result.success) {
-                        printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
+                        printf("Invalid instruction '%.*s'\n", SV_ARG(bp_index));
                         bp.function = NULL;
                     } else {
                         bp.index = parse_result.integer.i64;
                         if (bp.index == 0 || bp.index >= bp.function->operations.size) {
-                            printf("Invalid instruction '" SV_SPEC "'\n", SV_ARG(bp_index));
+                            printf("Invalid instruction '%.*s'\n", SV_ARG(bp_index));
                             bp.function = NULL;
                         }
                     }
                 }
             }
         } else {
-            printf("Unknown function '" SV_SPEC "'\n", SV_ARG(bp_function));
+            printf("Unknown function '%.*s'\n", SV_ARG(bp_function));
         }
     }
     if (bp.function) {
@@ -291,7 +291,7 @@ bool debug_processor(ObserverContext *ctx, ExecutionMessage msg)
         break;
     case 'T': {
         for (ObserverStack *entry = ctx->stack; entry; entry = entry->prev) {
-            printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
+            printf("%*s%.*s %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
         }
     } break;
     case 'V':
@@ -314,7 +314,7 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
             if (sv_eq_cstr(ctx->command.command_str, "BP")) {
                 for (size_t bp_ix = 0; bp_ix < ctx->breakpoints.size; ++bp_ix) {
                     Breakpoint *bp = ctx->breakpoints.elements + bp_ix;
-                    printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(bp->function->name)), "", SV_ARG(bp->function->name), bp->index);
+                    printf("%*s%.*s %zu\n", (int) (40 - sv_length(bp->function->name)), "", SV_ARG(bp->function->name), bp->index);
                 }
                 break;
             }
@@ -333,7 +333,7 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
             if (ctx->command.arguments.size) {
                 fnc = ir_program_function_by_name(ctx->program, ctx->command.arguments.strings[0]);
                 if (!fnc) {
-                    printf("Unknown function '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments.strings[0]));
+                    printf("Unknown function '%.*s'\n", SV_ARG(ctx->command.arguments.strings[0]));
                 }
             }
             if (fnc) {
@@ -365,7 +365,7 @@ bool process(ObserverContext *ctx, ExecutionMessage msg, ObserverRegistry regist
             if (ctx->command.arguments.size) {
                 ExpressionType *type = type_registry_get_type_by_name(ctx->command.arguments.strings[0]);
                 if (type == NULL) {
-                    printf("Unknown type '" SV_SPEC "'\n", SV_ARG(ctx->command.arguments.strings[0]));
+                    printf("Unknown type '%.*s'\n", SV_ARG(ctx->command.arguments.strings[0]));
                 } else {
                     debug_describe_type(type);
                 }

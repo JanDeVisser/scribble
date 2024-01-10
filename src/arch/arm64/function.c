@@ -35,7 +35,7 @@ StringView arm64function_to_string(ARM64Function *function)
         ARM64Variable *param = function->scope.variables.elements + ix;
         sl_push(&params, ir_var_decl_to_string(&param->var_decl));
     }
-    return sv_printf("func %.*s(%.*s): %.*s [%ld/%ld]",
+    return sv_printf("func %.*s(%.*s): %.*s [%lld/%lld]",
         SV_ARG(function->function->name), SV_ARG(sl_join(&params, sv_from(", "))),
         SV_ARG(typespec_to_string(function->function->type)),
         function->nsaa, function->scope.depth);
@@ -289,7 +289,7 @@ OptionalValueLocation arm64function_pop_location(ARM64Function *function)
         for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
             ++depth;
         }
-        trace(CAT_COMPILE, "[%zu] -> %s", depth, value_location_to_string(ret.value));
+        trace(CAT_COMPILE, "[%zu] -> %.*s", depth, SV_ARG(value_location_to_string(ret.value)));
     }
     return ret;
 }
@@ -321,7 +321,7 @@ void arm64function_push_location(ARM64Function *function, ValueLocation entry)
     for (ValueLocation *l = scope->expression_stack; l; l = l->next) {
         ++depth;
     }
-    trace(CAT_COMPILE, "[%zu] <- %s", depth, value_location_to_string(entry));
+    trace(CAT_COMPILE, "[%zu] <- %.*s", depth, SV_ARG(value_location_to_string(entry)));
 }
 
 void arm64function_push_register(ARM64Function *function, type_id type, Register reg)

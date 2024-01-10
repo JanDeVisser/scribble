@@ -159,7 +159,7 @@ StringView graph_node_label(GraphNode *node)
             BoundNode      *bn = node->bound_node;
             ExpressionType *et = type_registry_get_type_by_id(bn->typespec.type_id);
             assert(et);
-            node->label_str = sv_printf("%s %s " SV_SPEC " " SV_SPEC,
+            node->label_str = sv_printf("%s %s %.*s " SV_SPEC,
                 node->prefix, graph_node_type_str(node), SV_ARG(graph_node_name(node)), SV_ARG(et->name));
         } break;
         default:
@@ -173,13 +173,13 @@ StringView graph_node_label(GraphNode *node)
 
 void graph_node_connect(GraphNode *from, GraphNode *to, FILE *f)
 {
-    fprintf(f, "    " SV_SPEC " -> " SV_SPEC ";\n",
+    fprintf(f, "    %.*s -> %.*s;\n",
         SV_ARG(graph_node_id_str(from)), SV_ARG(graph_node_id_str(to)));
 }
 
 void graph_node_emit(GraphNode *node, FILE *f)
 {
-    fprintf(f, "    " SV_SPEC "[label=\"" SV_SPEC "\"];\n",
+    fprintf(f, "    %.*s[label=\"%.*s\"];\n",
         SV_ARG(graph_node_id_str(node)), SV_ARG(graph_node_label(node)));
     if (node->parent) {
         graph_node_connect(node, node->parent, f);
@@ -348,12 +348,12 @@ void graph_program(SyntaxNode *program)
     AllocatorState alloc_state = save_allocator();
     StringView     dot_file = sv_printf(SV_SPEC "-syntax.dot", SV_ARG(program->name));
     FILE          *f = fopen(dot_file.ptr, "w");
-    fprintf(f, "digraph " SV_SPEC " {\n", SV_ARG(program->name));
+    fprintf(f, "digraph %.*s {\n", SV_ARG(program->name));
     fprintf(f, "    rankdir = BT;\n");
     graph_node_emit(graph_node_create(abstract(program), NULL, NULL), f);
     fprintf(f, "}\n");
     fclose(f);
-    StringView cmd_line = sv_printf("dot -Tsvg -O " SV_SPEC " %s", SV_ARG(program->name), dot_file);
+    StringView cmd_line = sv_printf("dot -Tsvg -O %.*s %.*s", SV_ARG(program->name), SV_ARG(dot_file));
     system(cmd_line.ptr);
     release_allocator(alloc_state);
 }
@@ -365,13 +365,13 @@ void graph_ast(int iteration, BoundNode *program)
     AllocatorState alloc_state = save_allocator();
     StringView     dot_file = sv_printf(SV_SPEC "-ast-%d.dot", SV_ARG(program->name), iteration);
     FILE          *f = fopen(dot_file.ptr, "w");
-    fprintf(f, "digraph " SV_SPEC " {\n", SV_ARG(program->name));
+    fprintf(f, "digraph %.*s {\n", SV_ARG(program->name));
     fprintf(f, "    rankdir = BT;\n");
     graph_node_emit(graph_node_create(abstract(program), NULL, NULL), f);
     fprintf(f, "}\n");
     fclose(f);
     char cmd_line[256];
-    snprintf(cmd_line, 256, "dot -Tsvg -O " SV_SPEC " " SV_SPEC, SV_ARG(program->name), SV_ARG(dot_file));
+    snprintf(cmd_line, 256, "dot -Tsvg -O %.*s " SV_SPEC, SV_ARG(program->name), SV_ARG(dot_file));
     system(cmd_line);
     release_allocator(alloc_state);
 }

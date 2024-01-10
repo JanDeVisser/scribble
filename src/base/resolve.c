@@ -366,7 +366,7 @@ void_t resolve_resolve(Resolve *resolve, StringView lib_name, StringView func_na
         if (sv_eq(lib_name, lib->image)) {
             for (FunctionHandle *func_handle = lib->functions; func_handle; func_handle = func_handle->next) {
                 if (sv_eq(func_name, func_handle->name)) {
-                    trace(CAT_LIB, "Function '%s' was cached", func_name);
+                    trace(CAT_LIB, "Function '%.*s' was cached", SV_ARG(func_name));
                     return func_handle->function;
                 }
             }

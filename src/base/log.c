@@ -56,7 +56,7 @@ void vtrace(char const *msg, va_list args)
     vemit_log_message(LL_TRACE, msg, args);
 }
 
-void fatal(char const *msg, ...)
+void _fatal(char const *msg, ...)
 {
     va_list args;
     va_start(args, msg);

@@ -48,15 +48,15 @@ typedef struct StringScanner {
     size_t     point;
 } StringScanner;
 
-extern void               free_buffer(char  *buffer);
-extern StringView         sv_null();
-extern void               sv_free(StringView sv);
-extern StringView         sv_copy(StringView sv);
-extern StringView         sv_copy_chars(char const *ptr, size_t len);
-extern StringView         sv_copy_cstr(char const *s);
-extern StringView         sv_render_integer(Integer integer);
-extern StringView         sv_render_hex_integer(Integer integer);
-extern StringView         sv_printf(char const *fmt, ...);
+extern void       free_buffer(char *buffer);
+extern StringView sv_null();
+extern void       sv_free(StringView sv);
+extern StringView sv_copy(StringView sv);
+extern StringView sv_copy_chars(char const *ptr, size_t len);
+extern StringView sv_copy_cstr(char const *s);
+extern StringView sv_render_integer(Integer integer);
+extern StringView sv_render_hex_integer(Integer integer);
+extern format_args(1, 2) StringView sv_printf(char const *fmt, ...);
 extern StringView         sv_vprintf(char const *fmt, va_list args);
 extern StringView         sv_replicate(StringView s, int repeats);
 extern StringView         sv_from(char const *s);
@@ -103,7 +103,7 @@ INTEGER_SIZES(INTEGER_SIZE)
 #define SV_ARG_LALIGN(sv, width) (int) sv.length, sv.ptr, (int) (width - sv.length), ""
 
 extern StringBuilder sb_create();
-extern StringBuilder sb_createf(char const *fmt, ...);
+extern format_args(1, 2) StringBuilder sb_createf(char const *fmt, ...);
 extern StringBuilder sb_vcreatef(char const *fmt, va_list args);
 extern StringBuilder sb_copy_chars(char const *ptr, size_t len);
 extern StringBuilder sb_copy_cstr(char const *s);
@@ -114,11 +114,11 @@ extern void          sb_append_sv(StringBuilder *sb, StringView sv);
 extern void          sb_append_cstr(StringBuilder *sb, char const *s);
 extern void          sb_append_char(StringBuilder *sb, char ch);
 extern void          sb_vprintf(StringBuilder *sb, char const *fmt, va_list args);
-extern void          sb_printf(StringBuilder *sb, char const *fmt, ...);
-extern void          sb_insert_sv(StringBuilder *sb, StringView sv, size_t at);
-extern void          sb_insert_chars(StringBuilder *sb, char const *ptr, size_t len, size_t at);
-extern void          sb_insert_cstr(StringBuilder *sb, char const *str, size_t at);
-extern StringView    sb_view(StringBuilder *sb);
+extern format_args(2, 3) void sb_printf(StringBuilder *sb, char const *fmt, ...);
+extern void       sb_insert_sv(StringBuilder *sb, StringView sv, size_t at);
+extern void       sb_insert_chars(StringBuilder *sb, char const *ptr, size_t len, size_t at);
+extern void       sb_insert_cstr(StringBuilder *sb, char const *str, size_t at);
+extern StringView sb_view(StringBuilder *sb);
 
 #define SB_SPEC SV_SPEC
 #define SB_ARG(sb) (int) (sb).view.length, (sb).view.ptr

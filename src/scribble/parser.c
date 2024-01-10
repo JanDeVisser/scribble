@@ -293,7 +293,7 @@ char *Operator_name(Operator op)
         UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
 #undef ENUM_UNARY_OPERATOR
     default:
-        fatal("Unknown Operator '{}'", (int) op);
+        fatal("Unknown Operator '%d'", (int) op);
     }
 }
 

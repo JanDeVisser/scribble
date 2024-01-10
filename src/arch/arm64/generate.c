@@ -62,7 +62,7 @@ __attribute__((unused)) void generate_ASSERT(ARM64Function *function, IROperatio
         l.reg = arm64function_allocate_register(function);
         arm64function_copy(function, l, location);
     }
-    StringView lbl = sv_printf("__assert_%d_%.*s", op->index, SV_ARG(arm64function_label(function)));
+    StringView lbl = sv_printf("__assert_%zu_%.*s", op->index, SV_ARG(arm64function_label(function)));
     arm64function_add_instruction(function, "cbnz", "%s,%.*s", reg(l.reg), SV_ARG(lbl));
     arm64function_write_string(function, 2, sv_from("Assertion error: "));
     arm64function_write_string(function, 2, op->sv);

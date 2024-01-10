@@ -51,6 +51,18 @@ check_c_source_compiles("
 " HAVE_LEGACY_ATTRIBUTE_NORETURN
 )
 
+check_c_source_compiles("
+   __attribute__((format(printf,1,2))) void testFunc(char *fmt, ...)
+   {
+   }
+
+   int main(void)
+   {
+     return 0;
+   }
+" HAVE_ATTRIBUTE_FORMAT
+)
+
 include(CheckStructHasMember)
 check_struct_has_member("struct dirent" d_namlen dirent.h HAVE_DIRENT_D_NAMLEN LANGUAGE C)
 

@@ -41,9 +41,9 @@ char *allocate_for_length(size_t length, size_t *capacity)
     if (!ret) {
         ret = allocate(cap + 2 * sizeof(size_t));
         *((size_t *) ret + 1) = SENTINEL;
-        trace(CAT_SV, "SALOC:0x%08zx:%5zu:%2zu", (uint64_t) ret, cap, bit - 5);
+        trace(CAT_SV, "SALOC:0x%08llx:%5zu:%2zu", (uint64_t) ret, cap, bit - 5);
     } else {
-        trace(CAT_SV, "SRUSE:0x%08zx:%5zu:%2zu", (uint64_t) ret, cap, bit - 5);
+        trace(CAT_SV, "SRUSE:0x%08llx:%5zu:%2zu", (uint64_t) ret, cap, bit - 5);
     }
     *((size_t *) ret) = cap;
     if (capacity) {
@@ -68,7 +68,7 @@ void free_buffer(char * buffer)
         bit++;
     }
     assert(bit >= 5);
-    trace(CAT_SV, "SFREE:0x%08zx:%5zu:%2zu", (uint64_t) buffer, capacity, bit - 5);
+    trace(CAT_SV, "SFREE:0x%08llx:%5zu:%2zu", (uint64_t) buffer, capacity, bit - 5);
     if (bit < 15) {
         *((size_t *) buffer - 2) = 0;
         *((char **) buffer) = sb_freelist[bit - 5];
@@ -131,7 +131,7 @@ StringBuilder sb_copy_chars(char const *ptr, size_t len)
         memcpy((char *) sb.view.ptr, ptr, len);
         sb.view.length = len;
     }
-    trace(CAT_SV, "SBCPC:0x%08zx:%5zu:%.60s", (uint64_t) sb.view.ptr, buffer_capacity(sb.view.ptr), sb.view.ptr);
+    trace(CAT_SV, "SBCPC:0x%08llx:%5zu:%.60s", (uint64_t) sb.view.ptr, buffer_capacity(sb.view.ptr), sb.view.ptr);
     return sb;
 }
 
@@ -152,7 +152,7 @@ void sb_append_chars(StringBuilder *sb, char const *ptr, size_t len)
     memcpy(p + sb->view.length, ptr, len);
     sb->view.length += len;
     p[sb->view.length] = '\0';
-    trace(CAT_SV, "SBAPC:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
+    trace(CAT_SV, "SBAPC:0x%08llx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
 }
 
 void sb_append_sv(StringBuilder *sb, StringView sv)
@@ -179,7 +179,7 @@ void sb_vprintf(StringBuilder *sb, char const *fmt, va_list args)
     sb_reallocate(sb, sb->view.length + len + 1);
     vsnprintf((char *) sb->view.ptr + sb->view.length, len + 1, fmt, args);
     sb->view.length += len;
-    trace(CAT_SV, "SBVPF:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
+    trace(CAT_SV, "SBVPF:0x%08llx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
 }
 
 void sb_printf(StringBuilder *sb, char const *fmt, ...)
@@ -210,7 +210,7 @@ void sb_insert_chars(StringBuilder *sb, char const *ptr, size_t len, size_t at)
     memcpy(p + at, ptr, len);
     sb->view.length += len;
     p[sb->view.length] = '\0';
-    trace(CAT_SV, "SBAPC:0x%08zx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
+    trace(CAT_SV, "SBAPC:0x%08llx:%5zu:%.60s", (uint64_t) sb->view.ptr, buffer_capacity(sb->view.ptr), sb->view.ptr);
 }
 
 void sb_insert_cstr(StringBuilder *sb, char const *str, size_t at)

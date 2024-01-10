@@ -14,14 +14,6 @@
 #ifndef __LOG_H__
 #define __LOG_H__
 
-#ifdef HAVE_LEGACY_ATTRIBUTE_NORETURN
-#define noreturn __attribute__((noreturn))
-#elif defined(HAVE_C23_ATTRIBUTE_NORETURN)
-#define noreturn [[noreturn]]
-#else
-#define noreturn
-#endif
-
 #define TRACECATEGORIES(S) \
     S(NONE)                \
     S(LIB)                 \
@@ -42,21 +34,26 @@ typedef enum trace_category {
         CAT_COUNT
 } TraceCategory;
 
-extern void          log_init();
-extern void          trace(TraceCategory category, char const *msg, ...);
-extern void          vtrace(char const *msg, va_list args);
-noreturn extern void fatal(char const *msg, ...);
-noreturn extern void vfatal(char const *msg, va_list args);
+// clang-format off
+extern void log_init();
+extern format_args(2, 3)          void trace(TraceCategory category, char const *msg, ...);
+extern                            void vtrace(char const *msg, va_list args);
+noreturn extern format_args(1, 2) void _fatal(char const *msg, ...);
+noreturn extern                   void vfatal(char const *msg, va_list args);
 
-#define UNREACHABLE() fatal("%s:%d: Unreachable", __FILE__, __LINE__)
-#define NYI(what, ...) fatal("%s:%d: Not yet implemented in %s: " what, __FILE__, __LINE__, __func__ __VA_OPT__(, ) __VA_ARGS__)
-#define OUT_OF_MEMORY(where) fatal("Out of memory at %s:%d: %s", __FILE__, __LINE__, where)
+#define fatal(msg, ...)           _fatal("%s:%d: " msg, __FILE__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+#define UNREACHABLE()             fatal("Unreachable")
+#define NYI(msg, ...)             fatal("Not yet implemented in %s: " msg, __func__ __VA_OPT__(, ) __VA_ARGS__)
+#define OUT_OF_MEMORY(msg, ...)   fatal("Out of memory in %s: " msg, __func__ __VA_OPT(, ) __VA_ARGS__)
+// clang-format on
 
-#define assert(cond) \
-    if (!(cond))     \
-    fatal(__FILE__ ":%d: assert(" #cond ") FAILED", __LINE__, #cond)
-#define assert_msg(cond, msg, ...) \
-    if (!(cond))                   \
-    fatal(__FILE__ ":%d: assert(" #cond ") " msg, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+#define assert(cond)                                                    \
+    if (!(cond)) {                                                      \
+        fatal("%s:%d: assert('%s') FAILED", __FILE__, __LINE__, #cond); \
+    }
+#define assert_msg(cond, msg, ...)                                                                \
+    if (!(cond)) {                                                                                \
+        fatal("%s:%d: assert('%s'): " msg, __FILE__, __LINE__, #cond __VA_OPT__(, ) __VA_ARGS__); \
+    }
 
 #endif // __LOG_H__

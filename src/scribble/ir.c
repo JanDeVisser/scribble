@@ -236,7 +236,7 @@ ErrorOrSize ir_function_resolve_label(IRFunction *function, size_t label)
             RETURN(Size, ix);
         }
     }
-    ERROR(Size, RuntimeError, 0, "Label '%d' not found in function '" SV_SPEC "'", label, SV_ARG(function->name));
+    ERROR(Size, RuntimeError, 0, "Label '%d' not found in function '%.*s'", label, SV_ARG(function->name));
 }
 
 StringView ir_function_to_string(IRFunction *function)
@@ -316,7 +316,7 @@ void ir_function_list(IRFunction *function, size_t mark)
 void ir_module_list(IRModule *module, bool header)
 {
     if (header) {
-        printf("Module " SV_SPEC "\n", SV_ARG(module->name));
+        printf("Module %.*s\n", SV_ARG(module->name));
         printf("============================================\n\n");
     }
     for (size_t fix = 0; fix < module->functions.size; ++fix) {
@@ -350,7 +350,7 @@ IRFunction *ir_module_function_by_name(IRModule *module, StringView name)
 
 void ir_program_list(IRProgram program)
 {
-    printf("Program " SV_SPEC "\n", SV_ARG(program.name));
+    printf("Program %.*s\n", SV_ARG(program.name));
     printf("============================================\n\n");
     for (size_t ix = 0; ix < program.modules.size; ++ix) {
         IRModule *module = program.modules.elements + ix;

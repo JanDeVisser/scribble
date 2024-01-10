@@ -18,7 +18,7 @@ StringView arm64variable_to_string(ARM64Variable *var)
         SV_ARG(typeid_name(var->var_decl.type.type_id)), typeid_sizeof(var->var_decl.type.type_id));
     switch (var->kind) {
     case VK_PARAMETER:
-        sb_printf(&sb, "@%ld, method %s: ", var->parameter.offset, ParameterPassingMethod_name(var->parameter.method));
+        sb_printf(&sb, "@%lld, method %s: ", var->parameter.offset, ParameterPassingMethod_name(var->parameter.method));
         switch (var->parameter.method) {
         case PPM_REGISTER:
             sb_printf(&sb, "%s", reg(var->parameter.reg));
@@ -27,20 +27,20 @@ StringView arm64variable_to_string(ARM64Variable *var)
             sb_printf(&sb, "%s-%s", reg(var->parameter.range.start), reg(var->parameter.range.end - 1));
             break;
         case PPM_STACK:
-            sb_printf(&sb, "[SP,%ld]", var->parameter.nsaa_offset);
+            sb_printf(&sb, "[SP,%lld]", var->parameter.nsaa_offset);
             break;
         case PPM_POINTER:
             sb_printf(&sb, "[%s]", x_reg(var->parameter.reg));
             break;
         case PPM_POINTER_STACK:
-            sb_printf(&sb, "[SP,%ld]", var->parameter.nsaa_offset);
+            sb_printf(&sb, "[SP,%lld]", var->parameter.nsaa_offset);
             break;
         default:
             UNREACHABLE();
         }
         break;
     case VK_LOCAL:
-        sb_printf(&sb, "@%ld", var->local_address.offset);
+        sb_printf(&sb, "@%lld", var->local_address.offset);
         break;
     case VK_GLOBAL:
     case VK_STATIC:

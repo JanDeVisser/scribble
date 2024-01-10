@@ -91,7 +91,7 @@ Datum *datum_initialize(Datum *d)
 {
     ExpressionType *et = type_registry_get_type_by_id(d->type);
     if (!type_is_concrete(et)) {
-        fatal("Cannot initialize datum of type '" SV_SPEC "' because it is a template", SV_ARG(et->name));
+        fatal("Cannot initialize datum of type '%.*s' because it is a template", SV_ARG(et->name));
     }
     switch (typeid_kind(d->type)) {
     case TK_PRIMITIVE:
@@ -340,7 +340,7 @@ __attribute__((unused)) Datum *datum_ADD(Datum *d1, Datum *d2)
 
 __attribute__((unused)) Datum *datum_SUBTRACT(Datum *d1, Datum *d2)
 {
-    trace(CAT_EXECUTE, "Subtract %.*s from %.*", SV_ARG(typeid_name(d1->type)), SV_ARG(typeid_name(d2->type)));
+    trace(CAT_EXECUTE, "Subtract %.*s from %.*s", SV_ARG(typeid_name(d1->type)), SV_ARG(typeid_name(d2->type)));
     assert(d1->type == d2->type);
     assert(datum_is_builtin(d1));
     Datum *ret = datum_allocate(d1->type);
@@ -854,10 +854,10 @@ StringView datum_sprint(Datum *d)
             sb_printf(&sb, "%d", d->integer.i32);
             break;
         case BIT_U64:
-            sb_printf(&sb, "%zu", d->integer.u64);
+            sb_printf(&sb, "%llu", d->integer.u64);
             break;
         case BIT_I64:
-            sb_printf(&sb, "%ld", d->integer.i64);
+            sb_printf(&sb, "%lld", d->integer.i64);
             break;
         case BIT_FLOAT:
             sb_printf(&sb, "%f", d->float_value);

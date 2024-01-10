@@ -123,7 +123,7 @@ void call_stack_push(CallStack *stack, IRFunction *function, size_t index)
 void call_stack_dump(CallStack *stack)
 {
     for (CallStackEntry *entry = stack->top; entry; entry = entry->down) {
-        printf("%*s" SV_SPEC " %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
+        printf("%*s%.*s %zu\n", (int) (40 - sv_length(entry->function->name)), "", SV_ARG(entry->function->name), entry->index);
     }
 }
 
@@ -465,10 +465,10 @@ __attribute__((unused)) NextInstructionPointer execute_DEFINE_AGGREGATE(Executio
     ExpressionType *et = type_registry_get_type_by_name(op->sv);
     if (et) {
         if (type_kind(et) != TK_AGGREGATE) {
-            fatal("Attempting to define '" SV_SPEC "' as an aggregate but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            fatal("Attempting to define '%.*s' as an aggregate but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
         }
         if (et->components.num_components != num_components) {
-            fatal("Attempting to define '" SV_SPEC "' as an aggregate with %d components but it's already an aggregate with %d components",
+            fatal("Attempting to define '%.*s' as an aggregate with %zu components but it's already an aggregate with %zu components",
                 SV_ARG(op->sv), num_components, et->components.num_components);
         }
     }
@@ -478,12 +478,12 @@ __attribute__((unused)) NextInstructionPointer execute_DEFINE_AGGREGATE(Executio
         StringView comp_name = datum_stack_pop_sv(&ctx->stack);
         if (et) {
             if (!sv_eq(et->components.components[ix].name, comp_name)) {
-                fatal("Attempting to define '" SV_SPEC "' as component %d of aggregate '" SV_SPEC "' but the component is already defined with name '%.*s'",
-                    SV_ARG(comp_name), ix, SV_ARG(et->components.components[ix].name));
+                fatal("Attempting to define '%.*s' as component %zu of aggregate '%.*s' but the component is already defined with type '%.*s'",
+                    SV_ARG(comp_name), ix, SV_ARG(et->name), SV_ARG(typeid_name(et->components.components[ix].type_id)));
             }
             if (et->components.components[ix].type_id != comp_type) {
-                fatal("Attempting to define '" SV_SPEC "' as component with type '%.*s' of aggregate '" SV_SPEC "' but the component is already defined with type '%.*s'",
-                    SV_ARG(comp_name), SV_ARG(typeid_name(comp_type)), SV_ARG(typeid_name(et->components.components[ix].type_id)));
+                fatal("Attempting to define '%.*s' with type '%.*s' as component %zu of aggregate '%.*s' but the component is already defined with type '%.*s'",
+                    SV_ARG(comp_name), SV_ARG(typeid_name(comp_type)), ix, SV_ARG(et->name), SV_ARG(typeid_name(et->components.components[ix].type_id)));
             }
         }
         components[ix].kind = CK_TYPE;
@@ -504,10 +504,10 @@ __attribute__((unused)) NextInstructionPointer execute_DEFINE_ALIAS(ExecutionCon
     ExpressionType *et = type_registry_get_type_by_name(op->sv);
     if (et) {
         if (type_kind(et) != TK_ALIAS) {
-            fatal("Attempting to define '" SV_SPEC "' as an alias but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            fatal("Attempting to define '%.*s' as an alias but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
         }
         if (et->alias_for_id != alias_for_id) {
-            fatal("Attempting to define '" SV_SPEC "' as an alias for '" SV_SPEC "' but it's already an alias for '" SV_SPEC "'",
+            fatal("Attempting to define '%.*s' as an alias for '%.*s' but it's already an alias for '%.*s'",
                 SV_ARG(op->sv), SV_ARG(typeid_name(alias_for_id)), SV_ARG(et->name));
         }
     } else {
@@ -527,10 +527,10 @@ __attribute__((unused)) NextInstructionPointer execute_DEFINE_VARIANT(ExecutionC
     ExpressionType *et = type_registry_get_type_by_name(op->sv);
     if (et) {
         if (type_kind(et) != TK_VARIANT) {
-            fatal("Attempting to define '" SV_SPEC "' as a variant but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
+            fatal("Attempting to define '%.*s' as a variant but it's already defined as a %s", SV_ARG(op->sv), TypeKind_name(type_kind(et)));
         }
         if (et->components.num_components != num_variants) {
-            fatal("Attempting to define '" SV_SPEC "' as a variant with %d variants but it's already a variant with %d variants",
+            fatal("Attempting to define '%.*s' as a variant with %zu variants but it's already a variant with %zu variants",
                 SV_ARG(op->sv), num_variants, et->components.num_components);
         }
     }
@@ -539,8 +539,8 @@ __attribute__((unused)) NextInstructionPointer execute_DEFINE_VARIANT(ExecutionC
         type_id opt_type = datum_stack_pop_u64(&ctx->stack);
         if (et) {
             if (et->components.components[ix].type_id != opt_type) {
-                fatal("Attempting to define '" SV_SPEC "' as option %d of variant '" SV_SPEC "' but the variant is already defined with type '%.*s'",
-                    typeid_name(opt_type), ix, typeid_name(et->components.components[ix].type_id));
+                fatal("Attempting to define '%.*s' as option %zu of variant '%.*s' but the variant is already defined with type '%.*s'",
+                    SV_ARG(typeid_name(opt_type)), ix, SV_ARG(et->name), SV_ARG(typeid_name(et->components.components[ix].type_id)));
             }
         }
         options[ix] = opt_type;

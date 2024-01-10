@@ -63,7 +63,7 @@ StringView value_location_to_string(ValueLocation loc)
     sb_append_cstr(&sb, " ");
     switch (loc.kind) {
     case VLK_POINTER:
-        sb_printf(&sb, "[%s, #%d]", x_reg(loc.pointer.reg), loc.pointer.offset);
+        sb_printf(&sb, "[%s, #0x%llx]", x_reg(loc.pointer.reg), loc.pointer.offset);
         break;
     case VLK_REGISTER:
         sb_printf(&sb, "%s",
@@ -78,16 +78,16 @@ StringView value_location_to_string(ValueLocation loc)
     case VLK_DATA:
         sb_printf(&sb, "%.*s", SV_ARG(loc.static_data.symbol));
         if (loc.static_data.offset > 0) {
-            sb_printf(&sb, "+0x%0x", loc.static_data.offset);
+             sb_printf(&sb, "+0x%0llx", loc.static_data.offset);
         }
         break;
     case VLK_IMMEDIATE:
         if ((int) loc.integer.type > 0) {
             uint64_t v = MUST_OPTIONAL(UInt64, integer_unsigned_value(loc.integer));
-            sb_printf(&sb, "#%zu", v);
+            sb_printf(&sb, "#%llu", v);
         } else {
             int64_t v = MUST_OPTIONAL(Int64, integer_signed_value(loc.integer));
-            sb_printf(&sb, "#%ld", v);
+            sb_printf(&sb, "#%lld", v);
         }
         break;
     case VLK_FLOAT:
@@ -232,7 +232,7 @@ ErrorOrInt output_arm64(BackendConnection *conn, IRProgram *program)
         if (OPT_RUN) {
             fflush(stderr);
             fflush(stdout);
-            StringView run_cmd = sv_printf("./%s", bin_name);
+            StringView run_cmd = sv_printf("./%.*s", SV_ARG(bin_name));
             Process   *p = process_create(run_cmd);
             ErrorOrInt exit_code_or_error = process_execute(p);
             if (ErrorOrInt_is_error(exit_code_or_error)) {

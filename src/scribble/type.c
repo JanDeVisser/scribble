@@ -680,7 +680,7 @@ ErrorOrTypeID type_specialize_template(type_id template_id, size_t num, Template
             sb_append_sv(&name, t->name);
         } break;
         case TPT_NUMBER: {
-            sb_printf(&name, "%ld", arg->int_value);
+            sb_printf(&name, "%lld", arg->int_value);
         } break;
         case TPT_STRING: {
             sb_append_sv(&name, arg->string_value);

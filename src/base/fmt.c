@@ -557,7 +557,7 @@ StringView fmt_format(StringView fmt, FMTArgs args)
 {
     FormatString fs = fmt_parse(fmt);
     if (fs.size != args.size) {
-        fatal("Invalid number of arguments for format string '%.*s'. Expected %d, got %d",
+        fatal("Invalid number of arguments for format string '%.*s'. Expected %zu, got %zu",
             SV_ARG(fmt), fs.size, args.size);
     }
     return format_string_format(fs, args);

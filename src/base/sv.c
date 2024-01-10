@@ -70,7 +70,7 @@ StringView sv_render_integer(Integer integer)
         ret = sv_printf("%u", integer.u32);
         break;
     case U64:
-        ret = sv_printf("%lu", integer.u64);
+        ret = sv_printf("%llu", integer.u64);
         break;
     case I8:
         ret = sv_printf("%d", integer.i8);
@@ -82,7 +82,7 @@ StringView sv_render_integer(Integer integer)
         ret = sv_printf("%d", integer.i32);
         break;
     case I64:
-        ret = sv_printf("%ld", integer.i64);
+        ret = sv_printf("%lld", integer.i64);
         break;
     default:
         UNREACHABLE();
@@ -104,7 +104,7 @@ StringView sv_render_hex_integer(Integer integer)
         ret = sv_printf("%04x", integer.u32);
         break;
     case U64:
-        ret = sv_printf("%08x", integer.u64);
+        ret = sv_printf("%08llx", integer.u64);
         break;
     default:
         UNREACHABLE();

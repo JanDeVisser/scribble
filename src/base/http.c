@@ -115,9 +115,9 @@ ErrorOrHttpRequest http_request_receive(socket_t socket)
         size_t     len = sb.view.length;
         StringView body = TRY_TO(StringView, HttpRequest, socket_read(socket, content_length));
         sb_append_sv(&sb, body);
+        ret.body = (StringView) { .ptr = sb.view.ptr + len, .length = body.length };
+        trace(CAT_IPC, "Read Request Body:\n%.*s\n", SV_ARG(body));
         sv_free(body);
-        ret.body = (StringView) { .ptr = sb.view.ptr + len, .length = line.length };
-        trace(CAT_IPC, "Read Request Body");
     }
     ret.request = sb.view;
     trace(CAT_IPC, "http_request_receive done");

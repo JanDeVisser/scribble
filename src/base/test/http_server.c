@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 {
     set_option(sv_from("trace"), sv_from("IPC"));
     log_init();
-    StringView path = sv_printf("/tmp/http-test-%zu", getpid());
+    StringView path = sv_printf("/tmp/http-test-%d", getpid());
     socket_t const  listen_fd = MUST(Socket, unix_socket_listen(path));
     printf("[S] Listening to socket\n");
 

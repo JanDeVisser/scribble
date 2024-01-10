@@ -209,7 +209,7 @@ void *allocator_allocate(Allocator *alloc, size_t size)
         allocator_allocate_arena(alloc);
         ret = arena_allocate(alloc->current, size);
     }
-    trace(CAT_MEM, "M:0x%08zx:%5zu:0x%08zx", (uint64_t) alloc, size, (uint64_t) ret);
+    trace(CAT_MEM, "M:0x%08llx:%5zu:0x%08llx", (uint64_t) alloc, size, (uint64_t) ret);
     assert(ret);
     return ret;
 }

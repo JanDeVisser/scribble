@@ -100,13 +100,13 @@ extern char const *Error_to_string(Error error);
 #define ERROR(name, cat, code, msg, ...) return ErrorOr##name##_error(cat, code, msg __VA_OPT__(, ) __VA_ARGS__)
 #define VERROR(name, cat, code, msg, args) return ErrorOr##name##_verror(cat, code, msg, args)
 
-#define MUST(name, expr)                                \
-    ({                                                  \
-        ErrorOr##name name##_maybe = (expr);            \
-        if (ErrorOr##name##_is_error(name##_maybe)) {   \
-            fatal(Error_to_string(name##_maybe.error)); \
-        }                                               \
-        name##_maybe.value;                             \
+#define MUST(name, expr)                                      \
+    ({                                                        \
+        ErrorOr##name name##_maybe = (expr);                  \
+        if (ErrorOr##name##_is_error(name##_maybe)) {         \
+            fatal("%s", Error_to_string(name##_maybe.error)); \
+        }                                                     \
+        name##_maybe.value;                                   \
     })
 
 #define TRY(name, expr)                               \

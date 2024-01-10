@@ -548,7 +548,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
     if (!decl) {
         decl = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
         if (!decl) {
-            fprintf(stderr, "Assignment to undeclared variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+            fprintf(stderr, "Assignment to undeclared variable '%.*s'\n", SV_ARG(stmt->name));
             return bound_node_make_unbound(parent, stmt, ctx);
         }
     }
@@ -577,12 +577,12 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
         case TK_AGGREGATE: {
             TypeComponent *comp = type_get_component(et, name_stmt->name);
             if (comp == NULL) {
-                return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' has no component named '" SV_SPEC "'",
+                return error(parent, name_stmt, ctx, "Type '%.*s' has no component named '%.*s'",
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = type_registry_get_type_by_id(comp->type_id);
             if (!type_is_concrete(et)) {
-                return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
+                return error(parent, name_stmt, ctx, "Type '%.*s' must be specialized", SV_ARG(et->name));
             }
         } break;
         case TK_VARIANT: {
@@ -598,24 +598,24 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
                 }
             }
             if (payload == NULL) {
-                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                return error(parent, name_stmt, ctx, "Variant value '%.*s.%.*s' has no payload type defined",
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             if (name_stmt->variable.subscript != NULL) {
-                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' cannot be subscripted",
+                return error(parent, name_stmt, ctx, "Variant value '%.*s.%.*s' cannot be subscripted",
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = payload;
         } break;
         default:
-            return error(parent, name_stmt, ctx, "'" SV_SPEC "' is not a compound type", SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "'%.*s' is not a compound type", SV_ARG(et->name));
         }
         if (type_kind(et) == TK_VARIANT && name_stmt->variable.subscript == NULL) {
             return error(parent, name_stmt, ctx, "Must specify payload for variant '%.*s'",
                 SV_ARG(et->name));
         }
         if (!type_is_concrete(et)) {
-            return error(parent, name_stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "Type '%.*s' must be specialized", SV_ARG(et->name));
         }
         if (variant_tag.type != 0) {
             break;
@@ -657,7 +657,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
             return error(parent, stmt, ctx, "Variable type with compound initializer cannot be inferred");
         }
         if (typeid_kind(ret->typespec.type_id) != TK_AGGREGATE) {
-            return error(parent, stmt, ctx, "Cannot assign compound expression to non-aggregate type '" SV_SPEC "'", SV_ARG(typespec_name(ret->typespec)));
+            return error(parent, stmt, ctx, "Cannot assign compound expression to non-aggregate type '%.*s'", SV_ARG(typespec_name(ret->typespec)));
         }
         BoundNode *expr = ret->assignment.expression->compound_expr.expressions;
         for (size_t ix = 0; ix < et->components.num_components; ++ix) {
@@ -677,7 +677,7 @@ __attribute__((unused)) BoundNode *bind_ASSIGNMENT(BoundNode *parent, SyntaxNode
         }
     } else if (et != NULL) {
         if (!typespec_assignment_compatible(ret->typespec, ret->assignment.expression->typespec)) {
-            return error(parent, stmt, ctx, "Cannot assign value of expression of type '" SV_SPEC "' to variable of type '" SV_SPEC "'",
+            return error(parent, stmt, ctx, "Cannot assign value of expression of type '%.*s' to variable of type '%.*s'",
                 SV_ARG(typespec_name(ret->assignment.expression->typespec)), SV_ARG(typespec_name(ret->typespec)));
         }
     } else { // et == NULL
@@ -838,7 +838,7 @@ __attribute__((unused)) BoundNode *bind_BINARYEXPRESSION(BoundNode *parent, Synt
             if (!coerced || !resolve_binary_expression_type(stmt->binary_expr.operator, coerced->typespec, rhs->typespec, &type)) {
                 ExpressionType *lhs_type = type_registry_get_type_by_id(lhs->typespec.type_id);
                 ExpressionType *rhs_type = type_registry_get_type_by_id(rhs->typespec.type_id);
-                return error(parent, stmt, ctx, "Could not resolve return type of operator '%s' with lhs type '" SV_SPEC "' and rhs type '" SV_SPEC "'",
+                return error(parent, stmt, ctx, "Could not resolve return type of operator '%s' with lhs type '%.*s' and rhs type '%.*s'",
                     Operator_name(stmt->binary_expr.operator), SV_ARG(lhs_type->name), SV_ARG(rhs_type->name));
             }
             lhs = coerced;
@@ -880,7 +880,7 @@ __attribute__((unused)) BoundNode *bind_BREAK(BoundNode *parent, SyntaxNode *stm
         controllable = controllable->parent;
     }
     if (!controllable) {
-        return error(parent, stmt, ctx, "No 'while' or 'loop' block found with label '" SV_SPEC "'", SV_ARG(stmt->name));
+        return error(parent, stmt, ctx, "No 'while' or 'loop' block found with label '%.*s'", SV_ARG(stmt->name));
     }
     BoundNode *ret = bound_node_make((stmt->type == SNT_BREAK) ? BNT_BREAK : BNT_CONTINUE, parent);
     ret->controlled_statement = controllable;
@@ -1032,7 +1032,7 @@ __attribute__((unused)) BoundNode *bind_FUNCTION_CALL(BoundNode *parent, SyntaxN
 {
     BoundNode *fnc = bound_node_find(parent, BNT_FUNCTION, stmt->call.function->name);
     if (!fnc) {
-        fprintf(stderr, "Cannot bind function '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        fprintf(stderr, "Cannot bind function '%.*s'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
 
@@ -1361,7 +1361,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         et = type_registry_get_type_by_id(decl->typespec.type_id);
         assert(et != NULL);
         if (!type_is_concrete(et)) {
-            return error(parent, stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
+            return error(parent, stmt, ctx, "Type '%.*s' must be specialized", SV_ARG(et->name));
         }
     }
     if (!et) {
@@ -1370,7 +1370,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
             if (type_kind(et) == TK_ENUM && stmt->variable.subscript != NULL) {
                 SyntaxNode *value_name = stmt->variable.subscript;
                 if (value_name->next != NULL) {
-                    return error(parent, stmt, ctx, "Enumeration value '" SV_SPEC "' has too many name parts", SV_ARG(value_name->name));
+                    return error(parent, stmt, ctx, "Enumeration value '%.*s' has too many name parts", SV_ARG(value_name->name));
                 }
                 for (size_t ix = 0; ix < et->enumeration.size; ++ix) {
                     EnumValue enum_value = et->enumeration.elements[ix];
@@ -1386,7 +1386,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         }
     }
     if (!decl) {
-        fprintf(stderr, "Cannot bind variable '" SV_SPEC "'\n", SV_ARG(stmt->name));
+        fprintf(stderr, "Cannot bind variable '%.*s'\n", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
 
@@ -1403,7 +1403,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         case TK_AGGREGATE: {
             TypeComponent *comp = type_get_component(et, name_stmt->name);
             if (comp == NULL) {
-                return error(parent, stmt, ctx, "Type '" SV_SPEC "' has no component named '" SV_SPEC "'", SV_ARG(et->name), SV_ARG(name_stmt->name));
+                return error(parent, stmt, ctx, "Type '%.*s' has no component named '%.*s'", SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = type_registry_get_type_by_id(comp->type_id);
         } break;
@@ -1419,16 +1419,16 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
                 }
             }
             if (payload == NULL) {
-                return error(parent, name_stmt, ctx, "Variant value '" SV_SPEC "." SV_SPEC "' has no payload type defined",
+                return error(parent, name_stmt, ctx, "Variant value '%.*s.%.*s' has no payload type defined",
                     SV_ARG(et->name), SV_ARG(name_stmt->name));
             }
             et = payload;
         } break;
         default:
-            return error(parent, name_stmt, ctx, "'" SV_SPEC "' is not a compound type", SV_ARG(et->name));
+            return error(parent, name_stmt, ctx, "'%.*s' is not a compound type", SV_ARG(et->name));
         }
         if (!type_is_concrete(et)) {
-            return error(parent, stmt, ctx, "Type '" SV_SPEC "' must be specialized", SV_ARG(et->name));
+            return error(parent, stmt, ctx, "Type '%.*s' must be specialized", SV_ARG(et->name));
         }
         *name_part = bound_node_make(BNT_VARIABLE, parent);
         (*name_part)->name = name_stmt->name;
@@ -1446,11 +1446,11 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
 {
     BoundNode *existing = bound_node_find_here(parent, BNT_VARIABLE_DECL, stmt->name);
     if (existing != NULL) {
-        return error(parent, stmt, ctx, "Variable '" SV_SPEC "' already declared in this scope", SV_ARG(stmt->name));
+        return error(parent, stmt, ctx, "Variable '%.*s' already declared in this scope", SV_ARG(stmt->name));
     }
     BoundNode *shadows = bound_node_find(parent, BNT_VARIABLE_DECL, stmt->name);
     if (shadows != NULL) {
-        warning(ctx, stmt->token.loc, "Variable '" SV_SPEC "' shadows a previously declared variable", SV_ARG(stmt->name));
+        warning(ctx, stmt->token.loc, "Variable '%.*s' shadows a previously declared variable", SV_ARG(stmt->name));
     }
 
     TypeSpec var_type = { VOID_ID, false };
@@ -1469,7 +1469,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
             BoundNode *result = evaluate_node(expr);
             if (result != expr) {
                 if (ret->typespec.type_id != VOID_ID && !typespec_assignment_compatible(ret->typespec, result->typespec)) {
-                    return error(parent, stmt, ctx, "Cannot assign value of expression of type '" SV_SPEC "' to constant of type '" SV_SPEC "'",
+                    return error(parent, stmt, ctx, "Cannot assign value of expression of type '%.*s' to constant of type '%.*s'",
                         SV_ARG(typespec_name(result->typespec)), SV_ARG(typespec_name(ret->typespec)));
                 }
                 ret = bound_node_make(BNT_CONST, parent);

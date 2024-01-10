@@ -44,7 +44,7 @@ void json_encode_to_builder(JSONValue *value, StringBuilder *sb, int indent)
         sb_printf(sb, "%f", value->double_number);
         break;
     case JSON_TYPE_INT:
-        sb_printf(sb, "%.*s", sv_render_integer(value->int_number));
+        sb_printf(sb, "%.*s", SV_ARG(sv_render_integer(value->int_number)));
         break;
     case JSON_TYPE_BOOLEAN:
         sb_append_cstr(sb, (value->boolean) ? "true" : "false");
