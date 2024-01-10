@@ -184,7 +184,7 @@ ExpressionType *type_registry_get_type_by_index(size_t ix)
     if (ix <= type_registry.size) {
         return type_registry.elements[ix];
     }
-    fatal("Invalid type index %d referenced", ix);
+    fatal("Invalid type index %zu referenced", ix);
 }
 
 type_id type_registry_id_of_builtin_type(BuiltinType type)
