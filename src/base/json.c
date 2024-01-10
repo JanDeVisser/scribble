@@ -116,6 +116,12 @@ OptionalJSONValue json_at(JSONValue *array, size_t index)
     RETURN_EMPTY(JSONValue);
 }
 
+size_t json_len(JSONValue *array)
+{
+    assert(array->type == JSON_TYPE_ARRAY);
+    return array->array.size;
+}
+
 void json_set(JSONValue *obj, char const *attr, JSONValue elem)
 {
     json_set_sv(obj, sv_copy_cstr(attr), elem);

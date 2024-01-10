@@ -17,13 +17,13 @@
 #include <json.h>
 #include <lexer.h>
 #include <log.h>
-#include <options.h>
 #include <parser.h>
 #include <sv.h>
 #include <type.h>
 
 #define STATIC_ALLOCATOR
 #include <allocate.h>
+#include <http.h>
 
 static void        parser_context_add_verror(ParserContext *ctx, Token token, char const *msg, va_list args);
 static void        parser_context_add_error(ParserContext *ctx, Token token, char const *msg, ...);
@@ -37,6 +37,8 @@ static SyntaxNode *parse_statement(ParserContext *ctx);
 static SyntaxNode *parse_type(ParserContext *ctx);
 static SyntaxNode *parse_import(ParserContext *ctx);
 static SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name);
+static void        parser_debug_info(ParserContext *ctx, char const *fmt, ...);
+static void        parser_debug_node(ParserContext *ctx, SyntaxNode *node);
 
 char const *SyntaxNodeType_name(SyntaxNodeType type)
 {
@@ -58,7 +60,7 @@ size_t next_index()
     return counter++;
 }
 
-SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token)
+SyntaxNode *syntax_node_make(ParserContext *ctx, SyntaxNodeType type, StringView name, Token token)
 {
     SyntaxNode *node = (SyntaxNode *) allocate(sizeof(SyntaxNode));
     node->type = type;
@@ -66,6 +68,9 @@ SyntaxNode *syntax_node_make(SyntaxNodeType type, StringView name, Token token)
     node->next = NULL;
     node->index = next_index();
     node->token = token;
+    if (ctx && ctx->debug) {
+        parser_debug_node(ctx, node);
+    }
     return node;
 }
 
@@ -381,7 +386,7 @@ SyntaxNode *parse_expression_1(ParserContext *ctx, SyntaxNode *lhs, int min_prec
                 return NULL;
             }
         }
-        SyntaxNode *expr = syntax_node_make(SNT_BINARYEXPRESSION, sv_from(Operator_name(op.operator)), lhs->token);
+        SyntaxNode *expr = syntax_node_make(ctx, SNT_BINARYEXPRESSION, sv_from(Operator_name(op.operator)), lhs->token);
         expr->binary_expr.lhs = lhs;
         expr->binary_expr.rhs = rhs;
         expr->binary_expr.operator= op.operator;
@@ -398,15 +403,15 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
     switch (token.kind) {
     case TK_IDENTIFIER: {
         lexer_lex(ctx->lexer);
-        SyntaxNode  *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+        SyntaxNode  *var = syntax_node_make(ctx, SNT_VARIABLE, token.text, token);
         SyntaxNode **name_part = &var->variable.subscript;
         while (parser_context_accept_symbol(ctx, '.')) {
             token = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-            *name_part = syntax_node_make(SNT_VARIABLE, token.text, token);
+            *name_part = syntax_node_make(ctx, SNT_VARIABLE, token.text, token);
             name_part = &(*name_part)->variable.subscript;
         }
         ACCEPT_SYMBOL_OR(ctx, '(', var);
-        SyntaxNode *call = syntax_node_make(SNT_FUNCTION_CALL, var->name, var->token);
+        SyntaxNode *call = syntax_node_make(ctx, SNT_FUNCTION_CALL, var->name, var->token);
         var->type = SNT_FUNCTION;
         call->call.function = var;
         call->call.discard_result = false;
@@ -419,7 +424,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         lexer_lex(ctx->lexer);
         switch (token.code) {
         case TC_INTEGER: {
-            SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
+            SyntaxNode *ret = syntax_node_make(ctx, SNT_INTEGER, token.text, token);
             ret->integer.type = I32;
             Token type = lexer_next(ctx->lexer);
             if (token_matches_kind(type, TK_IDENTIFIER)) {
@@ -436,12 +441,12 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
             return ret;
         }
         case TC_HEXNUMBER: {
-            SyntaxNode *ret = syntax_node_make(SNT_INTEGER, token.text, token);
+            SyntaxNode *ret = syntax_node_make(ctx, SNT_INTEGER, token.text, token);
             ret->integer.type = (IntegerType) align_at(4 * (token.text.length - 2), 8);
             return ret;
         }
         case TC_DECIMAL: {
-            return syntax_node_make(SNT_DECIMAL, token.text, token);
+            return syntax_node_make(ctx, SNT_DECIMAL, token.text, token);
         }
         default:
             UNREACHABLE();
@@ -451,7 +456,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         switch (token.code) {
         case TC_DOUBLE_QUOTED_STRING:
             lexer_lex(ctx->lexer);
-            return syntax_node_make(SNT_STRING, sv_decode_quoted_str(token.text), token);
+            return syntax_node_make(ctx, SNT_STRING, sv_decode_quoted_str(token.text), token);
         default:
             return NULL;
         }
@@ -460,7 +465,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         case KW_TRUE:
         case KW_FALSE:
             lexer_lex(ctx->lexer);
-            return syntax_node_make(SNT_BOOL, token.text, token);
+            return syntax_node_make(ctx, SNT_BOOL, token.text, token);
         default:
             return NULL;
         }
@@ -476,7 +481,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
         }
         case '{': {
             lexer_lex(ctx->lexer);
-            SyntaxNode *ret = syntax_node_make(SNT_COMPOUND, token.text, token);
+            SyntaxNode *ret = syntax_node_make(ctx, SNT_COMPOUND, token.text, token);
             if (!parse_expression_list(ctx, &ret->compound_expr.expressions, '}')) {
                 return NULL;
             }
@@ -488,7 +493,7 @@ SyntaxNode *parse_primary_expression(ParserContext *ctx)
                 lexer_lex(ctx->lexer);
                 SyntaxNode *operand = parse_primary_expression(ctx);
                 if (operand) {
-                    SyntaxNode *unary_expr = syntax_node_make(SNT_UNARYEXPRESSION, token.text, token);
+                    SyntaxNode *unary_expr = syntax_node_make(ctx, SNT_UNARYEXPRESSION, token.text, token);
                     unary_expr->unary_expr.operand = operand;
                     unary_expr->unary_expr.operator= op.operator;
                     return unary_expr;
@@ -520,16 +525,16 @@ bool parse_expression_list(ParserContext *ctx, SyntaxNode **dst, char end)
 SyntaxNode *parse_identifier(ParserContext *ctx)
 {
     Token        token = lexer_lex(ctx->lexer);
-    SyntaxNode  *var = syntax_node_make(SNT_VARIABLE, token.text, token);
+    SyntaxNode  *var = syntax_node_make(ctx, SNT_VARIABLE, token.text, token);
     SyntaxNode **name_part = &var->variable.subscript;
     SyntaxNode  *ret = NULL;
     while (parser_context_accept_symbol(ctx, '.')) {
         token = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-        *name_part = syntax_node_make(SNT_VARIABLE, token.text, token);
+        *name_part = syntax_node_make(ctx, SNT_VARIABLE, token.text, token);
         name_part = &(*name_part)->variable.subscript;
     }
     if (parser_context_accept_symbol(ctx, '(')) {
-        ret = syntax_node_make(SNT_FUNCTION_CALL, var->name, var->token);
+        ret = syntax_node_make(ctx, SNT_FUNCTION_CALL, var->name, var->token);
         var->type = SNT_FUNCTION;
         ret->call.function = var;
         ret->call.discard_result = true;
@@ -537,14 +542,14 @@ SyntaxNode *parse_identifier(ParserContext *ctx)
             return NULL;
         }
     } else if (parser_context_accept_symbol(ctx, '=')) {
-        ret = syntax_node_make(SNT_ASSIGNMENT, var->name, var->token);
+        ret = syntax_node_make(ctx, SNT_ASSIGNMENT, var->name, var->token);
         ret->assignment.variable = var;
         ret->assignment.expression = parse_expression(ctx);
         if (ret->assignment.expression == NULL) {
             return NULL;
         }
     } else if (parser_context_accept_symbol(ctx, ':')) {
-        ret = syntax_node_make(SNT_LABEL, var->name, var->token);
+        ret = syntax_node_make(ctx, SNT_LABEL, var->name, var->token);
         return ret;
     }
     SKIP_SEMICOLON(ctx);
@@ -557,8 +562,8 @@ SyntaxNode *parse_variable_declaration(ParserContext *ctx, bool is_const)
     SyntaxNode *type = NULL;
 
     Token       ident = TRY_OR_NULL(Token, parser_context_expect_token(ctx, TK_IDENTIFIER, TC_IDENTIFIER));
-    SyntaxNode *ret = syntax_node_make(SNT_VARIABLE_DECL, ident.text, var);
-    ret->variable_decl.variable = syntax_node_make(SNT_VARIABLE, ident.text, ident);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_VARIABLE_DECL, ident.text, var);
+    ret->variable_decl.variable = syntax_node_make(ctx, SNT_VARIABLE, ident.text, ident);
     if (parser_context_accept_symbol(ctx, ':')) {
         type = parse_type(ctx);
     }
@@ -594,7 +599,7 @@ SyntaxNode *parse_if(ParserContext *ctx)
     if (parser_context_accept_and_discard(ctx, TK_KEYWORD, (TokenCode) KW_ELSE)) {
         if_false = parse_statement(ctx);
     }
-    SyntaxNode *ret = syntax_node_make(SNT_IF, sv_from("if"), token);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_IF, sv_from("if"), token);
     ret->if_statement.condition = expr;
     ret->if_statement.if_true = if_true;
     ret->if_statement.if_false = if_false;
@@ -616,7 +621,7 @@ SyntaxNode *parse_for(ParserContext *ctx)
         parser_context_add_error(ctx, token, "Expected statement for 'for' loop");
         return NULL;
     }
-    SyntaxNode *ret = syntax_node_make(SNT_FOR, sv_from("$for"), token);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_FOR, sv_from("$for"), token);
     ret->for_statement.variable = variable.text;
     ret->for_statement.range = range;
     ret->for_statement.statement = stmt;
@@ -626,7 +631,7 @@ SyntaxNode *parse_for(ParserContext *ctx)
 SyntaxNode *parse_return(ParserContext *ctx)
 {
     Token       token = lexer_lex(ctx->lexer);
-    SyntaxNode *ret = syntax_node_make(SNT_RETURN, sv_from("return"), token);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_RETURN, sv_from("return"), token);
     ACCEPT_SYMBOL_AND(ctx, ';', ret);
     ret->return_stmt.expression = parse_expression(ctx);
     if (ret->return_stmt.expression == NULL) {
@@ -649,7 +654,7 @@ SyntaxNode *parse_while(ParserContext *ctx)
         parser_context_add_error(ctx, token, "Expected statement for 'while' loop");
         return NULL;
     }
-    SyntaxNode *ret = syntax_node_make(SNT_WHILE, sv_from("$while"), token);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_WHILE, sv_from("$while"), token);
     ret->while_statement.condition = expr;
     ret->while_statement.statement = stmt;
     return ret;
@@ -663,7 +668,7 @@ SyntaxNode *parse_loop(ParserContext *ctx)
         parser_context_add_error(ctx, token, "Expected statement for loop");
         return NULL;
     }
-    SyntaxNode *ret = syntax_node_make(SNT_LOOP, sv_from("$loop"), token);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_LOOP, sv_from("$loop"), token);
     ret->block.statements = stmt;
     return ret;
 }
@@ -671,7 +676,7 @@ SyntaxNode *parse_loop(ParserContext *ctx)
 SyntaxNode *parse_block(ParserContext *ctx)
 {
     Token        token = lexer_lex(ctx->lexer);
-    SyntaxNode  *ret = syntax_node_make(SNT_BLOCK, sv_from("block"), token);
+    SyntaxNode  *ret = syntax_node_make(ctx, SNT_BLOCK, sv_from("block"), token);
     SyntaxNode **dst = &ret->block.statements;
     while (true) {
         ACCEPT_SYMBOL_AND(ctx, '}', ret);
@@ -708,7 +713,7 @@ SyntaxNode *parse_statement(ParserContext *ctx)
         case KW_CONTINUE: {
             Token stmt_token = lexer_lex(ctx->lexer);
             token = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-            ret = syntax_node_make((stmt_token.code == KW_BREAK) ? SNT_BREAK : SNT_CONTINUE, token.text, stmt_token);
+            ret = syntax_node_make(ctx, (stmt_token.code == KW_BREAK) ? SNT_BREAK : SNT_CONTINUE, token.text, stmt_token);
             SKIP_SEMICOLON(ctx);
         } break;
         case KW_CONST:
@@ -772,7 +777,7 @@ bool parse_type_descr(ParserContext *ctx, Token type_name, TypeDescr *target)
 SyntaxNode *parse_type(ParserContext *ctx)
 {
     Token       type_name = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-    SyntaxNode *ret = syntax_node_make(SNT_TYPE, type_name.text, type_name);
+    SyntaxNode *ret = syntax_node_make(ctx, SNT_TYPE, type_name.text, type_name);
     if (!parse_type_descr(ctx, type_name, &ret->type_descr)) {
         return NULL;
     }
@@ -787,7 +792,7 @@ SyntaxNode *parse_param(ParserContext *ctx)
     if (!type) {
         return NULL;
     }
-    SyntaxNode *param = syntax_node_make(SNT_PARAMETER, name.text, name);
+    SyntaxNode *param = syntax_node_make(ctx, SNT_PARAMETER, name.text, name);
     param->parameter.parameter_type = type;
     return param;
 }
@@ -841,7 +846,7 @@ SyntaxNode *parse_function_decl(ParserContext *ctx)
 {
     lexer_lex(ctx->lexer);
     Token       token = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-    SyntaxNode *func = syntax_node_make(SNT_FUNCTION, token.text, token);
+    SyntaxNode *func = syntax_node_make(ctx, SNT_FUNCTION, token.text, token);
     if (parse_parameters(ctx, func) == NULL) {
         return NULL;
     }
@@ -858,7 +863,7 @@ SyntaxNode *parse_function(ParserContext *ctx)
         return NULL;
     }
     if (parser_context_accept_symbol(ctx, '{')) {
-        SyntaxNode *impl = syntax_node_make(SNT_FUNCTION_IMPL, func->name, func->token);
+        SyntaxNode *impl = syntax_node_make(ctx, SNT_FUNCTION_IMPL, func->name, func->token);
         func->function.function_impl = impl;
         SyntaxNode *last_stmt = NULL;
         while (true) {
@@ -883,7 +888,7 @@ SyntaxNode *parse_function(ParserContext *ctx)
     if (parser_context_accept_and_discard(ctx, TK_KEYWORD, (TokenCode) KW_FUNC_BINDING)) {
         Token const token = TRY_OR_NULL(Token, parser_context_expect_token(ctx, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING));
         SKIP_SEMICOLON(ctx);
-        func->function.function_impl = syntax_node_make(
+        func->function.function_impl = syntax_node_make(ctx,
             SNT_NATIVE_FUNCTION,
             (StringView) { token.text.ptr + 1, token.text.length - 2 },
             token);
@@ -892,7 +897,7 @@ SyntaxNode *parse_function(ParserContext *ctx)
     if (parser_context_accept_and_discard(ctx, TK_KEYWORD, (TokenCode) KW_MACRO_BINDING)) {
         Token const token = TRY_OR_NULL(Token, parser_context_expect_token(ctx, TK_QUOTED_STRING, TC_DOUBLE_QUOTED_STRING));
         SKIP_SEMICOLON(ctx);
-        func->function.function_impl = syntax_node_make(
+        func->function.function_impl = syntax_node_make(ctx,
             SNT_MACRO,
             (StringView) { token.text.ptr + 1, token.text.length - 2 },
             token);
@@ -913,12 +918,12 @@ SyntaxNode *parse_enum_def(ParserContext *ctx)
         }
     }
     EXPECT_SYMBOL(ctx, '{');
-    SyntaxNode *enum_node = syntax_node_make(SNT_ENUMERATION, ident.text, ident);
+    SyntaxNode *enum_node = syntax_node_make(ctx, SNT_ENUMERATION, ident.text, ident);
     enum_node->enumeration.underlying_type = underlying_type;
     SyntaxNode **value = &enum_node->enumeration.values;
     while (!parser_context_accept_symbol(ctx, '}')) {
         Token value_name = TRY_OR_NULL(Token, parser_context_expect_token(ctx, TK_IDENTIFIER, TC_IDENTIFIER));
-        *value = syntax_node_make(SNT_ENUM_VALUE, value_name.text, value_name);
+        *value = syntax_node_make(ctx, SNT_ENUM_VALUE, value_name.text, value_name);
         SyntaxNode *underlying_value = NULL;
         if (parser_context_accept_symbol(ctx, '=')) {
             if ((underlying_value = parse_expression(ctx)) == NULL) {
@@ -941,12 +946,12 @@ SyntaxNode *parse_struct_def(ParserContext *ctx)
     lexer_lex(ctx->lexer);
     Token ident = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
     EXPECT_SYMBOL(ctx, '{');
-    SyntaxNode  *strukt = syntax_node_make(SNT_STRUCT, ident.text, ident);
+    SyntaxNode  *strukt = syntax_node_make(ctx, SNT_STRUCT, ident.text, ident);
     SyntaxNode **comp = &strukt->struct_def.components;
     while (!parser_context_accept_symbol(ctx, '}')) {
         Token comp_name = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
         EXPECT_SYMBOL(ctx, ':');
-        *comp = syntax_node_make(SNT_TYPE_COMPONENT, comp_name.text, comp_name);
+        *comp = syntax_node_make(ctx, SNT_TYPE_COMPONENT, comp_name.text, comp_name);
         if (((*comp)->parameter.parameter_type = parse_type(ctx)) == NULL) {
             return NULL;
         }
@@ -969,12 +974,12 @@ SyntaxNode *parse_variant_def(ParserContext *ctx)
         underlying_type = parse_type(ctx);
     }
     EXPECT_SYMBOL(ctx, '{');
-    SyntaxNode *variant_node = syntax_node_make(SNT_VARIANT, ident.text, ident);
+    SyntaxNode *variant_node = syntax_node_make(ctx, SNT_VARIANT, ident.text, ident);
     variant_node->variant_def.underlying_type = underlying_type;
     SyntaxNode **value = &variant_node->variant_def.options;
     while (!parser_context_accept_symbol(ctx, '}')) {
         Token option_name = TRY_OR_NULL(Token, parser_context_expect_identifier(ctx));
-        *value = syntax_node_make(SNT_VARIANT_OPTION, option_name.text, option_name);
+        *value = syntax_node_make(ctx, SNT_VARIANT_OPTION, option_name.text, option_name);
         SyntaxNode *underlying_value = NULL;
         SyntaxNode *payload_type = NULL;
         if (parser_context_accept_symbol(ctx, '(')) {
@@ -1021,7 +1026,7 @@ SyntaxNode *import_package(ParserContext *ctx, Token token, StringView path)
         parser_context_add_error(ctx, token, "Could not find import '%.*s'", SV_ARG(path));
         return NULL;
     }
-    SyntaxNode *import = syntax_node_make(SNT_IMPORT, name, token);
+    SyntaxNode *import = syntax_node_make(ctx, SNT_IMPORT, name, token);
     ErrorOrChar buffer_maybe = read_file_by_name(sv_cstr(file_name));
     if (ErrorOrChar_is_error(buffer_maybe)) {
         parser_context_add_error(ctx, token, "Could not read import '%.*s'", SV_ARG(path));
@@ -1049,10 +1054,10 @@ SyntaxNode *parse_import(ParserContext *ctx)
 SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
 {
     Token       token = { name, TK_MODULE, TC_NONE };
-    SyntaxNode *module = syntax_node_make(SNT_MODULE, name, token);
+    SyntaxNode *module = syntax_node_make(ctx, SNT_MODULE, name, token);
     Lexer       lexer = { 0 };
 
-    printf("Compiling '" SV_SPEC "'\n", SV_ARG(name));
+    parser_debug_info(ctx, "Compiling '%.*s'\n", SV_ARG(name));
     lexer.skip_whitespace = true;
     ctx->lexer = &lexer;
     lexer_push_source(&lexer, buffer, name);
@@ -1111,23 +1116,53 @@ SyntaxNode *parse_module_file(ParserContext *ctx, int dir_fd, char const *file)
     return parse_module(ctx, sv_from(buffer), fn_barename(sv_copy_cstr(file)));
 }
 
-ParserContext parse(BackendConnection *conn)
+void parser_debug_info(ParserContext *ctx, char const *fmt, ...)
 {
-    StringView dir_or_file = json_get_string(&conn->config, "target", sv_from("."));
+    if (!ctx->debug)
+        return;
+    va_list args;
+    va_start(args, fmt);
+    HTTP_POST_MUST(ctx->frontend, "/parser/info", json_string(sv_vprintf(fmt, args)));
+    va_end(args);
+}
 
-    if (OPT_TRACE) {
+void parser_debug_node(ParserContext *ctx, SyntaxNode *node)
+{
+    if (!ctx || !ctx->debug)
+        return;
+    JSONValue n = json_object();
+    json_set_string(&n, "name", node->name);
+    json_set_cstr(&n, "type", SyntaxNodeType_name(node->type));
+    JSONValue loc = json_object();
+    json_set_string(&loc, "filename", node->token.loc.file);
+    json_set_int(&loc, "line", node->token.loc.line);
+    json_set_int(&loc, "column", node->token.loc.column);
+    json_set(&n, "location", loc);
+    HTTP_POST_MUST(ctx->frontend, "/parser/node", n);
+}
+
+ParserContext parse(BackendConnection *conn, JSONValue config)
+{
+    StringView dir_or_file = json_get_string(&config, "target", sv_from("."));
+
+    ParserContext ret = { 0 };
+    ret.frontend = conn->fd;
+    ret.debug = json_get_bool(&config, "debug", false);
+    ret.source_name = sv_copy(dir_or_file);
+
+    if (ret.debug) {
+        HTTP_POST_MUST(conn->fd, "/parser/start", MUST_OPTIONAL(JSONValue, json_get(&config, "target")));
         char cwd[256];
         getcwd(cwd, 256);
-        trace(CAT_PARSE, "CWD: %s dir: %.*s", cwd, SV_ARG(dir_or_file));
+        parser_debug_info(&ret, "CWD: %s dir: %.*s", cwd, SV_ARG(dir_or_file));
     }
-    ParserContext ret = { 0 };
-    ret.source_name = sv_copy(dir_or_file);
+
     Token token = { ret.source_name, TK_PROGRAM, TC_NONE };
-    ret.program = syntax_node_make(SNT_PROGRAM, fn_barename(ret.source_name), token);
+    ret.program = syntax_node_make(&ret, SNT_PROGRAM, fn_barename(ret.source_name), token);
     import_package(&ret, token, sv_from("std"));
 
     char const *dir_cstr = sv_cstr(ret.source_name);
-    DIR *dir = opendir(dir_cstr);
+    DIR        *dir = opendir(dir_cstr);
     if (dir == NULL) {
         if (errno == ENOTDIR) {
             dir = opendir(".");
@@ -1138,9 +1173,12 @@ ParserContext parse(BackendConnection *conn)
             module->next = ret.program->program.modules;
             ret.program->program.modules = module;
             closedir(dir);
+            if (ret.debug) {
+                HTTP_GET_MUST(conn->fd, "/parser/done", sl_create());
+            }
             return ret;
         }
-        fatal("Could not open directory '%s'", dir_or_file);
+        fatal("Could not open directory '%.*s'", SV_ARG(dir_or_file));
     }
 
     struct dirent *dp;
@@ -1160,5 +1198,8 @@ ParserContext parse(BackendConnection *conn)
         }
     }
     closedir(dir);
+    if (ret.debug) {
+        HTTP_GET_MUST(conn->fd, "/parser/done", sl_create());
+    }
     return ret;
 }

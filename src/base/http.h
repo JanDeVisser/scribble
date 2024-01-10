@@ -191,4 +191,13 @@ HttpStatus          http_post_message(socket_t socket, StringView url, JSONValue
         }                                                                       \
     } while (0)
 
+#define HTTP_RESPONSE(fd, http_status)        \
+    do {                                      \
+        HttpResponse _response = { 0 };       \
+        _response.status = (http_status);     \
+        http_response_send((fd), &_response); \
+    } while (0)
+
+#define HTTP_RESPONSE_OK(fd) HTTP_RESPONSE((fd), HTTP_STATUS_OK)
+
 #endif /* __HTTP_H__ */

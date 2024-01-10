@@ -1,6 +1,7 @@
 add_library(
         scb_impl
         STATIC
+        backend.c
         binder.c
         datum.c
         execute.c
@@ -12,24 +13,32 @@ add_library(
         parser.c
         type.c
         op.h
-        engine.c
 )
 
 add_executable(
         scribble
+        engine.h
         frontend.c
-        engine.c
 )
 
 target_link_libraries(scribble scb_base)
 
 add_executable(
         scribble-backend
-        backend.c
-        engine.c
+        backend_main.c
+        engine.h
 )
 
 target_link_libraries(scribble-backend scb_impl scb_base scb_arm64 scribblert)
+
+add_executable(
+        scribble-threaded
+        engine.h
+        frontend.c
+)
+
+target_link_libraries(scribble-threaded scb_impl scb_base scb_arm64 scribblert)
+target_compile_definitions(scribble-threaded PUBLIC SCRIBBLE_THREADED_BACKEND)
 
 add_library(
         testlib

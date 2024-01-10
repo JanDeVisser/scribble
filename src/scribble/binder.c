@@ -1480,9 +1480,9 @@ __attribute__((unused)) BoundNode *bind_VARIABLE_DECL(BoundNode *parent, SyntaxN
             }
         }
 
-        SyntaxNode *assignment = syntax_node_make(SNT_ASSIGNMENT, stmt->token.text, stmt->token);
+        SyntaxNode *assignment = syntax_node_make(NULL, SNT_ASSIGNMENT, stmt->token.text, stmt->token);
         assignment->name = stmt->name;
-        assignment->assignment.variable = syntax_node_make(SNT_VARIABLE, stmt->name, stmt->token);
+        assignment->assignment.variable = syntax_node_make(NULL, SNT_VARIABLE, stmt->name, stmt->token);
         assignment->assignment.expression = stmt->variable_decl.init_expr;
         assignment->assignment.operator= OP_ASSIGN;
         assignment->data = ret;

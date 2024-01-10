@@ -59,7 +59,7 @@ typedef struct {
 } EngineStageConfig;
 
 typedef struct backend_connection {
-    socket_t         fd;
+    socket_t    fd;
     StringView  socket;
     EngineStage stage;
     JSONValue   config;
@@ -68,7 +68,6 @@ typedef struct backend_connection {
 
 typedef bool (*EngineStageExecutor)(BackendConnection *, ExecutionMessage);
 
-extern ErrorOrSocket        engine_start_backend();
-extern BackendConnection engine_initialize_backend(StringView path);
+extern ErrorOrSocket start_backend_thread();
 
 #endif /* __ENGINE_H__ */

@@ -8,6 +8,7 @@
 #define __PARSER_H__
 
 #include <engine.h>
+#include <json.h>
 #include <lexer.h>
 #include <op.h>
 #include <sv.h>
@@ -69,7 +70,7 @@ typedef enum {
 
 typedef struct type_descr {
     StringView name;
-    DIA(struct type_descr *);
+               DIA(struct type_descr *);
 } TypeDescr;
 
 typedef struct syntax_node {
@@ -193,6 +194,8 @@ typedef struct scribble_error {
 } ScribbleError;
 
 typedef struct parser_context {
+    socket_t       frontend;
+    bool           debug;
     Lexer         *lexer;
     SyntaxNode    *program;
     ScribbleError *first_error;
@@ -202,8 +205,8 @@ typedef struct parser_context {
 
 extern size_t        next_index();
 extern char const   *SyntaxNodeType_name(SyntaxNodeType type);
-extern SyntaxNode   *syntax_node_make(SyntaxNodeType type, StringView name, Token token);
-extern ParserContext parse(BackendConnection *conn);
+extern SyntaxNode   *syntax_node_make(ParserContext *ctx, SyntaxNodeType type, StringView name, Token token);
+extern ParserContext parse(BackendConnection *conn, JSONValue config);
 
 #define SN_LOC_ARG(node) LOC_ARG(node->token.loc)
 

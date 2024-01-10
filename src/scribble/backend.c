@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <pthread.h>
 #include <unistd.h>
 
 #include <arch/arm64/arm64.h>
@@ -45,58 +46,125 @@ bool bootstrap_backend(BackendConnection *conn)
     return true;
 }
 
-ErrorOrInt compile_program(BackendConnection *conn)
+void compile_program(BackendConnection *conn)
 {
-    bool          debug = json_get_bool(&conn->config, "debug_parser", false);
-
-    if (debug && http_post_message(conn->fd, sv_from("/parser/start"), (JSONValue) { 0 }) != HTTP_STATUS_OK) {
-        fatal("/parser/start failed");
-    }
-    ParserContext parse_result = parse(conn);
-    if (parse_result.first_error) {
-        JSONValue errors = json_array();
-        for (ScribbleError *err = parse_result.first_error; err; err = err->next) {
-            JSONValue error = json_object();
-            json_set(&error, "message", json_string(err->message));
-            JSONValue loc = json_object();
-            json_set(&loc, "file", json_string(err->token.loc.file));
-            json_set(&loc, "line", json_int(err->token.loc.line));
-            json_set(&loc, "column", json_int(err->token.loc.column));
-            json_set(&error, "location", loc);
-            json_append(&errors, error);
+    JSONValue stages = MUST_OPTIONAL(JSONValue, json_get(&conn->config, "stages"));
+    assert(stages.type == JSON_TYPE_ARRAY);
+    SyntaxNode *program = NULL;
+    BoundNode  *ast = NULL;
+    IRProgram   ir = { 0 };
+    for (size_t ix = 0; ix < json_len(&stages); ++ix) {
+        JSONValue  stage = MUST_OPTIONAL(JSONValue, json_at(&stages, ix));
+        StringView name = json_get_string(&stage, "name", sv_null());
+        if (sv_eq_cstr(name, "parse")) {
+            ParserContext parse_result = parse(conn, stage);
+            if (parse_result.first_error) {
+                JSONValue errors = json_array();
+                for (ScribbleError *err = parse_result.first_error; err; err = err->next) {
+                    JSONValue error = json_object();
+                    json_set(&error, "message", json_string(err->message));
+                    JSONValue loc = json_object();
+                    json_set(&loc, "file", json_string(err->token.loc.file));
+                    json_set(&loc, "line", json_int(err->token.loc.line));
+                    json_set(&loc, "column", json_int(err->token.loc.column));
+                    json_set(&error, "location", loc);
+                    json_append(&errors, error);
+                }
+                HTTP_POST_MUST(conn->fd, "/parser/errors", errors);
+                exit(1);
+            }
+            if (json_get_bool(&stage, "graph", false)) {
+                graph_program(parse_result.program);
+            }
+            program = parse_result.program;
+            continue;
         }
-        HTTP_POST_MUST(conn->fd, "/parser/errors", errors);
-        exit(1);
+        if (sv_eq_cstr(name, "bind")) {
+            assert(program != NULL);
+            bool debug = json_get_bool(&stage, "debug", false);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/bind/start", sl_create());
+            }
+            ast = bind_program(conn, program);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/bind/done", sl_create());
+            }
+            if (json_get_bool(&stage, "graph", false)) {
+                graph_ast(0, ast);
+            }
+        }
+        if (sv_eq_cstr(name, "ir")) {
+            assert(ast != NULL);
+            bool debug = json_get_bool(&stage, "debug", false);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/ir/start", sl_create());
+            }
+            ir = generate(conn, ast);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/ir/done", sl_create());
+            }
+        }
+        if (sv_eq_cstr(name, "generate")) {
+            assert(ir.obj_type == OT_PROGRAM);
+            bool debug = json_get_bool(&stage, "debug", false);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/generate/start", sl_create());
+            }
+            output_arm64(conn, &ir);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/generate/done", sl_create());
+            }
+        }
+        if (sv_eq_cstr(name, "emulate")) {
+            assert(ir.obj_type == OT_PROGRAM);
+            bool debug = json_get_bool(&stage, "debug", false);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/emulate/start", sl_create());
+            }
+            execute(conn, ir);
+            if (debug) {
+                HTTP_GET_MUST(conn->fd, "/emulate/done", sl_create());
+            }
+        }
     }
-    if (debug) {
-        HTTP_GET_MUST(conn->fd, "/parser/done", (StringList) { 0 });
-    }
-
-    if (json_get_bool(&conn->config, "graph", false)) {
-        graph_program(parse_result.program);
-    }
-    BoundNode *ast = bind_program(conn, parse_result.program);
-    IRProgram  ir = generate(conn, ast);
-    if (sv_eq_cstr(json_get_string(&conn->config, "mode", sv_from("compile")), "emulate")) {
-        return execute(conn, ir);
-    }
-    return output_arm64(conn, &ir);
 }
 
-int main(int argc, char **argv)
+extern int backend_main(StringView path)
 {
-    if (argc != 2) {
-        exit(1);
+    socket_t          conn_fd = MUST(Socket, unix_socket_connect(path));
+    BackendConnection conn = { 0 };
+
+    conn.fd = conn_fd;
+    conn.context = NULL;
+    conn.socket = path;
+
+    if (http_get_message(conn.fd, sv_from("/hello"), (StringList) { 0 }) != HTTP_STATUS_HELLO) {
+        fatal("/hello failed");
     }
-    set_option(sv_from("trace"), sv_from("IPC"));
-    log_init();
-    type_registry_init();
-    StringView socket_path = sv_from(argv[1]);
+    conn.config = HTTP_GET_REQUEST_MUST(conn.fd, "/bootstrap/config", (StringList) { 0 });
+    printf("[C] Got config\n");
 
-    BackendConnection conn = engine_initialize_backend(socket_path);
-
-    bootstrap_backend(&conn);
     compile_program(&conn);
 
     return 0;
+}
+
+void *backend_main_wrapper(void *path)
+{
+    backend_main((StringView) { (char const *) path, strlen(path) });
+    return NULL;
+}
+
+ErrorOrSocket start_backend_thread()
+{
+    StringView     path = sv_printf("/tmp/scribble-engine-%d", getpid());
+    socket_t const listen_fd = MUST(Socket, unix_socket_listen(path));
+    pthread_t      thread;
+    int            ret;
+
+    if ((ret = pthread_create(&thread, NULL, backend_main_wrapper, (void *) path.ptr)) != 0) {
+        fatal("Could not start backend thread: %s", strerror(ret));
+    }
+    trace(CAT_IPC, "Started client thread");
+    return socket_accept(listen_fd);
 }

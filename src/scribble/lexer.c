@@ -10,6 +10,7 @@
 #include <error_or.h>
 #include <io.h>
 #include <lexer.h>
+#include <parser.h>
 
 char const *TokenKind_name(TokenKind kind)
 {

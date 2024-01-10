@@ -25,12 +25,12 @@
 
 #define MUST_OPTIONAL(T, expr)                                          \
     ({                                                                  \
-        Optional##T var##_maybe = (expr);                               \
-        if (!var##_maybe.has_value) {                                   \
+        Optional##T T##_maybe = (expr);                               \
+        if (!T##_maybe.has_value) {                                   \
             fatal("Optional expression '%s' (%s:%d) returned no value", \
                 #expr, __FILE_NAME__, __LINE__);                        \
         }                                                               \
-        var##_maybe.value;                                              \
+        T##_maybe.value;                                              \
     })
 
 #define RETURN_VALUE(T, exp) \

@@ -239,7 +239,6 @@ HttpResponse http_post_request(socket_t socket, StringView url, JSONValue body)
     }
     http_request_send(socket, &request);
     sv_free(request.request);
-    HttpResponse response = MUST(HttpResponse, http_response_receive(socket));
     return MUST(HttpResponse, http_response_receive(socket));
 }
 

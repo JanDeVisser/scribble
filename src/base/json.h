@@ -55,6 +55,7 @@ extern JSONValue         json_integer(Integer number);
 extern JSONValue         json_bool(bool value);
 extern void              json_append(JSONValue *array, JSONValue elem);
 extern OptionalJSONValue json_at(JSONValue *array, size_t index);
+extern size_t            json_len(JSONValue *array);
 extern void              json_set(JSONValue *obj, char const *attr, JSONValue elem);
 extern void              json_set_string(JSONValue *obj, char const *attr, StringView sv);
 extern void              json_set_cstr(JSONValue *obj, char const *attr, char const *s);
@@ -65,7 +66,7 @@ extern JSONValue         json_get_default(JSONValue *obj, char const *attr, JSON
 extern bool              json_get_bool(JSONValue *obj, char const *attr, bool default_);
 extern int               json_get_int(JSONValue *obj, char const *attr, int default_);
 extern StringView        json_get_string(JSONValue *obj, char const *attr, StringView default_);
-extern bool              json_has(JSONValue *obj, char const* attr);
+extern bool              json_has(JSONValue *obj, char const *attr);
 extern StringView        json_encode(JSONValue value);
 extern ErrorOrJSONValue  json_decode(StringView json_text);
 
