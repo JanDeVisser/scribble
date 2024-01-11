@@ -11,8 +11,8 @@
 #include <log.h>
 #include <mem.h>
 
-#ifndef __ERROR_H__
-#define __ERROR_H__
+#ifndef __ERROR_OR_H__
+#define __ERROR_OR_H__
 
 #define ERRORCATEGORIES(S) \
     S(NoError, 0)          \
@@ -151,4 +151,4 @@ ERROR_OR_ALIAS(UInt64, uint64_t);
 ERROR_OR_ALIAS(Int, int);
 ERROR_OR_ALIAS(Size, size_t);
 
-#endif /* __ERROR_H__ */
+#endif /* __ERROR_OR_H__ */
