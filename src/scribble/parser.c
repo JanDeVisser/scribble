@@ -9,10 +9,13 @@
 #include <string.h>
 #include <unistd.h>
 
+#define STATIC_ALLOCATOR
+#include <allocate.h>
 #include <engine.h>
 #include <error_or.h>
 #include <fn.h>
 #include <fs.h>
+#include <http.h>
 #include <io.h>
 #include <json.h>
 #include <lexer.h>
@@ -21,9 +24,7 @@
 #include <sv.h>
 #include <type.h>
 
-#define STATIC_ALLOCATOR
-#include <allocate.h>
-#include <http.h>
+#include <model/error.h>
 
 static void        parser_context_add_verror(ParserContext *ctx, Token token, char const *msg, va_list args);
 static void        parser_context_add_error(ParserContext *ctx, Token token, char const *msg, ...);
@@ -39,20 +40,6 @@ static SyntaxNode *parse_import(ParserContext *ctx);
 static SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name);
 static void        parser_debug_info(ParserContext *ctx, char const *fmt, ...);
 static void        parser_debug_node(ParserContext *ctx, SyntaxNode *node);
-
-char const *SyntaxNodeType_name(SyntaxNodeType type)
-{
-    switch (type) {
-#undef SYNTAXNODETYPE_ENUM
-#define SYNTAXNODETYPE_ENUM(type) \
-    case SNT_##type:              \
-        return "SNT_" #type;
-        SYNTAXNODETYPES(SYNTAXNODETYPE_ENUM)
-#undef SYNTAXNODETYPE_ENUM
-    default:
-        UNREACHABLE();
-    }
-}
 
 size_t next_index()
 {
@@ -76,19 +63,13 @@ SyntaxNode *syntax_node_make(ParserContext *ctx, SyntaxNodeType type, StringView
 
 void parser_context_add_verror(ParserContext *ctx, Token token, char const *msg, va_list args)
 {
-    ScribbleError *err = allocate_new(ScribbleError);
-    err->token = token;
-    err->kind = SEK_SYNTAX;
-    err->message = sv_vprintf(msg, args);
-    if (!ctx->first_error) {
-        assert(!ctx->last_error);
-        ctx->first_error = ctx->last_error = err;
-    } else {
-        assert(ctx->last_error);
-        ctx->last_error->next = err;
-        ctx->last_error = err;
-    }
-    printf(LOC_SPEC "ERROR: %.*s\n", LOC_ARG(err->token.loc), SV_ARG(err->message));
+    da_append_ScribbleError(
+        &ctx->errors,
+        (ScribbleError) {
+            .kind = SEK_SYNTAX,
+            .token = token,
+            .message = sv_vprintf(msg, args),
+        });
 }
 
 void parser_context_add_error(ParserContext *ctx, Token token, char const *msg, ...)
@@ -102,17 +83,15 @@ void parser_context_add_error(ParserContext *ctx, Token token, char const *msg, 
 
 void parser_context_add_vnote(ParserContext *ctx, Token token, char const *msg, va_list args)
 {
-    assert(ctx->last_error);
-    ScribbleError *err = allocate_new(ScribbleError);
-    err->token = token;
-    err->kind = SEK_SYNTAX;
-    err->message = sv_vprintf(msg, args);
-    ScribbleError **dst = &ctx->last_error->notes;
-    while (*dst) {
-        dst = &((*dst)->next);
-    }
-    *dst = err;
-    printf(LOC_SPEC SV_SPEC "NOTE: \n", LOC_ARG(err->token.loc), SV_ARG(err->message));
+    assert(ctx->errors.size > 0);
+    ScribbleError *last = da_element_ScribbleError(&ctx->errors, ctx->errors.size - 1);
+    da_append_ScribbleError(
+        &last->notes,
+        (ScribbleError) {
+            .kind = last->kind,
+            .token = token,
+            .message = sv_vprintf(msg, args),
+        });
 }
 
 void parser_context_add_note(ParserContext *ctx, Token token, char const *msg, ...)
@@ -281,26 +260,6 @@ bool parser_context_accept_keyword(ParserContext *ctx, KeywordCode keyword)
             return (ret);                                 \
         }                                                 \
     } while (0)
-
-char *Operator_name(Operator op)
-{
-    switch (op) {
-#undef ENUM_BINARY_OPERATOR
-#define ENUM_BINARY_OPERATOR(op, a, p, k, c, cl) \
-    case OP_##op:                                \
-        return #op;
-        BINARY_OPERATORS(ENUM_BINARY_OPERATOR)
-#undef ENUM_BINARY_OPERATOR
-#undef ENUM_UNARY_OPERATOR
-#define ENUM_UNARY_OPERATOR(op, k, c) \
-    case OP_##op:                     \
-        return #op;
-        UNARY_OPERATORS(ENUM_UNARY_OPERATOR)
-#undef ENUM_UNARY_OPERATOR
-    default:
-        fatal("Unknown Operator '%d'", (int) op);
-    }
-}
 
 static OperatorMapping s_operator_mapping[] = {
 #undef ENUM_BINARY_OPERATOR
@@ -1057,7 +1016,7 @@ SyntaxNode *parse_module(ParserContext *ctx, StringView buffer, StringView name)
     SyntaxNode *module = syntax_node_make(ctx, SNT_MODULE, name, token);
     Lexer       lexer = { 0 };
 
-    parser_debug_info(ctx, "Compiling '%.*s'\n", SV_ARG(name));
+    parser_debug_info(ctx, "Compiling '%.*s'", SV_ARG(name));
     lexer.skip_whitespace = true;
     ctx->lexer = &lexer;
     lexer_push_source(&lexer, buffer, name);

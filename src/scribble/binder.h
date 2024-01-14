@@ -64,6 +64,28 @@ typedef enum bound_node_type {
         BNT_LAST
 } BoundNodeType;
 
+typedef struct bind_error {
+    Token              token;
+    StringView         message;
+    struct bind_error *notes;
+    struct bind_error *next;
+} BindError;
+
+DA(BindError);
+typedef DA_BindError BindErrors;
+
+typedef struct bind_context {
+    struct bind_context *parent;
+    int                  unbound;
+    SyntaxNode          *program;
+    bool                 main;
+    int                  errors;
+    int                  warnings;
+    BindErrors           bind_errors;
+    socket_t             frontend;
+    bool                 debug;
+} BindContext;
+
 typedef struct bound_node {
     BoundNodeType        type;
     StringView           name;
@@ -81,7 +103,7 @@ typedef struct bound_node {
         struct {
             struct bound_node *lhs;
             struct bound_node *rhs;
-            Operator operator;
+            Operator           operator;
         } binary_expr;
         struct {
             struct bound_node *statements;
@@ -147,7 +169,7 @@ typedef struct bound_node {
         } type_alias;
         struct {
             struct bound_node *operand;
-            Operator operator;
+            Operator           operator;
         } unary_expr;
         struct {
             type_id            type;
@@ -173,9 +195,9 @@ typedef struct bound_node {
     };
 } BoundNode;
 
-extern char const     *BoundNodeType_name(BoundNodeType type);
-extern JSONValue       bound_node_to_json(BoundNode *node);
-extern BoundNode      *bind_program(BackendConnection *conn, SyntaxNode *program);
-extern BoundNode      *bind_format(BoundNode *node, void *v_ctx);
+extern char const *BoundNodeType_name(BoundNodeType type);
+extern JSONValue   bound_node_to_json(BoundNode *node);
+extern BoundNode  *bind_program(BackendConnection *conn, JSONValue config, SyntaxNode *program);
+extern BoundNode  *bind_format(BoundNode *node, void *v_ctx);
 
 #endif /* __BINDER_H__ */

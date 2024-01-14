@@ -45,7 +45,58 @@ void handle_parser_message(socket_t socket, HttpRequest request)
     }
     if (sv_eq_cstr(request.url, "/parser/node")) {
         JSONValue node = MUST(JSONValue, json_decode(request.body));
-        printf("[parser] node: %.*s\n", SV_ARG(json_get_string(&node, "type", sv_null())));
+        StringView type = json_get_string(&node, "type", sv_null());
+        StringView name = json_get_string(&node, "name", sv_null());
+        printf("[parser] %.*s %.*s\n", SV_ARG(type), SV_ARG(name));
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    HTTP_RESPONSE(socket, HTTP_STATUS_NOT_FOUND);
+}
+
+void handle_bind_message(socket_t socket, HttpRequest request)
+{
+    if (sv_eq_cstr(request.url, "/bind/start")) {
+        printf("[bind] started\n");
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    if (sv_eq_cstr(request.url, "/bind/done")) {
+        printf("[bind] done\n");
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    if (sv_eq_cstr(request.url, "/bind/info")) {
+        JSONValue msg = MUST(JSONValue, json_decode(request.body));
+        printf("[bind] %.*s\n", SV_ARG(msg.string));
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    if (sv_eq_cstr(request.url, "/bind/syntaxnode")) {
+        JSONValue node = MUST(JSONValue, json_decode(request.body));
+        StringView type = json_get_string(&node, "nodetype", sv_null());
+        StringView name = json_get_string(&node, "name", sv_null());
+        printf("[bind] %.*s %.*s\n", SV_ARG(type), SV_ARG(name));
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    if (sv_eq_cstr(request.url, "/bind/boundnode")) {
+        JSONValue node = MUST(JSONValue, json_decode(request.body));
+        StringView node_type = json_get_string(&node, "nodetype", sv_null());
+        StringView name = json_get_string(&node, "name", sv_null());
+        StringView type = json_get_string(&node, "type", sv_null());
+        printf("[bind] %.*s %.*s : %.*s\n", SV_ARG(node_type), SV_ARG(name), SV_ARG(type));
+        HTTP_RESPONSE_OK(socket);
+        return;
+    }
+    if (sv_eq_cstr(request.url, "/bind/error")) {
+        JSONValue iter_stats = MUST(JSONValue, json_decode(request.body));
+        int iteration = json_get_int(&iter_stats, "iteration", 1);
+        int warnings = json_get_int(&iter_stats, "warnings", 0);
+        int total_warnings = json_get_int(&iter_stats, "total_warnings", 0);
+        int errors = json_get_int(&iter_stats, "errors", 0);
+        int unbound = json_get_int(&iter_stats, "unbound", 0);
+        printf("[bind] Iteration %d: %d warning(s), %d total warning(s), %d error(s), %d unbound node(s)\n", iteration, warnings, total_warnings, errors, unbound);
         HTTP_RESPONSE_OK(socket);
         return;
     }
@@ -78,7 +129,6 @@ int main(int argc, char **argv)
         }
     }
     set_option(sv_from("scribble-dir"), sv_from(SCRIBBLE_DIR));
-    set_option(sv_from("trace"), sv_from("IPC"));
     log_init();
 
     JSONValue config = json_object();
@@ -107,11 +157,10 @@ int main(int argc, char **argv)
     socket_t conn_fd = MUST(Socket, start_backend_thread());
 #endif /* SCRIBBLE_THREADED_BACKEND */
 
-
     while (true) {
-        printf("[S] Waiting for request\n");
+        trace(CAT_IPC, "[S] Waiting for request");
         HttpRequest request = MUST(HttpRequest, http_request_receive(conn_fd));
-        printf("[S] Got %.*s\n", SV_ARG(request.url));
+        trace(CAT_IPC, "[S] Got %.*s", SV_ARG(request.url));
         if (sv_eq_cstr(request.url, "/hello")) {
             HttpResponse response = { 0 };
             response.status = HTTP_STATUS_HELLO;
@@ -127,6 +176,10 @@ int main(int argc, char **argv)
         }
         if (sv_startswith(request.url, sv_from("/parser/"))) {
             handle_parser_message(conn_fd, request);
+            continue;
+        }
+        if (sv_startswith(request.url, sv_from("/bind/"))) {
+            handle_bind_message(conn_fd, request);
             continue;
         }
         if (sv_eq_cstr(request.url, "/goodbye")) {

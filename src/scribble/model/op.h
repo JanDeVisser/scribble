@@ -7,6 +7,8 @@
 #ifndef __OP_H__
 #define __OP_H__
 
+#include <sv.h>
+
 /*
  * Precedences according to https://en.cppreference.com/w/c/language/operator_precedence
  */
@@ -78,6 +80,7 @@ typedef enum {
 } Operator;
 // clang-format on
 
-extern char *Operator_name(Operator op);
+extern char    *Operator_name(Operator op);
+extern Operator Operator_from_string(StringView op);
 
 #endif /* __OP_H__ */

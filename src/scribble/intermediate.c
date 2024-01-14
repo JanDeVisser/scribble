@@ -644,7 +644,7 @@ __attribute__((unused)) void generate_UNARYEXPRESSION(BoundNode *node, IRContext
 
 __attribute__((unused)) void generate_UNBOUND_NODE(BoundNode *, IRContext *)
 {
-    UNREACHABLE();
+    // UNREACHABLE();
 }
 
 __attribute__((unused)) void generate_UNBOUND_TYPE(BoundNode *, IRContext *)
