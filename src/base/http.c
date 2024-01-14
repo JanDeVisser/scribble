@@ -5,7 +5,6 @@
  */
 
 #include <errno.h>
-#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -60,7 +59,7 @@ ErrorOrHttpRequest http_request_receive(socket_t socket)
     StringBuilder sb = { 0 };
     ret.body = sv_null();
     StringView line = TRY_TO(StringView, HttpRequest, socket_readln(socket));
-    trace(CAT_IPC, "http_request_receive start");
+    trace(CAT_HTTP, "http_request_receive start");
     sb_append_sv(&sb, line);
     sv_free(line);
     line = sb.view;
@@ -76,7 +75,7 @@ ErrorOrHttpRequest http_request_receive(socket_t socket)
     if (ret.method == HTTP_METHOD_UNKNOWN) {
         ERROR(HttpRequest, HttpError, 0, "Invalid HTTP request; unknown method '%s' ", http_method_to_string(ret.method));
     }
-    trace(CAT_IPC, "Method: %s", http_method_to_string(ret.method));
+    trace(CAT_HTTP, "Method: %s", http_method_to_string(ret.method));
 
     ret.url = sv_copy(status_fields.strings[1]);
     int qmark_ix;
@@ -101,12 +100,12 @@ ErrorOrHttpRequest http_request_receive(socket_t socket)
         }
         HttpHeader header = { .name = header_fields.strings[0], .value = header_fields.strings[1] };
         da_append_HttpHeader(&ret.headers, header);
-        trace(CAT_IPC, "Request Header: %.*s: %.*s", SV_ARG(header.name), SV_ARG(header.name));
+        trace(CAT_HTTP, "Request Header: %.*s: %.*s", SV_ARG(header.name), SV_ARG(header.name));
         if (sv_eq_ignore_case_cstr(header.name, "Content-Length")) {
             IntegerParseResult content_length_maybe = sv_parse_u64(header.value);
             if (content_length_maybe.success) {
                 content_length = content_length_maybe.integer.u64;
-                trace(CAT_IPC, "Content length: %zu", content_length);
+                trace(CAT_HTTP, "Content length: %zu", content_length);
             }
         }
     }
@@ -116,11 +115,11 @@ ErrorOrHttpRequest http_request_receive(socket_t socket)
         StringView body = TRY_TO(StringView, HttpRequest, socket_read(socket, content_length));
         sb_append_sv(&sb, body);
         ret.body = (StringView) { .ptr = sb.view.ptr + len, .length = body.length };
-        trace(CAT_IPC, "Read Request Body:\n%.*s\n", SV_ARG(body));
+        trace(CAT_HTTP, "Read Request Body:\n%.*s\n", SV_ARG(body));
         sv_free(body);
     }
     ret.request = sb.view;
-    trace(CAT_IPC, "http_request_receive done");
+    trace(CAT_HTTP, "http_request_receive done");
     RETURN(HttpRequest, ret);
 }
 
@@ -147,7 +146,7 @@ ErrorOrInt http_response_send(socket_t socket, HttpResponse *response)
     if (!sv_empty(response->body)) {
         sb_append_sv(&sb, response->body);
     }
-    printf("Sending response\n%.*s", SV_ARG(sb.view));
+    trace(CAT_HTTP, "Sending response\n%.*s", SV_ARG(sb.view));
     TRY_TO(Size, Int, socket_write(socket, sb.view.ptr, sb.view.length));
     RETURN(Int, 0);
 }
@@ -159,7 +158,7 @@ ErrorOrHttpResponse http_response_receive(socket_t socket)
     ret.status = HTTP_STATUS_UNKNOWN;
     ret.body = sv_null();
     StringView line = TRY_TO(StringView, HttpResponse, socket_readln(socket));
-    trace(CAT_IPC, "http_response_receive start");
+    trace(CAT_HTTP, "http_response_receive start");
     sb_append_sv(&sb, line);
     sv_free(line);
     line = sb.view;
@@ -175,7 +174,7 @@ ErrorOrHttpResponse http_response_receive(socket_t socket)
     if (ret.status == HTTP_STATUS_UNKNOWN) {
         ERROR(HttpResponse, HttpError, 0, "Invalid HTTP response: Unknow status '%s'", http_status_to_string(ret.status));
     }
-    trace(CAT_IPC, "Status: %s", http_status_to_string(ret.status));
+    trace(CAT_HTTP, "Status: %s", http_status_to_string(ret.status));
 
     size_t content_length = 0;
     while (true) {
@@ -183,7 +182,7 @@ ErrorOrHttpResponse http_response_receive(socket_t socket)
         sb_append_sv(&sb, line);
 
         if (sv_empty(line)) {
-            trace(CAT_IPC, "End of headers");
+            trace(CAT_HTTP, "End of headers");
             break;
         }
 
@@ -193,12 +192,12 @@ ErrorOrHttpResponse http_response_receive(socket_t socket)
         }
         HttpHeader header = { .name = header_fields.strings[0], .value = header_fields.strings[1] };
         da_append_HttpHeader(&ret.headers, header);
-        trace(CAT_IPC, "Response Header: %.*s: %.*s", SV_ARG(header.name), SV_ARG(header.value));
+        trace(CAT_HTTP, "Response Header: %.*s: %.*s", SV_ARG(header.name), SV_ARG(header.value));
         if (sv_eq_ignore_case_cstr(header.name, "Content-Length")) {
             IntegerParseResult content_length_maybe = sv_parse_u64(header.value);
             if (content_length_maybe.success) {
                 content_length = content_length_maybe.integer.u64;
-                trace(CAT_IPC, "Content length: %zu", content_length);
+                trace(CAT_HTTP, "Content length: %zu", content_length);
             }
         }
     }
@@ -206,13 +205,13 @@ ErrorOrHttpResponse http_response_receive(socket_t socket)
     if (content_length) {
         size_t     len = sb.view.length;
         StringView body = TRY_TO(StringView, HttpResponse, socket_read(socket, content_length));
-        trace(CAT_IPC, "Read Response Body:\n%.*s\n", SV_ARG(body));
+        trace(CAT_HTTP, "Read Response Body:\n%.*s\n", SV_ARG(body));
         sb_append_sv(&sb, body);
         sv_free(body);
         ret.body = (StringView) { .ptr = sb.view.ptr + len, .length = content_length };
     }
     ret.response = sb.view;
-    trace(CAT_IPC, "http_response_receive done");
+    trace(CAT_HTTP, "http_response_receive done");
     RETURN(HttpResponse, ret);
 }
 
@@ -222,10 +221,10 @@ HttpResponse http_get_request(socket_t socket, StringView url, StringList params
     request.method = HTTP_METHOD_GET;
     request.url = url;
     request.params = params;
-    printf("http_get_request(%.*s)\n", SV_ARG(url));
+    trace(CAT_HTTP, "http_get_request(%.*s)", SV_ARG(url));
     http_request_send(socket, &request);
     sv_free(request.request);
-    printf("http_get_request(%.*s) - waiting for response\n", SV_ARG(url));
+    trace(CAT_HTTP, "http_get_request(%.*s) - waiting for response", SV_ARG(url));
     return MUST(HttpResponse, http_response_receive(socket));
 }
 
