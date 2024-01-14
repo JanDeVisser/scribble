@@ -1,4 +1,15 @@
 add_library(
+        scb_model
+        STATIC
+        model/error.c
+        model/op.c
+        model/syntaxnode.c
+        model/token.c
+)
+
+target_link_libraries(scb_model scb_base)
+
+add_library(
         scb_impl
         STATIC
         backend.c
@@ -12,8 +23,9 @@ add_library(
         native.c
         parser.c
         type.c
-        op.h
 )
+
+target_link_libraries(scb_impl scb_model)
 
 add_executable(
         scribble
@@ -21,7 +33,7 @@ add_executable(
         frontend.c
 )
 
-target_link_libraries(scribble scb_base)
+target_link_libraries(scribble scb_model)
 
 add_executable(
         scribble-backend
@@ -29,7 +41,7 @@ add_executable(
         engine.h
 )
 
-target_link_libraries(scribble-backend scb_impl scb_base scb_arm64 scribblert)
+target_link_libraries(scribble-backend scb_impl scb_arm64 scribblert)
 
 add_executable(
         scribble-threaded
@@ -37,7 +49,7 @@ add_executable(
         frontend.c
 )
 
-target_link_libraries(scribble-threaded scb_impl scb_base scb_arm64 scribblert)
+target_link_libraries(scribble-threaded scb_impl scb_arm64 scribblert)
 target_compile_definitions(scribble-threaded PUBLIC SCRIBBLE_THREADED_BACKEND)
 
 add_library(
@@ -51,10 +63,10 @@ add_executable(
         type.c
 )
 
-target_link_libraries(type_test scb_base scb_impl)
+target_link_libraries(type_test scb_impl)
 target_compile_definitions(type_test PUBLIC TYPE_TEST)
 
-install(TARGETS scribble scribble-backend scb_base testlib
+install(TARGETS scribble scribble-backend scb_model scb_impl scb_base testlib
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)

@@ -17,15 +17,6 @@
 #include <allocate.h>
 #include <http.h>
 
-typedef struct bind_context {
-    struct bind_context *parent;
-    int                  unbound;
-    SyntaxNode          *program;
-    bool                 main;
-    int                  errors;
-    int                  warnings;
-} BindContext;
-
 static void       vwarning(BindContext *ctx, Location loc, char const *fmt, va_list args);
 static void       warning(BindContext *ctx, Location loc, char const *fmt, ...);
 static BoundNode *verror(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx, char const *fmt, va_list args);
@@ -69,6 +60,39 @@ JSONValue bound_node_to_json(BoundNode *node)
     json_set(&ret, "name", json_string(node->name));
     json_set(&ret, "type", json_string(typeid_name(node->typespec.type_id)));
     return ret;
+}
+
+void bind_debug_info(BindContext *ctx, char const *fmt, ...)
+{
+    if (!ctx->debug)
+        return;
+    va_list args;
+    va_start(args, fmt);
+    HTTP_POST_MUST(ctx->frontend, "/bind/info", json_string(sv_vprintf(fmt, args)));
+    va_end(args);
+}
+
+void binder_debug_syntaxnode(BindContext *ctx, SyntaxNode *node)
+{
+    if (!ctx || !ctx->debug)
+        return;
+    JSONValue n = json_object();
+    json_set_string(&n, "name", node->name);
+    json_set_cstr(&n, "nodetype", SyntaxNodeType_name(node->type));
+    JSONValue loc = json_object();
+    json_set_string(&loc, "filename", node->token.loc.file);
+    json_set_int(&loc, "line", node->token.loc.line);
+    json_set_int(&loc, "column", node->token.loc.column);
+    json_set(&n, "location", loc);
+    HTTP_POST_MUST(ctx->frontend, "/bind/syntaxnode", n);
+}
+
+void binder_debug_boundnode(BindContext *ctx, BoundNode *node)
+{
+    if (!ctx || !ctx->debug)
+        return;
+    JSONValue n = bound_node_to_json(node);
+    HTTP_POST_MUST(ctx->frontend, "/bind/boundnode", n);
 }
 
 BindContext *context_make_subcontext(BindContext *ctx)
@@ -1386,7 +1410,7 @@ __attribute__((unused)) BoundNode *bind_VARIABLE(BoundNode *parent, SyntaxNode *
         }
     }
     if (!decl) {
-        fprintf(stderr, "Cannot bind variable '%.*s'\n", SV_ARG(stmt->name));
+        bind_debug_info(ctx, "Cannot bind variable '%.*s'", SV_ARG(stmt->name));
         return bound_node_make_unbound(parent, stmt, ctx);
     }
 
@@ -1626,6 +1650,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         return NULL;
     }
 
+    binder_debug_syntaxnode(ctx, stmt);
     trace(CAT_BIND, "Binding %s node '%.*s'", SyntaxNodeType_name(stmt->type), SV_ARG(stmt->name));
     BoundNode *ret = NULL;
     switch (stmt->type) {
@@ -1639,6 +1664,7 @@ BoundNode *bind_node(BoundNode *parent, SyntaxNode *stmt, BindContext *ctx)
         UNREACHABLE();
     }
     if (ret != NULL) {
+        binder_debug_boundnode(ctx, ret);
         trace(CAT_BIND, "Binding %s node '%.*s' => %s",
             SyntaxNodeType_name(stmt->type), SV_ARG(stmt->name), BoundNodeType_name(ret->type));
     } else {
@@ -1762,14 +1788,21 @@ BoundNode *rebind_node(BoundNode *node, BindContext *ctx)
     }
 }
 
-BoundNode *bind_program(BackendConnection *conn, SyntaxNode *program)
+BoundNode *bind_program(BackendConnection *conn, JSONValue config, SyntaxNode *program)
 {
     BindContext *ctx = allocate(sizeof(BindContext));
     ctx->program = program;
+    ctx->frontend = conn->fd;
+    ctx->debug = json_get_bool(&config, "debug", false);
 
     int        current_unbound = INT32_MAX;
     BoundNode *ret = NULL;
     int        total_warnings = 0;
+
+    if (ctx->debug) {
+        HTTP_GET_MUST(conn->fd, "/bind/start", sl_create());
+    }
+
     for (int iter = 1; true; ++iter) {
         if (iter == 1) {
             ret = bind_node(NULL, program, ctx);
@@ -1801,11 +1834,15 @@ BoundNode *bind_program(BackendConnection *conn, SyntaxNode *program)
         }
         HTTP_POST_MUST(conn->fd, url, iter_stats);
         if (ctx->errors || ctx->unbound >= current_unbound) {
-            exit(1);
+            return NULL;
+        }
+        if (json_get_bool(&config, "graph", false)) {
+            graph_ast(iter, ret);
+        }
+        if (ctx->unbound == 0) {
+            return ret;
         }
     }
-    while (ctx->unbound > 0)
-        return ret;
 }
 
 #include <fmt.h>

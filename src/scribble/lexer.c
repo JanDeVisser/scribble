@@ -12,64 +12,6 @@
 #include <lexer.h>
 #include <parser.h>
 
-char const *TokenKind_name(TokenKind kind)
-{
-    switch (kind) {
-#undef TOKENKIND_ENUM
-#define TOKENKIND_ENUM(kind) \
-    case kind:               \
-        return #kind;
-        TOKENKINDS(TOKENKIND_ENUM)
-#undef TOKENKIND_ENUM
-    default:
-        UNREACHABLE();
-    }
-}
-
-char const *TokenCode_name(int code)
-{
-    static char buffer[2];
-    if (code < TC_COUNT) {
-        switch ((TokenCode) code) {
-#undef TOKENCODE_ENUM
-#define TOKENCODE_ENUM(code) \
-    case code:               \
-        return #code;
-            TOKENCODES(TOKENCODE_ENUM)
-#undef TOKENCODE_ENUM
-        default:
-            return "Unknown";
-        }
-    }
-    switch (code) {
-#undef KEYWORD_ENUM
-#define KEYWORD_ENUM(keyword, text, code) \
-    case TC_COUNT + code:                 \
-        return "KW_" #keyword;
-        KEYWORDS(KEYWORD_ENUM)
-#undef KEYWORD_ENUM
-    default: {
-        buffer[0] = (char) code;
-        buffer[1] = 0;
-        return buffer;
-    }
-    }
-}
-
-char const *Keyword_text(KeywordCode code)
-{
-    switch (code) {
-#undef KEYWORD_ENUM
-#define KEYWORD_ENUM(keyword, text, code) \
-    case KW_##keyword:                    \
-        return #text;
-        KEYWORDS(KEYWORD_ENUM)
-#undef KEYWORD_ENUM
-    default:
-        UNREACHABLE();
-    }
-}
-
 Token scan_number(char const *buffer)
 {
     TokenCode code = TC_INTEGER;
