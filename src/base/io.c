@@ -220,9 +220,7 @@ ErrorOrSize socket_fill_buffer(Socket *s)
     struct pollfd pollfds[] = {
         { .fd = s->fd, .events = POLLIN, .revents = 0 },
     };
-    while (poll(pollfds, 1, -1) < 0) {
-        fprintf(stderr, "poll() interupted\n");
-    }
+    while (poll(pollfds, 1, -1) < 0) { }
     assert(pollfds[0].revents & POLLIN);
     TRY(Size, read_available_bytes(s));
     assert(s->num > 0);
