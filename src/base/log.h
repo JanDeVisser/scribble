@@ -24,6 +24,7 @@
     S(IR)                  \
     S(EXECUTE)             \
     S(COMPILE)             \
+    S(HTTP)                \
     S(IPC)
 
 typedef enum trace_category {
@@ -41,7 +42,7 @@ extern                            void vtrace(char const *msg, va_list args);
 noreturn extern format_args(1, 2) void _fatal(char const *msg, ...);
 noreturn extern                   void vfatal(char const *msg, va_list args);
 
-#define fatal(msg, ...)           _fatal("%s:%d: " msg, __FILE__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
+#define fatal(msg, ...)           _fatal("%s:%d: " msg, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__)
 #define UNREACHABLE()             fatal("Unreachable")
 #define NYI(msg, ...)             fatal("Not yet implemented in %s: " msg, __func__ __VA_OPT__(, ) __VA_ARGS__)
 #define OUT_OF_MEMORY(msg, ...)   fatal("Out of memory in %s: " msg, __func__ __VA_OPT(, ) __VA_ARGS__)
@@ -49,11 +50,11 @@ noreturn extern                   void vfatal(char const *msg, va_list args);
 
 #define assert(cond)                                                    \
     if (!(cond)) {                                                      \
-        fatal("%s:%d: assert('%s') FAILED", __FILE__, __LINE__, #cond); \
+        fatal("%s:%d: assert('%s') FAILED", __FILE_NAME__, __LINE__, #cond); \
     }
 #define assert_msg(cond, msg, ...)                                                                \
     if (!(cond)) {                                                                                \
-        fatal("%s:%d: assert('%s'): " msg, __FILE__, __LINE__, #cond __VA_OPT__(, ) __VA_ARGS__); \
+        fatal("%s:%d: assert('%s'): " msg, __FILE_NAME__, __LINE__, #cond __VA_OPT__(, ) __VA_ARGS__); \
     }
 
 #endif // __LOG_H__
