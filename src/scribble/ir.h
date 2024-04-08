@@ -14,6 +14,7 @@
 #include <model/op.h>
 #include <sv.h>
 #include <type.h>
+#include <model/op.h>
 
 #define IR_OPERATION_TYPES(S) \
     S(ASSERT)                 \

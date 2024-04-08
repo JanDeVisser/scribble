@@ -33,7 +33,6 @@ typedef struct _location {
     S(MODULE)
 
 typedef enum {
-#undef TOKENKIND_ENUM
 #define TOKENKIND_ENUM(kind) TK_##kind,
     TOKENKINDS(TOKENKIND_ENUM)
 #undef TOKENKIND_ENUM
